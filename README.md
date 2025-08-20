@@ -17,8 +17,8 @@ Follow these steps to clone and set up the project locally:
 1. **Clone the Repository**
 
    ```bash
-   git clone https://github.com/v2tuan/chat-app.git
-   cd chat-app
+   https://github.com/v2tuan/konnect.git
+   cd konnect
    ```
 
 2. **Install Dependencies**Run the following command to install both backend and frontend dependencies:
