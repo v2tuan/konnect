@@ -8,7 +8,7 @@ let userSchema = new mongooes.Schema({
     },
     email: {
         type: String,
-        required: true,
+        unique: true,
         sparse: true // Allows for unique email but does not require it
     },
     password: {
