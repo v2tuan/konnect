@@ -4,12 +4,6 @@ import User from '../models/userModel.js';
 import connectDB from '../lib/connectDB.js';
 
 // Kết nối đến MongoDB
-mongoose.connect(env.MONGO_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-})
-.then(() => console.log('MongoDB connected for seeding'))
-.catch((err) => console.error('MongoDB connection error:', err));
 // mongoose.connect(process.env.MONGO_URI, {
 //     useNewUrlParser: true,
 //     useUnifiedTopology: true,
