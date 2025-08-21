@@ -2,7 +2,7 @@ import jsonwebtoken from 'jsonwebtoken'
 import { env } from '../config/environment.js';
 
 export const generateToken = (userId, res) => {
-    const token = jsonwebtoken.sign({ id: userId }, env.JWT_SECRET, {
+    const token = jsonwebtoken.sign({ userId }, env.JWT_SECRET, {
         expiresIn: '1h'
     });
     res.cookie('token', token, {

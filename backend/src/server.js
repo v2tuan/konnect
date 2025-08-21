@@ -6,6 +6,7 @@ import connectDB from './lib/connectDB.js';
 import { env } from './config/environment.js';
 import { APIs_V1 } from './routes/index.js';
 import seedUsers from './seeds/seedUsers.js'; // Import the seed function
+import cookieParser from 'cookie-parser';
 
 const app = express();
 const PORT =env.LOCAL_DEV_APP_PORT || 3000;
@@ -21,6 +22,8 @@ app.use(cors(
         credentials: true
     }
 ));
+
+app.use(cookieParser()); // Middleware to parse cookies
 
 app.use('/api', APIs_V1);
 
