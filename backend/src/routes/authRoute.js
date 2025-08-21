@@ -1,12 +1,14 @@
 import express from 'express';
-import {signup, login, logout} from '../controllers/authController.js';
-
+import { authController } from '../controllers/authController.js';
+import { authValidation } from '../validations/authValidation.js'
 let router = express.Router();
 
-router.post('/login', login);
+router.post('/login', authController.login);
 
-router.post('/register', signup);
+router.post('/register', authController.signup);
 
-router.post('/logout', logout);
+router.post('/logout', authController.logout);
+
+router.put('/update', authValidation.update, authController.update)
 
 export const authRoutes = router
