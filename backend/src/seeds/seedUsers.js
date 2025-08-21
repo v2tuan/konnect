@@ -1,6 +1,5 @@
 import mongoose from 'mongoose';
 import { env } from '../config/environment.js';
-import User from './path/to/User.js'; // đường dẫn tới file User.js của bạn
 import User from '../models/userModel.js';
 import connectDB from '../lib/connectDB.js';
 
