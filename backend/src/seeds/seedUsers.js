@@ -1,7 +1,5 @@
-import mongoose from 'mongoose';
-import { env } from '../config/environment.js';
-import User from '../models/userModel.js';
 import connectDB from '../lib/connectDB.js';
+import User from '../models/userModel.js';
 
 // Kết nối đến MongoDB
 // mongoose.connect(process.env.MONGO_URI, {

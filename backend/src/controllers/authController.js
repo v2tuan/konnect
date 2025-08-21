@@ -3,6 +3,8 @@ import bcrypt from 'bcryptjs';
 import sendMail from '../lib/sendMailUtil.js';
 import mongoose from 'mongoose';
 import { generateToken } from '../lib/jwtToken.js';
+import { authService } from '../services/authService.js';
+import { StatusCode } from 'http-status-codes'
 
 let signup = async (req, res) => {
     const session = await mongoose.startSession();
@@ -92,8 +94,21 @@ let logout = (req, res) => {
     }
 }
 
-module.exports = {
-    signup,
+const update = async (req, res, next ) => {
+    try {
+        const userId = req.cookies.jwt._id
+        const updatedUser = await authService.update(userId, req.body)
+        res.status(StatusCode.OK).json(updatedUser)
+    } catch (error) {
+        next(error)
+    }
+}
+
+
+export const authController = {
     login,
-    logout
-};
+    signup,
+    generateOtp,
+    logout,
+    update
+}
