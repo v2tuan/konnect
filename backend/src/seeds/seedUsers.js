@@ -1,11 +1,9 @@
 import mongoose from 'mongoose';
-import dotenv from 'dotenv';
+import { env } from '../config/environment.js';
 import User from './path/to/User.js'; // đường dẫn tới file User.js của bạn
 
-dotenv.config();
-
 // Kết nối đến MongoDB
-mongoose.connect(process.env.MONGO_URI, {
+mongoose.connect(env.MONGO_URI, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
 })
