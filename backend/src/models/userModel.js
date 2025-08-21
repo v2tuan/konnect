@@ -1,6 +1,6 @@
-import mongooes from 'mongoose'
+import mongoose from 'mongoose'
 
-let userSchema = new mongooes.Schema({
+let userSchema = new mongoose.Schema({
     phone: {
         type: String,
         required: true,
@@ -49,6 +49,6 @@ userSchema.pre('save', function(next) {
     next();
 });
 
-let User = mongooes.model('User', userSchema);
+let User = mongoose.model('User', userSchema);
 
 export default User;
