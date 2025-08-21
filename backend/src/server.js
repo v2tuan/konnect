@@ -5,6 +5,7 @@ import authRoute from './routes/authRoute.js';
 import connectDB from './lib/connectDB.js';
 import { env } from './config/environment.js';
 import { APIs_V1 } from './routes/index.js';
+import seedUsers from './seeds/seedUsers.js'; // Import the seed function
 
 const app = express();
 const PORT =env.LOCAL_DEV_APP_PORT || 3000;
@@ -27,4 +28,5 @@ app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
     console.log(`http://${env.LOCAL_DEV_APP_HOST}:${PORT}`);
     connectDB();
+    // seedUsers(); // Call the seed function to populate the database
 });
