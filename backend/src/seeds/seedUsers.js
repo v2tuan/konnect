@@ -1,11 +1,16 @@
 import mongoose from 'mongoose';
-import dotenv from 'dotenv';
+import { env } from '../config/environment.js';
+import User from './path/to/User.js'; // đường dẫn tới file User.js của bạn
 import User from '../models/userModel.js';
 import connectDB from '../lib/connectDB.js';
 
-dotenv.config();
-
 // Kết nối đến MongoDB
+mongoose.connect(env.MONGO_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+})
+.then(() => console.log('MongoDB connected for seeding'))
+.catch((err) => console.error('MongoDB connection error:', err));
 // mongoose.connect(process.env.MONGO_URI, {
 //     useNewUrlParser: true,
 //     useUnifiedTopology: true,

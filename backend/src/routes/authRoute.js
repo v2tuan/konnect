@@ -1,4 +1,3 @@
-import e from 'express';
 import express from 'express';
 
 let router = express.Router();
@@ -15,4 +14,4 @@ router.post('/logout', (req, res) => {
     res.send('Logout Page');
 });
 
-export default router;
+export const authRoutes = router
