@@ -36,7 +36,11 @@ let userSchema = new mongooes.Schema({
     },
     updatedAt: {
         type: Date,
-        default: Date.now
+        default: null
+    },
+    _destroy: {
+        type: Boolean,
+        default: false
     }
 });
 
