@@ -1,16 +1,17 @@
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
-import User from './path/to/User.js'; // đường dẫn tới file User.js của bạn
+import User from '../models/userModel.js';
+import connectDB from '../lib/connectDB.js';
 
 dotenv.config();
 
 // Kết nối đến MongoDB
-mongoose.connect(process.env.MONGO_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-})
-.then(() => console.log('MongoDB connected for seeding'))
-.catch((err) => console.error('MongoDB connection error:', err));
+// mongoose.connect(process.env.MONGO_URI, {
+//     useNewUrlParser: true,
+//     useUnifiedTopology: true,
+// })
+// .then(() => console.log('MongoDB connected for seeding'))
+// .catch((err) => console.error('MongoDB connection error:', err));
 
 // Dữ liệu mẫu
 const users = [
@@ -44,10 +45,14 @@ const users = [
 
 // Hàm tạo dữ liệu
 const seedUsers = async () => {
+
     try {
+        await connectDB();
+
         // Xóa tất cả dữ liệu cũ (nếu muốn)
         // await User.deleteMany({});
         // console.log('Existing users removed');
+
 
         // Thêm dữ liệu mới
         await User.insertMany(users);
@@ -60,4 +65,4 @@ const seedUsers = async () => {
     }
 };
 
-seedUsers();
+export default seedUsers;

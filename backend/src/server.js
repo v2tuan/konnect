@@ -3,6 +3,7 @@ import bodyParser from 'body-parser';
 import cors from 'cors';
 import authRoute from './routes/authRoute.js';
 import connectDB from './lib/connectDB.js';
+import seedUsers from './seeds/seedUsers.js'; // Import the seed function
 require('dotenv').config();
 
 const app = express();
@@ -26,4 +27,5 @@ app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
     console.log(`http://localhost:${PORT}`);
     connectDB();
+    // seedUsers(); // Call the seed function to populate the database
 });
