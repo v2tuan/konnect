@@ -1,23 +1,31 @@
+import authorizeAxiosInstance from "@/utils/authorizeAxios"
 import { API_ROOT } from "@/utils/constant"
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit"
-import axios from "axios"
 
 const initialState = {
   currentUser: null
 }
 
 export const loginUserAPI = createAsyncThunk(
-  "/users/loginUserAPI",
+  "/auth/loginUserAPI",
   async (data) => {
-    const response = await axios.post(`${API_ROOT}/api/auth/login`, data)
+    const response = await authorizeAxiosInstance.post(`${API_ROOT}/api/auth/login`, data)
     return response.data
   }
 )
 
 export const updateUserAPI = createAsyncThunk(
-  "/users/updateUserAPI",
+  "/auth/updateUserAPI",
   async (data) => {
-    const response = await axios.put(`${API_ROOT}/api/auth/update`, data)
+    const response = await authorizeAxiosInstance.put(`${API_ROOT}/api/auth/update`, data)
+    return response.data
+  }
+)
+
+export const logoutUserAPI = createAsyncThunk(
+  "/auth/logoutUserAPI",
+  async (data) => {
+    const response = await authorizeAxiosInstance.post(`${API_ROOT}/api/auth/logout`, data)
     return response.data
   }
 )
@@ -25,14 +33,18 @@ export const updateUserAPI = createAsyncThunk(
 export const userSlice = createSlice({
   name: 'user',
   initialState,
-  reducer: {},
+  reducers: {},
   extraReducers: (builder) => {
-    builder.addCase(loginUserAPI.fulfilled,(state, action) => {
-      state.currentUser = action.payload
-    }),
-    builder.addCase(updateUserAPI.fulfilled,(state, action) => {
-      state.currentUser = action.payload
-    })
+    builder
+      .addCase(loginUserAPI.fulfilled, (state, action) => {
+        state.currentUser = action.payload
+      })
+      .addCase(updateUserAPI.fulfilled, (state, action) => {
+        state.currentUser = action.payload
+      })
+      .addCase(logoutUserAPI.fulfilled, (state) => {
+        state.currentUser = null
+      })
   }
 })
 

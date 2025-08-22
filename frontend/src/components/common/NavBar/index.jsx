@@ -10,12 +10,6 @@ import ThemeToggle from "./ThemeToggle"
 import UserMenu from "./UserMenu"
 
 export default function NavBar() {
-  const user = {
-    name: "Duy Đăng",
-    avatarUrl: "",
-    initials: "DD",
-  }
-
   return (
     <header className="sticky top-0 z-50 w-full border-b border-black/10 dark:border-white/10 bg-white/80 dark:bg-black/60 backdrop-blur supports-[backdrop-filter]:bg-white/60 dark:supports-[backdrop-filter]:bg-black/40">
       <div className="mx-auto max-w-7xl px-3 sm:px-4 lg:px-6">
@@ -88,7 +82,7 @@ export default function NavBar() {
                   {[
                     { id: 1, text: "New message from Anh Tran" },
                     { id: 2, text: "Minh added you to Team Konnect" },
-                    { id: 3, text: "Update available — click to refresh" },
+                    { id: 3, text: "Update available — click to refresh" }
                   ].map((n) => (
                     <div key={n.id} className="rounded-lg border border-black/10 dark:border-white/10 p-2 text-sm hover:bg-black/[.03] dark:hover:bg-white/[.06] cursor-pointer">
                       {n.text}
@@ -98,7 +92,7 @@ export default function NavBar() {
               </DropdownMenuContent>
             </DropdownMenu>
 
-            <UserMenu user={user} />
+            <UserMenu/>
           </div>
         </div>
       </div>
