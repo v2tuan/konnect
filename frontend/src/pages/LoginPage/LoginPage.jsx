@@ -8,14 +8,16 @@ import { Eye, EyeOff } from "lucide-react"
 import { useState } from "react"
 
 export default function LoginPage() {
-  const [showPassword, setShowPassword] = useState(false);
-  const [form, setForm] = useState({ email: "", password: "" });
+  const navigate = useNavigate()
 
-  const handleLogin = (e) => {
-    e.preventDefault();
-    // Handle login logic here
-    alert(`Logging in with email: ${form.email} and password: ${form.password}`);
-  };
+  const [showPassword, setShowPassword] = useState(false);
+  const [form, setForm] = useState({ username: "", password: "", remember: false });
+
+  const handleSubmit = (e) => {
+    e.preventDefault()
+
+    navigate('/home')
+  }
 
   return (
     <div className="grid min-h-svh lg:grid-cols-2">
