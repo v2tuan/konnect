@@ -1,3 +1,4 @@
+import HomePage from "./pages/HomePage/HomePage";
 import LoginPage from "./pages/LoginPage/LoginPage";
 import { Routes, Route, Navigate } from "react-router-dom"
 export default function App() {
@@ -9,6 +10,8 @@ export default function App() {
 
       {/* auth */}
       <Route path='/login' element={<LoginPage/>} />
+
+      <Route path="/home" element={<HomePage/>} />
 
       <Route path='/settings/account' element={<LoginPage/>} />
       <Route path='/settings/security' element={<LoginPage/>} />
