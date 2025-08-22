@@ -1,5 +1,5 @@
 import jsonwebtoken from 'jsonwebtoken';
-import User from '../models/userModel.js';
+import { env } from '../config/environment';
 
 export const authMiddleware = async (req, res, next) => {
     const token = req.cookies.token;
@@ -7,7 +7,7 @@ export const authMiddleware = async (req, res, next) => {
         return res.status(401).json({ message: 'Unauthorized' });
     }
     try {
-        const decoded = jsonwebtoken.verify(token, process.env.JWT_SECRET);
+        const decoded = jsonwebtoken.verify(token, env.JWT_SECRET);
         // const user = await User.findById(decoded.userId).select('-password -_destroy');
         // if (!user) {
         //     return res.status(404).json({ message: 'User not found' });

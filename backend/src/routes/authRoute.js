@@ -1,7 +1,7 @@
 import express from 'express';
 import { authController } from '../controllers/authController.js';
 import { authValidation } from '../validations/authValidation.js'
-import authMiddleware from '../middleware/authMiddleware.js';
+import authMiddleware from '../middlewares/authMiddleware.js';
 
 let router = express.Router();
 

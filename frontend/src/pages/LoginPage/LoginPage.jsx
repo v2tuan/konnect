@@ -1,15 +1,24 @@
-import { useState } from "react";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
-import { Eye, EyeOff, Lock, User, Facebook, Twitter, Mail, MessageSquareMore} from "lucide-react";
+import { Eye, EyeOff, Facebook, Lock, Mail, MessageSquareMore, Twitter, User } from "lucide-react";
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 export default function LoginPage() {
+  const navigate = useNavigate()
+
   const [showPassword, setShowPassword] = useState(false);
   const [form, setForm] = useState({ username: "", password: "", remember: false });
+
+  const handleSubmit = (e) => {
+    e.preventDefault()
+
+    navigate('/home')
+  }
 
   return (
     <div className="min-h-screen w-full bg-neutral-50 p-4 md:p-8 lg:p-12 flex items-center justify-center text-white">
@@ -83,10 +92,7 @@ export default function LoginPage() {
 
               <form
                 className="space-y-6"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  alert(JSON.stringify(form, null, 2));
-                }}
+                onSubmit={handleSubmit}
               >
                 {/* Username */}
                 <div className="space-y-2">
@@ -158,6 +164,7 @@ export default function LoginPage() {
                       bg-white text-black hover:bg-neutral-200
                       rounded-xl font-medium
                     "
+                    to="/home"
                   >
                     Log In
                   </Button>
