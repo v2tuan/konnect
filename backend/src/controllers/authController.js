@@ -6,10 +6,6 @@ import sendMail from '../lib/sendMailUtil.js';
 import User from '../models/userModel.js';
 import { authService } from '../services/authService.js';
 
-const INVALID_FIELD_USER = [
-    "_id", "password", "createdAt", "updatedAt", "_destroy"
-]
-
 let signup = async (req, res) => {
     const session = await mongoose.startSession();
 
@@ -63,34 +59,28 @@ let generateOtp = (length = 6) => {
 }
 
 let login = async (req, res) => {
-    const { email, password } = req.body;
-    try {
-        const user = await User.findOne({ email });
-
-        if (!user || user._destroy) {
-            return res.status(404).json({ message: 'User not found' });
-        }
-
-        if (!bcrypt.compareSync(password, user.password)) {
-            return res.status(401).json({ message: 'Invalid password' });
-        }
-
-        generateToken(user._id, res);
-
-        const userValid = user.toObject()
-
-        INVALID_FIELD_USER.forEach((field) => {
-            delete userValid[field]
-        })
-
-        return res.status(200).json({
-            message: 'Login successful',
-            ...userValid
-        });
-    } catch (error) {
-        console.error('Error during login:', error);
-        return res.status(500).json({ message: 'Internal server error' });
+  const { email, password } = req.body
+  try {
+    const user = await User.findOne({ email }).select("+password")
+    if (!user || user._destroy) {
+      return res.status(404).json({ message: "User not found" })
     }
+    if (!bcrypt.compareSync(password, user.password)) {
+      return res.status(401).json({ message: "Invalid password" })
+    }
+
+    generateToken(user._id, res)
+
+    const userSafe = await User.findById(user._id)
+      .select("-password -__v -_destroy")
+      .lean()
+
+    return res.status(200).json(userSafe)
+
+  } catch (err) {
+    console.error("Error during login:", err)
+    return res.status(500).json({ message: "Internal server error" })
+  }
 }
 
 let logout = (req, res) => {

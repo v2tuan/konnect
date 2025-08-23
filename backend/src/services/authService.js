@@ -1,45 +1,48 @@
+import bcrypt from "bcryptjs"
 import { CloudinaryProvider } from "~/providers/CloudinaryProvider"
-import User from "../models/userModel"
-import { pickUser } from "~/utils/formatter"
+import User from "../models/userModel.js"
 
-const update = async (userId, data, userAvatarFile) => {
+const ALLOWED_FIELDS = ["fullName", "bio", "dateOfBirth", "phone", "avatarUrl"]
+
+const update = async (userId, data = {}, userAvatarFile) => {
   try {
-    const existUser = await User.findById(userId)
+    const existUser = await User.findById(userId).select("+password")
     if (!existUser) throw new Error("Account not found!")
 
-    const updatedUser = {}
-    //doi pass
+    const patch = {}
+
+    // 1) Đổi mật khẩu
     if (data.current_password && data.new_password) {
-      if (!bcrypt.compareSync(data.current_password, existUser.password))
-        throw new Error('Your password or email is incorrect')
-      updatedUser = await User.updateOne(existUser._id, {
-        password: bcrypt.hashSync(data.new_password, 10)
-      })
+      const ok = bcrypt.compareSync(data.current_password, existUser.password)
+      if (!ok) throw new Error("Your password or email is incorrect")
+      patch.password = bcrypt.hashSync(data.new_password, 10)
     }
-
-    //cap nhat avatar
+    // 2) Đổi avatar
     else if (userAvatarFile) {
-      const uploadResult = await CloudinaryProvider.streamUpload(userAvatarFile.buffer, 'users')
-
-      updatedUser = await User.updateOne(existUser._id, {
-        avatarUrl: uploadResult.secure_url
-      })
+      const upload = await CloudinaryProvider.streamUpload(userAvatarFile.buffer, "users")
+      patch.avatarUrl = upload.secure_url // đúng tên field trong schema
+    }
+    // 3) Cập nhật thông tin chung
+    else {
+      for (const k of ALLOWED_FIELDS) {
+        if (k in data) patch[k] = data[k]
+      }
     }
 
-    //doi thong tin binh thuong
-    else {
-      updatedUser = await User.updateOne(
-        { _id: userId },
-        { $set: data },
-        { new: true }
-    )}
+    // Cập nhật và LẤY document sau update
+    const updated = await User.findByIdAndUpdate(
+      userId,
+      { $set: { ...patch, updatedAt: new Date() } },
+      { new: true, runValidators: true }
+    )
+      .select("-password -__v -_destroy")
+      .lean() // trả về POJO, FE gán thẳng vào Redux
 
-    return pickUser(updatedUser)
+    if (!updated) throw new Error("Update failed")
+    return updated
   } catch (error) {
-    throw new Error(error)
+    throw new Error(error.message || "Update failed")
   }
 }
 
-export const authService = {
-  update
-}
+export const authService = { update }
