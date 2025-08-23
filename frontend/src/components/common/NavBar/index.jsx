@@ -6,7 +6,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuSepar
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
-import ThemeToggle from "./ThemeToggle"
+import ModeToggle from "./ThemeToggle"
 import UserMenu from "./UserMenu"
 
 export default function NavBar() {
@@ -66,7 +66,7 @@ export default function NavBar() {
 
           {/* Right: Actions */}
           <div className="flex items-center gap-1.5">
-            <ThemeToggle />
+            <ModeToggle />
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
