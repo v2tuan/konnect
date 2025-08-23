@@ -1,7 +1,6 @@
 import cloudinary from 'cloudinary'
 import streamifier from 'streamifier'
-import { env } from '~/config/environment'
-
+import { env } from '../config/environment'
 
 //cac buoc cau hinh cloudinary - su dung version 2
 const cloudinaryV2 = cloudinary.v2
