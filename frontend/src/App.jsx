@@ -3,6 +3,7 @@ import Auth from "./pages/AuthPage/Auth"
 import LoginPage from "./pages/AuthPage/LoginPage"
 import HomePage from "./pages/HomePage/HomePage"
 import OtpPage from "./pages/OtpPage/OtpPage"
+import ProfilePage from "./pages/ProfilePage/ProfilePage"
 export default function App() {
   return (
     <Routes>
@@ -15,8 +16,11 @@ export default function App() {
       <Route path='signup' element={<Auth/>} />
       <Route path='/otp' element={<OtpPage/>} />
 
-      {/* main */}
+      {/* setting */}
+      <Route path='settings/account' element={<ProfilePage/>} />
+      <Route path='settings/security' element={<ProfilePage/>} />
 
+      {/* main */}
       <Route path="/home" element={<HomePage/>} />
 
       <Route path='/settings/account' element={<LoginPage/>} />

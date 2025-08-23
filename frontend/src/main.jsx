@@ -8,6 +8,7 @@ import { store } from './redux/store'
 import { persistStore } from 'redux-persist'
 import { Provider } from 'react-redux'
 import { PersistGate } from 'redux-persist/integration/react'
+import { ThemeProvider } from "@/components/theme-provider"
 
 injectStore(store)
 
@@ -17,9 +18,11 @@ createRoot(document.getElementById('root')).render(
   <BrowserRouter basename='/' >
     <Provider store={store}>
       <PersistGate persistor={persistor}>
-        <StrictMode>
-          <App />
-        </StrictMode>
+        <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
+          <StrictMode>
+            <App />
+          </StrictMode>
+        </ThemeProvider>
       </PersistGate>
     </Provider>
   </BrowserRouter>
