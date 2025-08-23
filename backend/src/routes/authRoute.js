@@ -11,7 +11,7 @@ router.post('/register', authController.signup);
 
 router.post('/logout', authController.logout);
 
-router.put('/update', authValidation.update, authController.update)
+router.put('/update', authMiddleware, authValidation.update, authController.update)
 
 router.post('/logout', authMiddleware, authController.logout);
 

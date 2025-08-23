@@ -1,10 +1,14 @@
-import User from '../models/userModel.js';
 import bcrypt from 'bcryptjs';
-import sendMail from '../lib/sendMailUtil.js';
+import { StatusCodes } from 'http-status-codes';
 import mongoose from 'mongoose';
 import { generateToken } from '../lib/jwtToken.js';
+import sendMail from '../lib/sendMailUtil.js';
+import User from '../models/userModel.js';
 import { authService } from '../services/authService.js';
-import { StatusCode } from 'http-status-codes'
+
+const INVALID_FIELD_USER = [
+    "_id", "password", "createdAt", "updatedAt", "_destroy"
+]
 
 let signup = async (req, res) => {
     const session = await mongoose.startSession();
@@ -62,7 +66,8 @@ let login = async (req, res) => {
     const { email, password } = req.body;
     try {
         const user = await User.findOne({ email });
-        if (!user) {
+
+        if (!user || user._destroy) {
             return res.status(404).json({ message: 'User not found' });
         }
 
@@ -72,11 +77,15 @@ let login = async (req, res) => {
 
         generateToken(user._id, res);
 
+        const userValid = user.toObject()
+
+        INVALID_FIELD_USER.forEach((field) => {
+            delete userValid[field]
+        })
+
         return res.status(200).json({
             message: 'Login successful',
-            email: user.email,
-            fullName: user.fullName,
-            avatarUrl: user.avatarUrl
+            ...userValid
         });
     } catch (error) {
         console.error('Error during login:', error);
@@ -96,9 +105,12 @@ let logout = (req, res) => {
 
 const update = async (req, res, next ) => {
     try {
-        const userId = req.cookies.jwt._id
+        const userId = req.userId
+        if (!userId) {
+            return res.status(401).json({ message: 'Unauthorized' })
+        }
         const updatedUser = await authService.update(userId, req.body)
-        res.status(StatusCode.OK).json(updatedUser)
+        res.status(StatusCodes.OK).json(updatedUser)
     } catch (error) {
         next(error)
     }

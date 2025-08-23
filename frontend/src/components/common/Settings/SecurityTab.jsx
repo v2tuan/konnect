@@ -122,7 +122,7 @@ export default function SecurityTab() {
                   <FieldErrorAlert errors={errors} fieldName={"new_password_confirmation"} />
                 </div>
 
-                <Button type="submit" className="h-11 interceptor-loading">Change</Button>
+                <Button type="submit" className="h-11 interceptor-loading cursor-pointer">Change</Button>
               </div>
             </form>
           </CardContent>

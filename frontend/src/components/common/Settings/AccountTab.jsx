@@ -139,7 +139,7 @@ export default function AccountTab() {
                 <Input type="text" {...register("bio")} />
               </div>
 
-              <Button type="submit" className="h-11 interceptor-loading">
+              <Button type="submit" className="h-11 interceptor-loading cursor-pointer">
                 Update
               </Button>
             </div>
