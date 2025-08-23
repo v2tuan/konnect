@@ -30,6 +30,10 @@ let userSchema = new mongoose.Schema({
         type: String,
         default: ''
     },
+    status: {
+        isOnline: { type: Boolean, default: false },
+        lastActiveAt: { type: Date, default: null }
+    },
     createdAt: {
         type: Date,
         default: Date.now
@@ -48,6 +52,9 @@ userSchema.pre('save', function(next) {
     this.updatedAt = Date.now();
     next();
 });
+
+// Nghiên cứu về Index để tăng tốc truy vấn
+// userSchema.index({ phone: 1 });
 
 let User = mongoose.model('User', userSchema);
 
