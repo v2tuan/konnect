@@ -1,4 +1,7 @@
-import User from "../models/userModel"
+import User from "../models/userModel.js"
+import sendMail from "../lib/sendMailUtil";
+import bcrypt from "bcryptjs";
+import HttpError from '../error/HttpError';
 
 const update = async (userId, data) => {
   try {
@@ -15,16 +18,21 @@ const update = async (userId, data) => {
     throw new Error(error)
   }
 }
-const requestPasswordReset = async (email) =>{
+const requestPasswordReset = async (email) => {
     if (!email) throw new HttpError(400, 'Email is required');
 
     const user = await User.findOne({ email });
-    // Không để lộ email có tồn tại hay không: nếu không có user -> simply return
-    if (!user) return;
+    if (!user) return; // tránh user enumeration (route vẫn trả message chung)
 
-    const otp = generateOtp(6);
+    const now = Date.now();
+    if (user.resetLastSentAt && now - user.resetLastSentAt.getTime() < 60_000) {
+        const waitSec = Math.ceil((60_000 - (now - user.resetLastSentAt.getTime())) / 1000);
+        throw new HttpError(429, `Please wait ${waitSec}s before requesting another OTP`);
+    }
+
+    const otp = generateOtp(6); // gợi ý: nên lưu hash của OTP
     user.resetOtp = otp;
-    user.resetOtpExpiresAt = new Date(now + 10 * 60 * 1000); // 10 phút
+    user.resetOtpExpiresAt = new Date(now + 50 * 60 * 1000);
     user.resetOtpAttempts = 0;
     user.resetLastSentAt = new Date(now);
     await user.save();
@@ -36,19 +44,21 @@ const requestPasswordReset = async (email) =>{
     <p>If you didn’t request this, you can ignore this email.</p>
   `;
     await sendMail(email, 'Password Reset OTP', text, html);
-}
+};
 
-const resetPassword = async ( email, otp, newPassword) => {
+const resetPassword = async (email, otp, newPassword) => {
     if (!email || !otp || !newPassword) {
         throw new HttpError(400, 'Email, OTP and newPassword are required');
     }
 
     const user = await User.findOne({ email });
+    // vẫn trả message chung ở controller để tránh lộ thông tin
     if (!user || !user.resetOtp || !user.resetOtpExpiresAt) {
         throw new HttpError(400, 'Invalid or expired OTP');
     }
 
-    if (user.resetOtpAttempts >= 5) {
+    // chặn brute force
+    if ((user.resetOtpAttempts ?? 0) >= 5) {
         throw new HttpError(429, 'Too many attempts. Please request a new OTP');
     }
 
@@ -81,7 +91,10 @@ let generateOtp = (length = 6) => {
     }
     return otp;
 }
+
 export const authService = {
-  update,
-    generateOtp
+    update,
+    requestPasswordReset,
+    resetPassword
+
 }

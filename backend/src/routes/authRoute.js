@@ -15,4 +15,8 @@ router.put('/update', authValidation.update, authController.update)
 
 router.post('/logout', authMiddleware, authController.logout);
 
+router.post('/forgot', authController.requestPasswordReset);
+
+router.post('/reset-password', authController.resetPassword);
+
 export const authRoutes = router

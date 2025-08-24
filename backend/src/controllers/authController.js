@@ -103,103 +103,32 @@ const update = async (req, res, next ) => {
         next(error)
     }
 }
+
+// POST /auth/forgot
 const requestPasswordReset = async (req, res) => {
-  try {
-    const { email } = req.body;
-    if (!email) return res.status(400).json({ message: 'Email is required' });
-
-    const user = await User.findOne({ email });
-    // Luôn trả 200 để tránh user enumeration
-    if (!user) {
-      return res.status(200).json({ message: 'If the email exists, an OTP has been sent' });
+    try {
+        await authService.requestPasswordReset(req.body.email);
+        // Luôn trả 200 (tránh user enumeration)
+        return res.status(200).json({ message: 'If the email exists, an OTP has been sent' });
+    } catch (err) {
+        const status = err.status || 500;
+        return res.status(status).json({ message: err.message || 'Internal server error' });
     }
-
-    // Chống spam gửi OTP: cách lần gửi gần nhất >= 60s
-    const now = Date.now();
-    if (user.resetLastSentAt && (now - user.resetLastSentAt.getTime()) < 60 * 1000) {
-      const waitSec = Math.ceil((60 * 1000 - (now - user.resetLastSentAt.getTime())) / 1000);
-      return res.status(429).json({ message: `Please wait ${waitSec}s before requesting another OTP` });
-    }
-
-    const otp = generateOtp(6);
-    user.resetOtp = otp;
-    user.resetOtpExpiresAt = new Date(now + 10 * 60 * 1000); // 10 phút
-    user.resetOtpAttempts = 0; // reset lại số lần thử
-    user.resetLastSentAt = new Date(now);
-    await user.save();
-
-    const text = `Your password reset OTP is ${otp}. It expires in 10 minutes.`;
-    const htmlContent = `
-      <p>Your password reset OTP is <strong>${otp}</strong>.</p>
-      <p>This code expires in <strong>10 minutes</strong>.</p>
-      <p>If you didn’t request this, you can ignore this email.</p>
-    `;
-    await sendMail(email, 'Password Reset OTP', text, htmlContent);
-
-    return res.status(200).json({ message: 'If the email exists, an OTP has been sent' });
-  } catch (err) {
-    console.error('requestPasswordReset error:', err);
-    return res.status(500).json({ message: 'Internal server error' });
-  }
 };
 
-/**
- * POST /auth/reset-password
- * Body: { email: string, otp: string, newPassword: string }
- * Kiểm tra OTP (đúng + chưa hết hạn + chưa vượt quá 5 lần sai), sau đó cập nhật mật khẩu.
- */
+// POST /auth/reset-password
 const resetPassword = async (req, res) => {
-  try {
-    const { email, otp, newPassword } = req.body;
-    if (!email || !otp || !newPassword) {
-      return res.status(400).json({ message: 'Email, OTP and newPassword are required' });
+    try {
+        console.log('[RESET] body=', req.body);
+        const { email, otp, newPassword } = req.body ?? {};
+        await authService.resetPassword(email, otp, newPassword);
+        return res.status(200).json({ message: 'Password has been reset successfully' });
+    } catch (err) {
+        const status = err.status || 500;
+        return res.status(status).json({ message: err.message || 'Internal server error' });
     }
-
-    const user = await User.findOne({ email });
-    if (!user || !user.resetOtp || !user.resetOtpExpiresAt) {
-      return res.status(400).json({ message: 'Invalid or expired OTP' });
-    }
-
-    // Quá 5 lần nhập sai thì khoá OTP
-    if (user.resetOtpAttempts >= 5) {
-      return res.status(429).json({ message: 'Too many attempts. Please request a new OTP' });
-    }
-
-    // Hết hạn
-    const now = Date.now();
-    if (now > user.resetOtpExpiresAt.getTime()) {
-      // clear OTP
-      user.resetOtp = null;
-      user.resetOtpExpiresAt = null;
-      user.resetOtpAttempts = 0;
-      await user.save();
-      return res.status(400).json({ message: 'OTP expired. Please request a new one' });
-    }
-
-    // Sai OTP?
-    if (otp !== user.resetOtp) {
-      user.resetOtpAttempts += 1;
-      await user.save();
-      return res.status(400).json({ message: 'Invalid OTP' });
-    }
-
-    // OTP đúng -> cập nhật mật khẩu
-    const salt = bcrypt.genSaltSync(10);
-    const hashedPassword = bcrypt.hashSync(newPassword, salt);
-    user.password = hashedPassword;
-
-    // clear OTP fields
-    user.resetOtp = null;
-    user.resetOtpExpiresAt = null;
-    user.resetOtpAttempts = 0;
-    await user.save();
-
-    return res.status(200).json({ message: 'Password has been reset successfully' });
-  } catch (err) {
-    console.error('resetPassword error:', err);
-    return res.status(500).json({ message: 'Internal server error' });
-  }
 };
+;
 
 export const authController = {
     login,
@@ -207,6 +136,6 @@ export const authController = {
     generateOtp,
     logout,
     update,
-    requestPasswordReset,
-    resetPassword
+    resetPassword,
+    requestPasswordReset
 }

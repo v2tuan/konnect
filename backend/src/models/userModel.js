@@ -45,14 +45,31 @@ let userSchema = new mongoose.Schema({
     _destroy: {
         type: Boolean,
         default: false
-    }
+    },
+    // OTP cho quên mật khẩu
+    resetOtp: { type: String, default: null },
+    resetOtpExpiresAt: { type: Date, default: null },
+    resetOtpAttempts: { type: Number, default: 0,},
+    resetLastSentAt: { type: Date, default: null }
 });
 
 userSchema.pre('save', function(next) {
     this.updatedAt = Date.now();
     next();
 });
-
+// Chuẩn hoá JSON trả ra client (ẩn field nhạy cảm)
+// userSchema.set('toJSON', {
+//     transform: (doc, ret) => {
+//         ret.id = ret._id.toString();
+//         delete ret._id;
+//         delete ret.password;
+//         delete ret.resetOtp;
+//         delete ret.resetOtpExpiresAt;
+//         delete ret.resetOtpAttempts;
+//         delete ret.resetLastSentAt;
+//         return ret;
+//     }
+// });
 // Nghiên cứu về Index để tăng tốc truy vấn
 // userSchema.index({ phone: 1 });
 
