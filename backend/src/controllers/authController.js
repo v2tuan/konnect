@@ -1,10 +1,10 @@
-import User from '../models/userModel.js';
 import bcrypt from 'bcryptjs';
-import sendMail from '../lib/sendMailUtil.js';
+import { StatusCodes } from 'http-status-codes';
 import mongoose from 'mongoose';
 import { generateToken } from '../lib/jwtToken.js';
+import sendMail from '../lib/sendMailUtil.js';
+import User from '../models/userModel.js';
 import { authService } from '../services/authService.js';
-import { StatusCode } from 'http-status-codes'
 
 let signup = async (req, res) => {
     const session = await mongoose.startSession();
@@ -59,29 +59,28 @@ let generateOtp = (length = 6) => {
 }
 
 let login = async (req, res) => {
-    const { email, password } = req.body;
-    try {
-        const user = await User.findOne({ email });
-        if (!user) {
-            return res.status(404).json({ message: 'User not found' });
-        }
-
-        if (!bcrypt.compareSync(password, user.password)) {
-            return res.status(401).json({ message: 'Invalid password' });
-        }
-
-        generateToken(user._id, res);
-
-        return res.status(200).json({
-            message: 'Login successful',
-            email: user.email,
-            fullName: user.fullName,
-            avatarUrl: user.avatarUrl
-        });
-    } catch (error) {
-        console.error('Error during login:', error);
-        return res.status(500).json({ message: 'Internal server error' });
+  const { email, password } = req.body
+  try {
+    const user = await User.findOne({ email }).select("+password")
+    if (!user || user._destroy) {
+      return res.status(404).json({ message: "User not found" })
     }
+    if (!bcrypt.compareSync(password, user.password)) {
+      return res.status(401).json({ message: "Invalid password" })
+    }
+
+    generateToken(user._id, res)
+
+    const userSafe = await User.findById(user._id)
+      .select("-password -__v -_destroy")
+      .lean()
+
+    return res.status(200).json(userSafe)
+
+  } catch (err) {
+    console.error("Error during login:", err)
+    return res.status(500).json({ message: "Internal server error" })
+  }
 }
 
 let logout = (req, res) => {
@@ -96,9 +95,13 @@ let logout = (req, res) => {
 
 const update = async (req, res, next ) => {
     try {
-        const userId = req.cookies.jwt._id
-        const updatedUser = await authService.update(userId, req.body)
-        res.status(StatusCode.OK).json(updatedUser)
+        const userId = req.userId
+        if (!userId) {
+            return res.status(401).json({ message: 'Unauthorized' })
+        }
+        const userAvatarFile = req.file
+        const updatedUser = await authService.update(userId, req.body, userAvatarFile)
+        res.status(StatusCodes.OK).json(updatedUser)
     } catch (error) {
         next(error)
     }

@@ -32,13 +32,8 @@ function UserMenu() {
         <DropdownMenuSeparator />
         <DropdownMenuGroup>
           <DropdownMenuItem asChild>
-            <a href="/profile" className="flex w-full items-center gap-2">
+            <a href="/settings/account" className="flex w-full items-center gap-2">
               <User2 className="h-4 w-4" /> Profile
-            </a>
-          </DropdownMenuItem>
-          <DropdownMenuItem asChild>
-            <a href="/settings" className="flex w-full items-center gap-2">
-              <Settings className="h-4 w-4" /> Settings
             </a>
           </DropdownMenuItem>
         </DropdownMenuGroup>
