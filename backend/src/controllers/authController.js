@@ -118,7 +118,16 @@ const requestPasswordReset = async (req, res) => {
         return res.status(status).json({ message: err.message || 'Internal server error' });
     }
 };
-
+const verifyOtp = async (req, res) => {
+    try {
+        const { email, otp } = req.body ?? {};
+        await authService.verifyOtp(email, otp);
+        return res.status(200).json({ message: 'OTP verified' });
+    } catch (err) {
+        const status = err.status || 500;
+        return res.status(status).json({ message: err.message || 'Internal server error' });
+    }
+};
 // POST /auth/reset-password
 const resetPassword = async (req, res) => {
     try {
@@ -131,7 +140,6 @@ const resetPassword = async (req, res) => {
         return res.status(status).json({ message: err.message || 'Internal server error' });
     }
 };
-;
 
 export const authController = {
     login,
@@ -140,5 +148,6 @@ export const authController = {
     logout,
     update,
     resetPassword,
-    requestPasswordReset
+    requestPasswordReset,
+    verifyOtp
 }
