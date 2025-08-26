@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 let conversationSchema = new mongoose.Schema({
     type: {
         type: String,
-        enum: ['direct', 'group'],
+        enum: ['direct', 'group', 'cloud'],
         required: true
     },
     direct: {
