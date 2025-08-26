@@ -10,8 +10,6 @@ router.post('/login', authController.login);
 
 router.post('/register', authController.signup);
 
-router.post('/logout', authController.logout);
-
 router.put('/update', authMiddleware, multerUploadMiddleware.upload.single('avatar'), authValidation.update, authController.update)
 
 router.post('/logout', authMiddleware, authController.logout);
@@ -19,5 +17,7 @@ router.post('/logout', authMiddleware, authController.logout);
 router.post('/forgot', authController.requestPasswordReset);
 
 router.post('/reset-password', authController.resetPassword);
+
+router.get('/check', authMiddleware, authController.check);
 
 export const authRoutes = router

@@ -6,62 +6,25 @@ import sendMail from '../lib/sendMailUtil.js';
 import User from '../models/userModel.js';
 import { authService } from '../services/authService.js';
 
+// POST /auth/register
 let signup = async (req, res) => {
-    const session = await mongoose.startSession();
-
     try {
-        const { phone, email, password, fullName, dateOfBirth } = req.body;
-        if (!email || !password || !fullName || !dateOfBirth) {
-            return res.status(400).json({ message: 'Missing required fields' });
-        }
-
-        const user = await User.findOne({ email });
-        if (user) {
-            return res.status(400).json({ message: 'User already exists' });
-        }
-
-        const salt = bcrypt.genSaltSync(10);
-        const hashedPassword = bcrypt.hashSync(password, salt);
-
-        const newUser = new User({
-            phone,
-            email,
-            password: hashedPassword,
-            fullName,
-            dateOfBirth
-        });
-
+        let newUser = await authService.createUser(req.body); ////////////////////////////////////////////
         if (newUser) {
-            session.startTransaction();
-            await newUser.save({ session: session });
-            const otp = generateOtp();
-            const text = `Your OTP is ${otp}. Please use this to complete your registration.`;
-            const htmlContent = `Your OTP is <strong>${otp}</strong>. Please use this to complete your registration.`;
-            await sendMail(email, 'OTP for Registration', text, htmlContent);
-            await session.commitTransaction();
             return res.status(201).json({ message: 'User registered successfully' });
         }
-        await session.endSession();
         return res.status(500).json({ message: 'Error registering user' });
     } catch (error) {
-        await session.abortTransaction();
         console.error('Error during registration:', error);
-        return res.status(500).json({ message: 'Internal server error' });
+        return res.status(500).json(error.message || { message: 'Internal server error' });
     }
 }
 
-let generateOtp = (length = 6) => {
-    let otp = '';
-    for (let i = 0; i < length; i++) {
-        otp += Math.floor(Math.random() * 10);
-    }
-    return otp;
-}
-
+// POST /auth/login
 let login = async (req, res) => {
   const { email, password } = req.body
   try {
-    const user = await User.findOne({ email }).select("+password")
+    const user = await User.findOne({ email })
     if (!user || user._destroy) {
       return res.status(404).json({ message: "User not found" })
     }
@@ -131,14 +94,28 @@ const resetPassword = async (req, res) => {
         return res.status(status).json({ message: err.message || 'Internal server error' });
     }
 };
-;
+
+// GET /auth/check
+const check = async (req, res) => {
+    try {
+        const userId = req.userId;
+        if (!userId) {
+            return res.status(401).json({ message: 'Unauthorized' });
+        }
+        return res.status(200).json(user);
+    }
+    catch (err) {
+        const status = err.status || 500;
+        return res.status(status).json({ message: err.message || 'Internal server error' });
+    }
+}
 
 export const authController = {
     login,
     signup,
-    generateOtp,
     logout,
     update,
     resetPassword,
-    requestPasswordReset
+    requestPasswordReset,
+    check
 }

@@ -3,8 +3,47 @@ import sendMail from "../lib/sendMailUtil";
 import bcrypt from "bcryptjs";
 import HttpError from '../error/HttpError';
 import { CloudinaryProvider } from "~/providers/CloudinaryProvider"
+import mongoose from "mongoose";
 
 const ALLOWED_FIELDS = ["fullName", "bio", "dateOfBirth", "phone", "avatarUrl"]
+
+const createUser = async (data = {}) => {
+  const session = await mongoose.startSession(); // Tạo session cho transaction
+  try {
+    session.startTransaction() // Bắt đầu transaction
+    const { email, password, fullName, dateOfBirth } = data
+    if (!email || !password || !fullName || !dateOfBirth) {
+      throw new Error("Missing required fields")
+    }
+    const existUser = await User.findOne({ email })
+    if (existUser) throw new Error("Email already registered")
+    
+    const salt = bcrypt.genSaltSync(10)
+    const hashedPassword = bcrypt.hashSync(password, salt)
+    const newUser = new User({
+      email,
+      password: hashedPassword,
+      fullName,
+      dateOfBirth: new Date(dateOfBirth)
+    })
+    
+    if (newUser) {
+      await newUser.save({ session: session }) // Lưu user trong transaction
+      const otp = generateOtp()
+      const text = `Your OTP is ${otp}. Please use this to complete your registration.`
+      const htmlContent = `Your OTP is <strong>${otp}</strong>. Please use this to complete your registration.`
+      await sendMail(email, "OTP for Registration", text, htmlContent)
+      await session.commitTransaction() // Commit transaction
+    }
+    return newUser
+  } catch (error) {
+    await session.abortTransaction()
+    throw new Error(error.message || "Registration failed")
+  }
+  finally {
+    session.endSession() // Kết thúc session
+  }
+}
 
 const update = async (userId, data = {}, userAvatarFile) => {
   try {
@@ -121,6 +160,7 @@ let generateOtp = (length = 6) => {
 }
 
 export const authService = {
+    createUser,
     update,
     requestPasswordReset,
     resetPassword
