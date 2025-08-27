@@ -21,20 +21,6 @@ export const updateUserAPI = createAsyncThunk(
     return response.data
   }
 )
-export const forgotPasswordAPI = createAsyncThunk(
-    "/auth/forgotPasswordAPI",
-    async (data) => {
-        const response = await authorizeAxiosInstance.post(`${API_ROOT}/api/auth/forgot`, data)
-        return response.data
-    }
-)
-export const resetPasswordAPI = createAsyncThunk(
-    "/auth/resetPasswordAPI",
-    async (data) => {
-        const response = await authorizeAxiosInstance.post(`${API_ROOT}/api/auth/reset-password`, data)
-        return response.data
-    }
-)
 
 export const logoutUserAPI = createAsyncThunk(
   "/auth/logoutUserAPI",
