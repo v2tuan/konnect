@@ -18,6 +18,8 @@ router.post('/forgot', authController.requestPasswordReset);
 
 router.post('/reset-password', authController.resetPassword);
 
+router.post('/verify-otp', authController.verifyOtp);
+
 router.get('/check', authMiddleware, authController.check);
 
 export const authRoutes = router

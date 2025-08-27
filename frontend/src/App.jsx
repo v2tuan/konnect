@@ -4,6 +4,7 @@ import LoginPage from "./pages/AuthPage/LoginPage"
 import HomePage from "./pages/HomePage/HomePage"
 import OtpPage from "./pages/OtpPage/OtpPage"
 import ProfilePage from "./pages/ProfilePage/ProfilePage"
+import ForgotPasswordPage from "@/pages/AuthPage/ForgotPasswordPage.jsx";
 import ProtectedRoute from "./utils/protectedRoute"
 
 export default function App() {
@@ -17,7 +18,9 @@ export default function App() {
       <Route path='login' element={<Auth/>} />
       <Route path='signup' element={<Auth/>} />
       <Route path='/otp' element={<OtpPage/>} />
-
+        <Route path="auth/forgot" element={<Auth/>} />
+        <Route path="auth/forgot/otp" element={<Auth/>} />
+        <Route path="auth/forgot/reset" element={<Auth/>} />
       {/* Protected Route */}
       <Route element={<ProtectedRoute/>} >
         {/* setting */}

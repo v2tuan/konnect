@@ -26,7 +26,6 @@ app.use(cors(
 app.use(cookieParser()); // Middleware to parse cookies
 
 app.use('/api', APIs_V1);
-
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
     console.log(`http://${env.LOCAL_DEV_APP_HOST}:${PORT}`);
