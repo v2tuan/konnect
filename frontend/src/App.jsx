@@ -4,6 +4,8 @@ import LoginPage from "./pages/AuthPage/LoginPage"
 import HomePage from "./pages/HomePage/HomePage"
 import OtpPage from "./pages/OtpPage/OtpPage"
 import ProfilePage from "./pages/ProfilePage/ProfilePage"
+import ProtectedRoute from "./utils/protectedRoute"
+
 export default function App() {
   return (
     <Routes>
@@ -16,15 +18,18 @@ export default function App() {
       <Route path='signup' element={<Auth/>} />
       <Route path='/otp' element={<OtpPage/>} />
 
-      {/* setting */}
-      <Route path='settings/account' element={<ProfilePage/>} />
-      <Route path='settings/security' element={<ProfilePage/>} />
+      {/* Protected Route */}
+      <Route element={<ProtectedRoute/>} >
+        {/* setting */}
+        <Route path='settings/account' element={<ProfilePage/>} />
+        <Route path='settings/security' element={<ProfilePage/>} />
 
-      {/* main */}
-      <Route path="/home" element={<HomePage/>} />
+        {/* main */}
+        <Route path="/home" element={<HomePage/>} />
 
-      <Route path='/settings/account' element={<LoginPage/>} />
-      <Route path='/settings/security' element={<LoginPage/>} />
+        <Route path='/settings/account' element={<LoginPage/>} />
+        <Route path='/settings/security' element={<LoginPage/>} />
+      </Route>
 
     </Routes>
   )

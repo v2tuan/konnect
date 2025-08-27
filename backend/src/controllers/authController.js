@@ -102,7 +102,7 @@ const check = async (req, res) => {
         if (!userId) {
             return res.status(401).json({ message: 'Unauthorized' });
         }
-        return res.status(200).json(user);
+        return res.status(200).json({authenticated: true});
     }
     catch (err) {
         const status = err.status || 500;
