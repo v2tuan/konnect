@@ -4,7 +4,7 @@ import { API_ROOT } from "@/utils/constant"
 
 export const checkAuth = async () => {
   try {
-    const response = await axios.get(
+    const response = await authorizeAxiosInstance.get(
       `${API_ROOT}/api/auth/check`,
       { withCredentials: true }
     )
@@ -19,6 +19,11 @@ export const checkAuth = async () => {
     console.error("Check auth failed:", error)
     return false
   }
+}
+
+export const registerUserAPI = async (data) => {
+  const response = await axios.post(`${API_ROOT}/api/auth/register`, data)
+  return response.data
 }
 
 export const forgotPasswordAPI = async (data) => {

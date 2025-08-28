@@ -3,7 +3,6 @@ import mongoose from 'mongoose'
 let userSchema = new mongoose.Schema({
     phone: {
         type: String,
-        required: true,
         unique: true
     },
     email: {
@@ -72,6 +71,10 @@ userSchema.pre('save', function(next) {
 // });
 // Nghiên cứu về Index để tăng tốc truy vấn
 // userSchema.index({ phone: 1 });
+
+// Sparse index (MongoDB shell)
+userSchema.index({ phone: 1 }, { unique: true, sparse: true });
+
 
 let User = mongoose.model('User', userSchema);
 

@@ -23,8 +23,8 @@ const createUser = async (data = {}) => {
   const session = await mongoose.startSession(); // Tạo session cho transaction
   try {
     session.startTransaction() // Bắt đầu transaction
-    const { email, password, fullName, dateOfBirth } = data
-    if (!email || !password || !fullName || !dateOfBirth) {
+    const { email, password, fullName, dateOfBirth, gender } = data
+    if (!email || !password || !fullName || !dateOfBirth || !gender) {
       throw new Error("Missing required fields")
     }
     const existUser = await User.findOne({ email })
@@ -36,6 +36,7 @@ const createUser = async (data = {}) => {
       email,
       password: hashedPassword,
       fullName,
+      gender,
       dateOfBirth: new Date(dateOfBirth)
     })
     
