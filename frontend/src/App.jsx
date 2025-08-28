@@ -4,6 +4,7 @@ import HomePage from "./pages/HomePage/HomePage"
 import OtpPage from "./pages/OtpPage/OtpPage"
 import ProfilePage from "./pages/ProfilePage/ProfilePage"
 import ProtectedRoute from "./pages/protectedRoute"
+import PublicRoute from "./pages/publicRoute"
 // import { useSelector } from "react-redux"
 // import { selectCurrentUser } from "./redux/user/userSlice"
 
@@ -22,22 +23,25 @@ export default function App() {
     <Routes>
       <Route path='/' element={
         <Navigate to='/home' replace={true} />
-      }/>
+      } />
 
       {/* auth */}
-      <Route path='login' element={<Auth/>} />
-      <Route path='signup' element={<Auth/>} />
-      <Route path='/otp' element={<OtpPage/>} />
-      <Route path="auth/forgot" element={<Auth/>} />
-      <Route path="auth/forgot/otp" element={<Auth/>} />
-      <Route path="auth/forgot/reset" element={<Auth/>} />
+      <Route element={<PublicRoute />} >
+        <Route path='login' element={<Auth />} />
+        <Route path='signup' element={<Auth />} />
+        <Route path='/otp' element={<OtpPage />} />
+        <Route path="auth/forgot" element={<Auth />} />
+        <Route path="auth/forgot/otp" element={<Auth />} />
+        <Route path="auth/forgot/reset" element={<Auth />} />
+      </Route>
+
       {/* Protected Route */}
-      <Route element={<ProtectedRoute/>} >
+      <Route element={<ProtectedRoute />} >
         {/* setting */}
-        <Route path='settings/account' element={<ProfilePage/>} />
-        <Route path='settings/security' element={<ProfilePage/>} />
+        <Route path='settings/account' element={<ProfilePage />} />
+        <Route path='settings/security' element={<ProfilePage />} />
         {/* main */}
-        <Route path="home" element={<HomePage/>} />
+        <Route path="home" element={<HomePage />} />
       </Route>
 
     </Routes>

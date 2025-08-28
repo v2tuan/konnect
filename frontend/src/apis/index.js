@@ -1,9 +1,10 @@
 import authorizeAxiosInstance from "@/utils/authorizeAxios"
+import axios from "axios"
 import { API_ROOT } from "@/utils/constant"
 
 export const checkAuth = async () => {
   try {
-    const response = await authorizeAxiosInstance.get(
+    const response = await axios.get(
       `${API_ROOT}/api/auth/check`,
       { withCredentials: true }
     )
@@ -19,9 +20,6 @@ export const checkAuth = async () => {
     return false
   }
 }
-
-import authorizeAxiosInstance from "@/utils/authorizeAxios"
-import { API_ROOT } from "@/utils/constant"
 
 export const forgotPasswordAPI = async (data) => {
   const response = await authorizeAxiosInstance.post(`${API_ROOT}/api/auth/forgot`, data)
