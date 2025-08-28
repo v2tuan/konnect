@@ -4,24 +4,25 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "react-toastify";
-import { useDispatch } from "react-redux";
+// ❌ bỏ useDispatch ở đây
 import { resetPasswordAPI } from "@/apis";
 
 export default function ForgotResetPage() {
     const navigate = useNavigate();
-    const dispatch = useDispatch();
     const location = useLocation();
 
-    const email = location.state?.email || new URLSearchParams(location.search).get("email") || "";
-    const otp = location.state?.otp || new URLSearchParams(location.search).get("otp") || "";
+    const email =
+        location.state?.email || new URLSearchParams(location.search).get("email") || "";
+    const otp =
+        location.state?.otp || new URLSearchParams(location.search).get("otp") || "";
 
-    if (!email || !otp) {
-        // Nếu người dùng vào thẳng mà không có email/otp → quay lại bước đầu
-        navigate("/forgot", { replace: true });
-    }
+    // Điều hướng nên làm trong effect (tránh side-effect trong render)
+    useEffect(() => {
+        if (!email || !otp) navigate("/forgot", { replace: true });
+    }, [email, otp, navigate]);
 
     const [showPwd, setShowPwd] = useState(false);
     const [showConfirmPwd, setShowConfirmPwd] = useState(false);
@@ -42,11 +43,25 @@ export default function ForgotResetPage() {
     }, [newPwd]);
 
     const onSubmit = async ({ newPassword }) => {
-        await toast
-            .promise(dispatch(resetPasswordAPI({ email, otp, newPassword })), { pending: "Resetting password..." })
-            .then((res) => {
-                if (!res.error) navigate("/login");
-            });
+        try {
+            await toast.promise(
+                // ✅ GỌI TRỰC TIẾP, KHÔNG dispatch
+                resetPasswordAPI({ email, otp, newPassword }),
+                { pending: "Resetting password...", success: "Password reset!" }
+            );
+            navigate("/login");
+        } catch (err) {
+            const status = err?.response?.status;
+            const msg = err?.response?.data?.message || err?.message || "Reset failed";
+
+            // 400 từ backend: OTP sai/hết hạn
+            if (status === 400 && /invalid|expired otp/i.test(msg)) {
+                toast.error("OTP không hợp lệ hoặc đã hết hạn. Vui lòng nhập lại OTP.");
+                navigate(`/forgot/otp?email=${encodeURIComponent(email)}`);
+            } else {
+                toast.error(msg);
+            }
+        }
     };
 
     return (
@@ -83,21 +98,19 @@ export default function ForgotResetPage() {
                                             aria-invalid={!!errors.newPassword}
                                             {...register("newPassword", {
                                                 required: "Password is required",
-                                                minLength: { value: 6, message: "Min 6 characters" }
+                                                minLength: { value: 6, message: "Min 6 characters" } // khớp rule backend nếu cần >=8
                                             })}
                                         />
                                         <button
                                             type="button"
-                                            onClick={() => setShowPwd((v) => !v)}
+                                            onClick={() => setShowPwd(v => !v)}
                                             className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-black"
                                             aria-label={showPwd ? "Hide password" : "Show password"}
                                         >
                                             {showPwd ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                                         </button>
                                     </div>
-                                    {errors.newPassword && (
-                                        <p className="text-sm text-red-500">{errors.newPassword.message}</p>
-                                    )}
+                                    {errors.newPassword && <p className="text-sm text-red-500">{errors.newPassword.message}</p>}
 
                                     {/* Strength meter */}
                                     <div className="mt-1 h-1 w-full rounded bg-neutral-200">
@@ -116,21 +129,19 @@ export default function ForgotResetPage() {
                                             aria-invalid={!!errors.confirmPassword}
                                             {...register("confirmPassword", {
                                                 required: "Confirm your password",
-                                                validate: (v) => v === getValues("newPassword") || "Passwords do not match"
+                                                validate: v => v === getValues("newPassword") || "Passwords do not match"
                                             })}
                                         />
                                         <button
                                             type="button"
-                                            onClick={() => setShowConfirmPwd((v) => !v)}
+                                            onClick={() => setShowConfirmPwd(v => !v)}
                                             className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-black"
                                             aria-label={showConfirmPwd ? "Hide password" : "Show password"}
                                         >
                                             {showConfirmPwd ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                                         </button>
                                     </div>
-                                    {errors.confirmPassword && (
-                                        <p className="text-sm text-red-500">{errors.confirmPassword.message}</p>
-                                    )}
+                                    {errors.confirmPassword && <p className="text-sm text-red-500">{errors.confirmPassword.message}</p>}
                                 </div>
 
                                 <Button type="submit" className="w-full" disabled={isSubmitting}>
@@ -138,7 +149,13 @@ export default function ForgotResetPage() {
                                 </Button>
 
                                 <div className="text-center text-sm">
-                                    <button type="button" className="underline underline-offset-4" onClick={() => navigate(`/forgot/otp?email=${encodeURIComponent(email)}`)}>Back</button>
+                                    <button
+                                        type="button"
+                                        className="underline underline-offset-4"
+                                        onClick={() => navigate(`/forgot/otp?email=${encodeURIComponent(email)}`)}
+                                    >
+                                        Back
+                                    </button>
                                 </div>
                             </div>
                         </form>

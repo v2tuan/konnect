@@ -6,25 +6,36 @@ import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
 import { useForm } from "react-hook-form"
 import { toast } from "react-toastify"
-import { useDispatch } from "react-redux"
 import { forgotPasswordAPI } from "@/apis"
+import { useEffect, useState } from "react"
 
 export default function ForgotEmailPage() {
   const navigate = useNavigate()
-  const dispatch = useDispatch()
+  const [cooldown, setCooldown] = useState(0)
+  useEffect(() => {
+    if (!cooldown) return
+    const id = setInterval(() => setCooldown(c => (c > 0 ? c - 1 : 0)), 1000)
+    return () => clearInterval(id)
+  }, [cooldown])
 
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm({
     defaultValues: { email: "" }
   })
 
   const onSendOtp = async ({ email }) => {
-    await toast
-      .promise(dispatch(forgotPasswordAPI({ email })), { pending: "Sending OTP..." })
-      .then((res) => {
-        if (!res.error) {
-          navigate(`/auth/forgot/otp?email=${encodeURIComponent(email)}`, { state: { email } })
-        }
-      })
+    try {
+      await toast.promise(
+        forgotPasswordAPI({ email }), // ⬅️ GỌI TRỰC TIẾP, KHÔNG dispatch
+        { pending: "Sending OTP...", success: "OTP sent!" }
+      )
+      navigate(`/auth/forgot/otp?email=${encodeURIComponent(email)}`, { state: { email } })
+    } catch (err) {
+      const status = err?.response?.status
+      const backendMessage = err?.response?.data?.message || err?.message || "Failed to send OTP"
+
+      if (status === 429) setCooldown(20) // backend yêu cầu đợi 20s
+      toast.error(backendMessage)
+    }
   }
 
   return (
