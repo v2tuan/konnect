@@ -1,10 +1,21 @@
-import { Navigate, Route, Routes } from "react-router-dom"
+import { Navigate, Outlet, Route, Routes } from "react-router-dom"
 import Auth from "./pages/AuthPage/Auth"
-import LoginPage from "./pages/AuthPage/LoginPage"
 import HomePage from "./pages/HomePage/HomePage"
 import OtpPage from "./pages/OtpPage/OtpPage"
 import ProfilePage from "./pages/ProfilePage/ProfilePage"
 import ProtectedRoute from "./pages/protectedRoute"
+// import { useSelector } from "react-redux"
+// import { selectCurrentUser } from "./redux/user/userSlice"
+
+// const ProtectedRoute = () => {
+//   const currentUser = useSelector(selectCurrentUser)
+
+//   if (currentUser === undefined) {
+//     return <div>Loading...</div>
+//   }
+
+//   return currentUser ? <Outlet /> : <Navigate to="/login" replace />
+// }
 
 export default function App() {
   return (
@@ -25,12 +36,8 @@ export default function App() {
         {/* setting */}
         <Route path='settings/account' element={<ProfilePage/>} />
         <Route path='settings/security' element={<ProfilePage/>} />
-
         {/* main */}
-        <Route path="/home" element={<HomePage/>} />
-
-        <Route path='/settings/account' element={<LoginPage/>} />
-        <Route path='/settings/security' element={<LoginPage/>} />
+        <Route path="home" element={<HomePage/>} />
       </Route>
 
     </Routes>

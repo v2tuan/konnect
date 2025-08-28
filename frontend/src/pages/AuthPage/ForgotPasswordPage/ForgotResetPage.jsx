@@ -8,7 +8,7 @@ import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "react-toastify";
 import { useDispatch } from "react-redux";
-import { resetPasswordAPI } from "@/redux/user/userSlice";
+import { resetPasswordAPI } from "@/apis";
 
 export default function ForgotResetPage() {
     const navigate = useNavigate();
