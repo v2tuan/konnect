@@ -1,23 +1,19 @@
-
-
-import * as React from "react"
 import {
-  AudioWaveform,
   BookOpen,
   Bot,
-  Command,
   Frame,
   GalleryVerticalEnd,
   Map,
   PieChart,
   Settings2,
-  SquareTerminal,
+  SquareTerminal
 } from "lucide-react"
+import * as React from "react"
+import { useNavigate } from "react-router-dom"
 
 import { NavMain } from "@/components/common/Sidebar/nav-main"
 import { NavProjects } from "@/components/common/Sidebar/nav-projects"
 import { NavUser } from "@/components/common/Sidebar/nav-user"
-import { TeamSwitcher } from "@/components/common/Sidebar/team-switcher"
 import {
   Sidebar,
   SidebarContent,
@@ -25,22 +21,8 @@ import {
   SidebarHeader,
   SidebarRail,
 } from "@/components/ui/sidebar"
-import { useNavigate } from "react-router-dom"
 
-// This is sample data.
 const data = {
-  user: {
-    name: "shadcn",
-    email: "m@example.com",
-    avatar: "/avatars/shadcn.jpg",
-  },
-  teams: [
-    {
-      name: "Konnect",
-      logo: GalleryVerticalEnd,
-      plan: "Chap App V1",
-    }
-  ],
   navMain: [
     {
       title: "Playground",
@@ -48,18 +30,9 @@ const data = {
       icon: SquareTerminal,
       isActive: true,
       items: [
-        {
-          title: "History",
-          url: "#",
-        },
-        {
-          title: "Starred",
-          url: "#",
-        },
-        {
-          title: "Settings",
-          url: "#",
-        },
+        { title: "History", url: "#" },
+        { title: "Starred", url: "#" },
+        { title: "Settings", url: "#" },
       ],
     },
     {
@@ -67,18 +40,9 @@ const data = {
       url: "#",
       icon: Bot,
       items: [
-        {
-          title: "Genesis",
-          url: "#",
-        },
-        {
-          title: "Explorer",
-          url: "#",
-        },
-        {
-          title: "Quantum",
-          url: "#",
-        },
+        { title: "Genesis", url: "#" },
+        { title: "Explorer", url: "#" },
+        { title: "Quantum", url: "#" },
       ],
     },
     {
@@ -86,22 +50,10 @@ const data = {
       url: "#",
       icon: BookOpen,
       items: [
-        {
-          title: "Introduction",
-          url: "#",
-        },
-        {
-          title: "Get Started",
-          url: "#",
-        },
-        {
-          title: "Tutorials",
-          url: "#",
-        },
-        {
-          title: "Changelog",
-          url: "#",
-        },
+        { title: "Introduction", url: "#" },
+        { title: "Get Started", url: "#" },
+        { title: "Tutorials", url: "#" },
+        { title: "Changelog", url: "#" },
       ],
     },
     {
@@ -109,69 +61,57 @@ const data = {
       url: "#",
       icon: Settings2,
       items: [
-        {
-          title: "General",
-          url: "#",
-        },
-        {
-          title: "Team",
-          url: "#",
-        },
-        {
-          title: "Billing",
-          url: "#",
-        },
-        {
-          title: "Limits",
-          url: "#",
-        },
+        { title: "General", url: "#" },
+        { title: "Team", url: "#" },
+        { title: "Billing", url: "#" },
+        { title: "Limits", url: "#" },
       ],
     },
   ],
   projects: [
-    {
-      name: "Design Engineering",
-      url: "#",
-      icon: Frame,
-    },
-    {
-      name: "Sales & Marketing",
-      url: "#",
-      icon: PieChart,
-    },
-    {
-      name: "Travel",
-      url: "#",
-      icon: Map,
-    },
+    { name: "Design Engineering", url: "#", icon: Frame },
+    { name: "Sales & Marketing", url: "#", icon: PieChart },
+    { name: "Travel", url: "#", icon: Map },
   ],
 }
 
-export function AppSidebar({
-  ...props
-}) {
+function BrandButton({ onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center gap-3 rounded-md p-2 text-left hover:bg-muted/40 focus:outline-none focus:ring-2 focus:ring-ring"
+    >
+      <GalleryVerticalEnd className="h-5 w-5" />
+      <div className="flex flex-col">
+        <span className="font-semibold leading-none">Konnect</span>
+        <span className="text-xs text-muted-foreground">Chat App V1</span>
+      </div>
+    </button>
+  )
+}
 
+
+export function AppSidebar({ ...props }) {
   const navigate = useNavigate()
-  const goLogin = React.useCallback(() => navigate("/login"), [navigate])
+  const goHome = React.useCallback(() => navigate("/"), [navigate])
 
   return (
     <Sidebar collapsible="icon" {...props}>
-      <SidebarHeader
-        onClick={goLogin}
-        className="cursor-pointer"
-        // Nếu TeamSwitcher chặn bubble, dùng capture để chắc ăn:
-        onClickCapture={goLogin}
-      >
-        <TeamSwitcher teams={data.teams} />
+      <SidebarHeader>
+        <BrandButton onClick={goHome} />
+        {/* Hoặc: <BrandLink /> */}
       </SidebarHeader>
 
       <SidebarContent>
         <NavMain items={data.navMain} />
         <NavProjects projects={data.projects} />
       </SidebarContent>
+
       <SidebarFooter>
         <NavUser />
       </SidebarFooter>
+
       <SidebarRail />
     </Sidebar>
   )
