@@ -25,6 +25,7 @@ import {
   SidebarHeader,
   SidebarRail,
 } from "@/components/ui/sidebar"
+import { useNavigate } from "react-router-dom"
 
 // This is sample data.
 const data = {
@@ -35,20 +36,10 @@ const data = {
   },
   teams: [
     {
-      name: "Acme Inc",
+      name: "Konnect",
       logo: GalleryVerticalEnd,
-      plan: "Enterprise",
-    },
-    {
-      name: "Acme Corp.",
-      logo: AudioWaveform,
-      plan: "Startup",
-    },
-    {
-      name: "Evil Corp.",
-      logo: Command,
-      plan: "Free",
-    },
+      plan: "Chap App V1",
+    }
   ],
   navMain: [
     {
@@ -159,19 +150,29 @@ const data = {
 export function AppSidebar({
   ...props
 }) {
+
+  const navigate = useNavigate()
+  const goLogin = React.useCallback(() => navigate("/login"), [navigate])
+
   return (
     <Sidebar collapsible="icon" {...props}>
-      <SidebarHeader>
+      <SidebarHeader
+        onClick={goLogin}
+        className="cursor-pointer"
+        // Nếu TeamSwitcher chặn bubble, dùng capture để chắc ăn:
+        onClickCapture={goLogin}
+      >
         <TeamSwitcher teams={data.teams} />
       </SidebarHeader>
+
       <SidebarContent>
         <NavMain items={data.navMain} />
         <NavProjects projects={data.projects} />
       </SidebarContent>
       <SidebarFooter>
-        <NavUser user={data.user} />
+        <NavUser />
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>
-  );
+  )
 }

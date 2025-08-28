@@ -7,7 +7,6 @@ import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import ModeToggle from "./ThemeToggle"
-import UserMenu from "./UserMenu"
 
 export default function NavBar() {
   return (
@@ -23,12 +22,6 @@ export default function NavBar() {
                 </Button>
               </SheetTrigger>
               <SheetContent side="left" className="w-80 p-0">
-                <SheetHeader className="px-4 py-3 text-left">
-                  <SheetTitle className="flex items-center gap-2">
-                    <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-black text-white dark:bg-white dark:text-black"><MessageSquareMore className="h-4 w-4" /></span>
-                    <span className="font-semibold tracking-tight">Konnect</span>
-                  </SheetTitle>
-                </SheetHeader>
                 <Separator />
                 <nav className="p-3">
                   <MobileNavItem icon={<MessageSquareMore className="h-4 w-4" />} label="Chats" href="/" />
@@ -42,16 +35,6 @@ export default function NavBar() {
                 </nav>
               </SheetContent>
             </Sheet>
-
-            <Link to="/" className="group hidden items-center gap-2 lg:flex">
-              <span className="inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-black text-white shadow-sm ring-1 ring-black/10 dark:bg-white dark:text-black dark:ring-white/20 group-hover:scale-95 transition"><MessageSquareMore className="h-4 w-4" /></span>
-              <span className="text-lg font-semibold tracking-tight text-black dark:text-white">Konnect</span>
-            </Link>
-
-            <Link to="/" className="lg:hidden flex items-center gap-2">
-              <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-black text-white dark:bg-white dark:text-black"><MessageSquareMore className="h-4 w-4" /></span>
-              <span className="font-semibold tracking-tight">Konnect</span>
-            </Link>
           </div>
 
           {/* Center: Search (desktop) */}
@@ -91,8 +74,6 @@ export default function NavBar() {
                 </div>
               </DropdownMenuContent>
             </DropdownMenu>
-
-            <UserMenu/>
           </div>
         </div>
       </div>

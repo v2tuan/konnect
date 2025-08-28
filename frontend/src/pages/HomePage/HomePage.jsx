@@ -1,6 +1,7 @@
 import NavBar from '@/components/common/NavBar'
 import { AppSidebar } from '@/components/common/Sidebar/app-sidebar'
 import { SidebarProvider } from '@/components/ui/sidebar'
+import HeroKonnect from './content'
 
 function HomePage() {
   return (
@@ -8,7 +9,10 @@ function HomePage() {
       <SidebarProvider>
 
         <AppSidebar/>
-        <NavBar/>
+        <div className="w-full">
+          <NavBar/>
+          <HeroKonnect/>
+        </div>
       </SidebarProvider>
     </>
   )
