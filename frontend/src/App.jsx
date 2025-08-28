@@ -4,7 +4,7 @@ import LoginPage from "./pages/AuthPage/LoginPage"
 import HomePage from "./pages/HomePage/HomePage"
 import OtpPage from "./pages/OtpPage/OtpPage"
 import ProfilePage from "./pages/ProfilePage/ProfilePage"
-import ProtectedRoute from "./utils/protectedRoute"
+import ProtectedRoute from "./pages/protectedRoute"
 
 export default function App() {
   return (
