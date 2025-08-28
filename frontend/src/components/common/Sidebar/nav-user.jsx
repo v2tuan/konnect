@@ -29,12 +29,14 @@ import {
 import { logoutUserAPI, selectCurrentUser } from "@/redux/user/userSlice"
 import { useDispatch, useSelector } from "react-redux"
 import { useNavigate } from "react-router-dom"
+import React from "react"
 
 export function NavUser() {
   const { isMobile } = useSidebar()
   const user = useSelector(selectCurrentUser)
   const dispatch = useDispatch()
   const navigate = useNavigate()
+  const goProfile = React.useCallback(() => navigate("/settings/account"), [navigate])
 
   const handleLogout = async () => {
     await dispatch(logoutUserAPI()).unwrap()
@@ -84,7 +86,11 @@ export function NavUser() {
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem onClick={ navigate('/settings/account') }>
+              <DropdownMenuItem
+                onClick={goProfile}
+                className="cursor-pointer"
+                // Nếu TeamSwitcher chặn bubble, dùng capture để chắc ăn:
+                onClickCapture={goProfile}>
                 <BadgeCheck />
                 Account
               </DropdownMenuItem>
