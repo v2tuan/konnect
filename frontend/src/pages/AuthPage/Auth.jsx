@@ -16,8 +16,8 @@ function Auth() {
   const isForgotOtp = location.pathname === "/auth/forgot/otp"
   const isForgotReset = location.pathname === "/auth/forgot/reset"
 
-  // const currentUser = useSelector(selectCurrentUser)
-  // if (currentUser) return <Navigate to="/" replace />
+  const currentUser = useSelector(selectCurrentUser)
+  if (currentUser) return <Navigate to="/" replace />
 
   return (
     <>
