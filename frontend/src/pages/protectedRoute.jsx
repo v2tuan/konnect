@@ -1,10 +1,10 @@
-import { Navigate, Outlet } from "react-router-dom"
+import { Navigate, Outlet, useLocation } from "react-router-dom"
 import { useState, useEffect } from "react"
-
 import { checkAuth } from "@/apis"
 
 export default function ProtectedRoute() {
   const [isAuthenticated, setIsAuthenticated] = useState(null) // null: loading, true: authenticated, false: not authenticated
+  const location = useLocation() // Lấy vị trí hiện tại
 
   useEffect(() => {
     const verifyAuth = async () => {
@@ -19,5 +19,5 @@ export default function ProtectedRoute() {
     return <div>Loading...</div> // Hoặc một spinner/loading indicator
   }
 
-  return isAuthenticated ? <Outlet /> : <Navigate to="/login" replace />
+  return isAuthenticated ? <Outlet /> : <Navigate to="/login" state={{from: location}} replace />
 }

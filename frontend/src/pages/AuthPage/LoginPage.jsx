@@ -1,5 +1,5 @@
 import { GalleryVerticalEnd, Eye, EyeOff } from "lucide-react"
-import { useNavigate, Link } from "react-router-dom"
+import { useNavigate, Link, useLocation } from "react-router-dom"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,6 +14,9 @@ export default function LoginPage() {
   const navigate = useNavigate()
   const dispatch = useDispatch()
   const [showPassword, setShowPassword] = useState(false)
+  const location = useLocation()
+
+  const from = location.state?.from?.pathname || "/"
 
   const {
     register,
@@ -29,7 +32,7 @@ export default function LoginPage() {
       dispatch(loginUserAPI({ email, password })),
       { pending: "Logging in..." }
     ).then((res) => {
-      if (!res.error) navigate("/")
+      if (!res.error) navigate(from)
     })
   }
 
