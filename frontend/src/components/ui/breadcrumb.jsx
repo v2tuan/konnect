@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils"
 function Breadcrumb({
   ...props
 }) {
-  return <nav aria-label="breadcrumb" data-slot="breadcrumb" {...props} />;
+  return <nav aria-label="breadcrumb" data-slot="breadcrumb" {...props} />
 }
 
 function BreadcrumbList({
@@ -22,7 +22,7 @@ function BreadcrumbList({
         className
       )}
       {...props} />
-  );
+  )
 }
 
 function BreadcrumbItem({
@@ -34,7 +34,7 @@ function BreadcrumbItem({
       data-slot="breadcrumb-item"
       className={cn("inline-flex items-center gap-1.5", className)}
       {...props} />
-  );
+  )
 }
 
 function BreadcrumbLink({
@@ -49,7 +49,7 @@ function BreadcrumbLink({
       data-slot="breadcrumb-link"
       className={cn("hover:text-foreground transition-colors", className)}
       {...props} />
-  );
+  )
 }
 
 function BreadcrumbPage({
@@ -64,7 +64,7 @@ function BreadcrumbPage({
       aria-current="page"
       className={cn("text-foreground font-normal", className)}
       {...props} />
-  );
+  )
 }
 
 function BreadcrumbSeparator({
@@ -81,7 +81,7 @@ function BreadcrumbSeparator({
       {...props}>
       {children ?? <ChevronRight />}
     </li>
-  );
+  )
 }
 
 function BreadcrumbEllipsis({
@@ -98,7 +98,7 @@ function BreadcrumbEllipsis({
       <MoreHorizontal className="size-4" />
       <span className="sr-only">More</span>
     </span>
-  );
+  )
 }
 
 export {
@@ -108,5 +108,5 @@ export {
   BreadcrumbLink,
   BreadcrumbPage,
   BreadcrumbSeparator,
-  BreadcrumbEllipsis,
+  BreadcrumbEllipsis
 }

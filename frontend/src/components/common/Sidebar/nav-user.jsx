@@ -9,7 +9,7 @@ import {
 import {
   Avatar,
   AvatarFallback,
-  AvatarImage,
+  AvatarImage
 } from "@/components/ui/avatar"
 import {
   DropdownMenu,
@@ -18,13 +18,13 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
-  DropdownMenuTrigger,
+  DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  useSidebar,
+  useSidebar
 } from "@/components/ui/sidebar"
 import { logoutUserAPI, selectCurrentUser } from "@/redux/user/userSlice"
 import { useDispatch, useSelector } from "react-redux"
@@ -110,5 +110,5 @@ export function NavUser() {
         </DropdownMenu>
       </SidebarMenuItem>
     </SidebarMenu>
-  );
+  )
 }

@@ -19,7 +19,7 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarHeader,
-  SidebarRail,
+  SidebarRail
 } from "@/components/ui/sidebar"
 
 const data = {
@@ -32,8 +32,8 @@ const data = {
       items: [
         { title: "History", url: "#" },
         { title: "Starred", url: "#" },
-        { title: "Settings", url: "#" },
-      ],
+        { title: "Settings", url: "#" }
+      ]
     },
     {
       title: "Models",
@@ -42,8 +42,8 @@ const data = {
       items: [
         { title: "Genesis", url: "#" },
         { title: "Explorer", url: "#" },
-        { title: "Quantum", url: "#" },
-      ],
+        { title: "Quantum", url: "#" }
+      ]
     },
     {
       title: "Documentation",
@@ -53,8 +53,8 @@ const data = {
         { title: "Introduction", url: "#" },
         { title: "Get Started", url: "#" },
         { title: "Tutorials", url: "#" },
-        { title: "Changelog", url: "#" },
-      ],
+        { title: "Changelog", url: "#" }
+      ]
     },
     {
       title: "Settings",
@@ -64,15 +64,15 @@ const data = {
         { title: "General", url: "#" },
         { title: "Team", url: "#" },
         { title: "Billing", url: "#" },
-        { title: "Limits", url: "#" },
-      ],
-    },
+        { title: "Limits", url: "#" }
+      ]
+    }
   ],
   projects: [
     { name: "Design Engineering", url: "#", icon: Frame },
     { name: "Sales & Marketing", url: "#", icon: PieChart },
-    { name: "Travel", url: "#", icon: Map },
-  ],
+    { name: "Travel", url: "#", icon: Map }
+  ]
 }
 
 function BrandButton({ onClick }) {

@@ -7,19 +7,19 @@ import { cn } from "@/lib/utils"
 function DropdownMenu({
   ...props
 }) {
-  return <DropdownMenuPrimitive.Root data-slot="dropdown-menu" {...props} />;
+  return <DropdownMenuPrimitive.Root data-slot="dropdown-menu" {...props} />
 }
 
 function DropdownMenuPortal({
   ...props
 }) {
-  return (<DropdownMenuPrimitive.Portal data-slot="dropdown-menu-portal" {...props} />);
+  return (<DropdownMenuPrimitive.Portal data-slot="dropdown-menu-portal" {...props} />)
 }
 
 function DropdownMenuTrigger({
   ...props
 }) {
-  return (<DropdownMenuPrimitive.Trigger data-slot="dropdown-menu-trigger" {...props} />);
+  return (<DropdownMenuPrimitive.Trigger data-slot="dropdown-menu-trigger" {...props} />)
 }
 
 function DropdownMenuContent({
@@ -38,13 +38,13 @@ function DropdownMenuContent({
         )}
         {...props} />
     </DropdownMenuPrimitive.Portal>
-  );
+  )
 }
 
 function DropdownMenuGroup({
   ...props
 }) {
-  return (<DropdownMenuPrimitive.Group data-slot="dropdown-menu-group" {...props} />);
+  return (<DropdownMenuPrimitive.Group data-slot="dropdown-menu-group" {...props} />)
 }
 
 function DropdownMenuItem({
@@ -63,7 +63,7 @@ function DropdownMenuItem({
         className
       )}
       {...props} />
-  );
+  )
 }
 
 function DropdownMenuCheckboxItem({
@@ -89,13 +89,13 @@ function DropdownMenuCheckboxItem({
       </span>
       {children}
     </DropdownMenuPrimitive.CheckboxItem>
-  );
+  )
 }
 
 function DropdownMenuRadioGroup({
   ...props
 }) {
-  return (<DropdownMenuPrimitive.RadioGroup data-slot="dropdown-menu-radio-group" {...props} />);
+  return (<DropdownMenuPrimitive.RadioGroup data-slot="dropdown-menu-radio-group" {...props} />)
 }
 
 function DropdownMenuRadioItem({
@@ -119,7 +119,7 @@ function DropdownMenuRadioItem({
       </span>
       {children}
     </DropdownMenuPrimitive.RadioItem>
-  );
+  )
 }
 
 function DropdownMenuLabel({
@@ -133,7 +133,7 @@ function DropdownMenuLabel({
       data-inset={inset}
       className={cn("px-2 py-1.5 text-sm font-medium data-[inset]:pl-8", className)}
       {...props} />
-  );
+  )
 }
 
 function DropdownMenuSeparator({
@@ -145,7 +145,7 @@ function DropdownMenuSeparator({
       data-slot="dropdown-menu-separator"
       className={cn("bg-border -mx-1 my-1 h-px", className)}
       {...props} />
-  );
+  )
 }
 
 function DropdownMenuShortcut({
@@ -157,13 +157,13 @@ function DropdownMenuShortcut({
       data-slot="dropdown-menu-shortcut"
       className={cn("text-muted-foreground ml-auto text-xs tracking-widest", className)}
       {...props} />
-  );
+  )
 }
 
 function DropdownMenuSub({
   ...props
 }) {
-  return <DropdownMenuPrimitive.Sub data-slot="dropdown-menu-sub" {...props} />;
+  return <DropdownMenuPrimitive.Sub data-slot="dropdown-menu-sub" {...props} />
 }
 
 function DropdownMenuSubTrigger({
@@ -184,7 +184,7 @@ function DropdownMenuSubTrigger({
       {children}
       <ChevronRightIcon className="ml-auto size-4" />
     </DropdownMenuPrimitive.SubTrigger>
-  );
+  )
 }
 
 function DropdownMenuSubContent({
@@ -199,7 +199,7 @@ function DropdownMenuSubContent({
         className
       )}
       {...props} />
-  );
+  )
 }
 
 export {
@@ -217,5 +217,5 @@ export {
   DropdownMenuShortcut,
   DropdownMenuSub,
   DropdownMenuSubTrigger,
-  DropdownMenuSubContent,
+  DropdownMenuSubContent
 }

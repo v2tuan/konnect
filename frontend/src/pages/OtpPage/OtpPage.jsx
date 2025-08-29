@@ -5,14 +5,14 @@ import {
   CardDescription,
   CardFooter,
   CardHeader,
-  CardTitle,
+  CardTitle
 } from "@/components/ui/card"
 import { GalleryVerticalEnd } from "lucide-react"
 import {
   InputOTP,
   InputOTPGroup,
   InputOTPSeparator,
-  InputOTPSlot,
+  InputOTPSlot
 } from "@/components/ui/input-otp"
 
 export default function OtpPage() {

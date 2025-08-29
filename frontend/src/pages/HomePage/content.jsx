@@ -1,13 +1,13 @@
 import { Avatar, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
-import { Star } from "lucide-react";
+import { Star } from "lucide-react"
 
 function HeroKonnect({
   heading = "Konnect — Chat App v1",
   description = "Nhắn tin thời gian thực, nhóm chat linh hoạt, gửi file nhanh, và đồng bộ đa thiết bị. Bắt đầu trò chuyện với tốc độ siêu mượt ngay hôm nay.",
   button = {
     text: "Bắt đầu với Konnect",
-    url: "/signup",
+    url: "/signup"
   },
   reviews = {
     count: 1200,
@@ -15,26 +15,26 @@ function HeroKonnect({
     avatars: [
       {
         src: "https://deifkwefumgah.cloudfront.net/shadcnblocks/block/avatar-1.webp",
-        alt: "Avatar 1",
+        alt: "Avatar 1"
       },
       {
         src: "https://deifkwefumgah.cloudfront.net/shadcnblocks/block/avatar-2.webp",
-        alt: "Avatar 2",
+        alt: "Avatar 2"
       },
       {
         src: "https://deifkwefumgah.cloudfront.net/shadcnblocks/block/avatar-3.webp",
-        alt: "Avatar 3",
+        alt: "Avatar 3"
       },
       {
         src: "https://deifkwefumgah.cloudfront.net/shadcnblocks/block/avatar-4.webp",
-        alt: "Avatar 4",
+        alt: "Avatar 4"
       },
       {
         src: "https://deifkwefumgah.cloudfront.net/shadcnblocks/block/avatar-5.webp",
-        alt: "Avatar 5",
-      },
-    ],
-  },
+        alt: "Avatar 5"
+      }
+    ]
+  }
 }) {
   return (
     <section className="min-h-[100svh] grid place-items-center px-4 py-16">
@@ -75,8 +75,8 @@ function HeroKonnect({
         </div>
       </div>
     </section>
-  );
+  )
 }
 
-export default HeroKonnect;
-export { HeroKonnect };
+export default HeroKonnect
+export { HeroKonnect }
