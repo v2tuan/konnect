@@ -15,7 +15,7 @@ function InputOTP({
       containerClassName={cn("flex items-center gap-2 has-disabled:opacity-50", containerClassName)}
       className={cn("disabled:cursor-not-allowed", className)}
       {...props} />
-  );
+  )
 }
 
 function InputOTPGroup({
@@ -27,7 +27,7 @@ function InputOTPGroup({
       data-slot="input-otp-group"
       className={cn("flex items-center", className)}
       {...props} />
-  );
+  )
 }
 
 function InputOTPSlot({
@@ -55,7 +55,7 @@ function InputOTPSlot({
         </div>
       )}
     </div>
-  );
+  )
 }
 
 function InputOTPSeparator({
@@ -65,7 +65,7 @@ function InputOTPSeparator({
     <div data-slot="input-otp-separator" role="separator" {...props}>
       <MinusIcon />
     </div>
-  );
+  )
 }
 
 export { InputOTP, InputOTPGroup, InputOTPSlot, InputOTPSeparator }

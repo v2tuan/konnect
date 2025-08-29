@@ -13,28 +13,28 @@ export default [
     plugins: {
       react,
       'react-hooks': reactHooks,
-      'react-refresh': reactRefresh,
+      'react-refresh': reactRefresh
     },
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',
       globals: {
         ...globals.browser,
-        ...globals.node,
+        ...globals.node
       },
       parserOptions: {
-        ecmaFeatures: { jsx: true },
-      },
+        ecmaFeatures: { jsx: true }
+      }
     },
-    settings: { 
-      react: { version: '18.2' } 
+    settings: {
+      react: { version: '18.2' }
     },
     rules: {
       ...js.configs.recommended.rules,
-      
+
       ...react.configs.recommended.rules,
       ...react.configs['jsx-runtime'].rules,
-      
+
       ...reactHooks.configs.recommended.rules,
 
       'react-refresh/only-export-components': 'warn',
@@ -60,6 +60,6 @@ export default [
       'comma-dangle': 'warn',
       'comma-spacing': 'warn',
       'arrow-spacing': 'warn'
-    },
-  },
+    }
+  }
 ]

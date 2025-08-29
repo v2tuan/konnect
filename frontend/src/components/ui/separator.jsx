@@ -19,7 +19,7 @@ function Separator({
         className
       )}
       {...props} />
-  );
+  )
 }
 
 export { Separator }

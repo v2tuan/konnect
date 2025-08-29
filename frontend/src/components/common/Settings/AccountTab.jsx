@@ -1,4 +1,4 @@
-/* eslint-disable no-console */
+
 import React, { useState } from "react"
 import { useForm, Controller, useWatch } from "react-hook-form"
 import { useDispatch, useSelector } from "react-redux"

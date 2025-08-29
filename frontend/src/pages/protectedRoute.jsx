@@ -19,5 +19,5 @@ export default function ProtectedRoute() {
     return <div>Loading...</div> // Hoặc một spinner/loading indicator
   }
 
-  return isAuthenticated ? <Outlet /> : <Navigate to="/login" state={{from: location}} replace />
+  return isAuthenticated ? <Outlet /> : <Navigate to="/login" state={{ from: location }} replace />
 }

@@ -12,7 +12,7 @@ function Tabs({
       data-slot="tabs"
       className={cn("flex flex-col gap-2", className)}
       {...props} />
-  );
+  )
 }
 
 function TabsList({
@@ -27,7 +27,7 @@ function TabsList({
         className
       )}
       {...props} />
-  );
+  )
 }
 
 function TabsTrigger({
@@ -42,7 +42,7 @@ function TabsTrigger({
         className
       )}
       {...props} />
-  );
+  )
 }
 
 function TabsContent({
@@ -54,7 +54,7 @@ function TabsContent({
       data-slot="tabs-content"
       className={cn("flex-1 outline-none", className)}
       {...props} />
-  );
+  )
 }
 
 export { Tabs, TabsList, TabsTrigger, TabsContent }
