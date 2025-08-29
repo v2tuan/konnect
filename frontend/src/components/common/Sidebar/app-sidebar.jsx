@@ -161,7 +161,7 @@ export function AppSidebar({ ...props }) {
       {/* This will make the sidebar appear as icons. */}
       <Sidebar
         collapsible="none"
-        className="w-[calc(var(--sidebar-width-icon)+1px)]! border-r"
+        className="w-[calc(var(--sidebar-width-icon)+100px)]! border-r"
       >
         <SidebarHeader>
           <SidebarMenu>
@@ -241,9 +241,9 @@ export function AppSidebar({ ...props }) {
                 <div
                   key={mail.email}
                   className={`
-        flex items-start gap-3 p-3 hover:bg-sidebar-accent cursor-pointer
-        ${idx !== mails.length - 1 ? "border-b border-border" : ""}
-      `}
+                  flex items-start gap-3 p-3 hover:bg-sidebar-accent cursor-pointer
+                  ${idx !== mails.length - 1 ? "border-b border-border" : ""}
+                `}
                 >
                   {/* Avatar */}
                   <img

@@ -7,11 +7,12 @@ import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import ModeToggle from "./ThemeToggle"
+import { SidebarTrigger } from "@/components/ui/sidebar"
 
 export default function NavBar() {
   return (
     <header className="sticky top-0 z-50 w-full border-b border-black/10 dark:border-white/10 bg-white/80 dark:bg-black/60 backdrop-blur supports-[backdrop-filter]:bg-white/60 dark:supports-[backdrop-filter]:bg-black/40">
-      <div className="mx-auto max-w-7xl px-3 sm:px-4 lg:px-6">
+      <div className="mx-auto max-w-full px-3 sm:px-4 lg:px-6">
         <div className="flex h-16 items-center justify-between gap-3">
           {/* Left: Mobile menu + Logo */}
           <div className="flex items-center gap-2">
@@ -37,6 +38,7 @@ export default function NavBar() {
             </Sheet>
           </div>
 
+          <SidebarTrigger className="-ml-1" />
           {/* Center: Search (desktop) */}
           <div className="hidden flex-1 items-center justify-center lg:flex">
             <div className="w-full max-w-xl">
