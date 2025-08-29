@@ -59,6 +59,7 @@ let logout = (req, res) => {
 const update = async (req, res, next ) => {
     try {
         const userId = req.userId
+        console.log('userId: ', userId)
         if (!userId) {
             return res.status(401).json({ message: 'Unauthorized' })
         }

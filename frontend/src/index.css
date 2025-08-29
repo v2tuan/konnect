@@ -119,3 +119,34 @@
 		@apply bg-background text-foreground;
 	}
 }
+
+@layer components {
+  /* style cho slot sidebar */
+  [data-slot="sidebar-content"] {
+    background-color: var(--color-sidebar);
+    color: var(--color-sidebar-foreground);
+    border-right: 1px solid var(--color-sidebar-border);
+    /* padding / scroll nếu cần */
+    padding: 0.75rem;
+    overflow-y: auto;
+  }
+
+  /* links / active item inside sidebar */
+  [data-slot="sidebar-content"] a,
+  [data-slot="sidebar-content"] .nav-item {
+    color: var(--color-sidebar-foreground);
+  }
+
+  [data-slot="sidebar-content"] a:hover,
+  [data-slot="sidebar-content"] .nav-item[data-active="true"] {
+    color: var(--color-sidebar-primary);
+    background: transparent;
+  }
+
+  /* small UI tweaks */
+  [data-slot="sidebar-content"] ::-webkit-scrollbar { width: 8px; }
+  [data-slot="sidebar-content"] ::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--color-sidebar-border) 30%, transparent);
+    border-radius: 8px;
+  }
+}

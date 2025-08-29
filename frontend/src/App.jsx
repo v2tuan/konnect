@@ -1,6 +1,6 @@
 import { Navigate, Outlet, Route, Routes } from "react-router-dom"
 import Auth from "./pages/AuthPage/Auth"
-import HomePage from "./pages/HomePageV2/HomePage"
+import HomePage from "./pages/HomePage/HomePage"
 import OtpPage from "./pages/OtpPage/OtpPage"
 import ProfilePage from "./pages/ProfilePage/ProfilePage"
 import { useSelector } from "react-redux"
