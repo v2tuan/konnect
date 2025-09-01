@@ -10,7 +10,7 @@ router.post('/login', authController.login);
 
 router.post('/register', authController.signup);
 
-router.put('/update', authMiddleware, multerUploadMiddleware.upload.single('avatar'), authValidation.update, authController.update)
+router.put('/update', authMiddleware, multerUploadMiddleware.upload.single('avatarUrl'), authValidation.update, authController.update)
 
 router.post('/logout', authMiddleware, authController.logout);
 

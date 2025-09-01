@@ -68,7 +68,7 @@ export default function AccountTab() {
       return
     }
     const reqData = new FormData()
-    reqData.append("avatar", file)
+    reqData.append("avatarUrl", file)
 
     toast
       .promise(dispatch(updateUserAPI(reqData)), { pending: "Updating..." })

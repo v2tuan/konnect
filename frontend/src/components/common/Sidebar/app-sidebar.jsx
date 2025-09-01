@@ -1,7 +1,7 @@
 "use client"
 
+import { ArchiveX, BookUser, Brain, Cloud, Command, Inbox, Trash2,  } from "lucide-react"
 import * as React from "react"
-import { ArchiveX, Command, File, Inbox, Send, Trash2 } from "lucide-react"
 
 import { NavUser } from "@/components/common/Sidebar/nav-user"
 import { Label } from "@/components/ui/label"
@@ -25,37 +25,37 @@ const data = {
   user: {
     name: "shadcn",
     email: "m@example.com",
-    avatar: "/avatars/shadcn.jpg"
+    avatarUrl: "/avatars/shadcn.jpg"
   },
   navMain: [
     {
-      title: "Inbox",
-      url: "#",
+      title: "Message",
+      url: "/chats",
       icon: Inbox,
       isActive: true
     },
     {
-      title: "Drafts",
+      title: "PhoneBook",
       url: "#",
-      icon: File,
+      icon: BookUser,
       isActive: false
     },
     {
-      title: "Sent",
+      title: "Cloud",
       url: "#",
-      icon: Send,
+      icon: Cloud,
       isActive: false
     },
     {
-      title: "Junk",
-      url: "#",
-      icon: ArchiveX,
-      isActive: false
-    },
-    {
-      title: "Trash",
+      title: "Block",
       url: "#",
       icon: Trash2,
+      isActive: false
+    },
+    {
+      title: "Agent Model",
+      url: "#",
+      icon: Brain,
       isActive: false
     }
   ],
@@ -167,13 +167,13 @@ export function AppSidebar({ ...props }) {
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton size="lg" asChild className="md:h-8 md:p-0">
-                <a href="#">
+                <a href="/">
                   <div className="bg-sidebar-primary text-sidebar-primary-foreground flex aspect-square size-8 items-center justify-center rounded-lg">
                     <Command className="size-4" />
                   </div>
                   <div className="grid flex-1 text-left text-sm leading-tight">
-                    <span className="truncate font-medium">Acme Inc</span>
-                    <span className="truncate text-xs">Enterprise</span>
+                    <span className="truncate font-medium">Konnect</span>
+                    <span className="truncate text-xs">Chat App Version 1.0</span>
                   </div>
                 </a>
               </SidebarMenuButton>
@@ -247,7 +247,7 @@ export function AppSidebar({ ...props }) {
                 >
                   {/* Avatar */}
                   <img
-                    src={mail.avatar || "https://github.com/shadcn.png"}
+                    src={mail.avatarUrl || "https://github.com/shadcn.png"}
                     alt={mail.name}
                     className="w-10 h-10 rounded-full object-cover"
                   />
