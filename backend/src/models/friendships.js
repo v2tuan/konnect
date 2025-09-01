@@ -1,5 +1,4 @@
 import mongoose from "mongoose";
-import { use } from "react";
 
 let frinendshipSchema = new mongoose.Schema({
     userId: {
