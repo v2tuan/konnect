@@ -56,7 +56,7 @@ export function ChatArea({ chat, onSendMessage }) {
   };
 
   return (
-    <div className="flex flex-col h-full bg-gradient-chat">
+    <div className="flex flex-col h-full w-full bg-gradient-chat"> {/* thêm w-full */}
       {/* Header */}
       <div className="flex items-center justify-between p-4 bg-card/80 backdrop-blur-sm border-b border-border shadow-soft">
         <div className="flex items-center gap-3">
