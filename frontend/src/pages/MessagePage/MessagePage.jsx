@@ -1,17 +1,24 @@
 import { useOutletContext } from "react-router-dom";
+import { ChatArea } from "@/components/common/Sidebar/Chat/ChatArea"; // đúng path của bạn
 
-// ví dụ: MessageBody / MessageList ... của bạn
 export default function MessagePage() {
   const { chatState } = useOutletContext();
+  const chat = chatState?.selectedChat;
 
-  // chatState: {chats, contacts, selectedChat, currentView, onChatSelect, onViewChange, onContactSelect, onSendMessage}
-  // Render UI hiện có của bạn ở đây, ví dụ:
+  if (!chat) {
+    return (
+      <div className="h-full w-full flex items-center justify-center text-muted-foreground">
+        Chọn một cuộc trò chuyện để bắt đầu
+      </div>
+    );
+  }
+
   return (
     <div className="h-full w-full">
-      {/* ... UI chat của bạn ... */}
-      <div className="p-4 text-muted-foreground">
-        Room: {chatState?.selectedChat?.contact?.name}
-      </div>
+      <ChatArea
+        chat={chat}
+        onSendMessage={chatState.onSendMessage}
+      />
     </div>
   );
 }
