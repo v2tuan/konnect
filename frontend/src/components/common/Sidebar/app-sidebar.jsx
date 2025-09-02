@@ -1,16 +1,16 @@
-"use client"
+"use client";
 
-import * as React from "react"
+import * as React from "react";
 import {
   BookUser,
   Brain,
   Cloud,
   Inbox,
   Trash2,
-} from "lucide-react"
+} from "lucide-react";
 
-import { NavUser } from "@/components/common/Sidebar/nav-user"
-import { ChatSidebar } from "@/components/common/Sidebar/Chat/ChatSidebar"
+import { NavUser } from "@/components/common/Sidebar/nav-user";
+import { ChatSidebar } from "@/components/common/Sidebar/Chat/ChatSidebar";
 import {
   Sidebar,
   SidebarContent,
@@ -22,9 +22,10 @@ import {
   SidebarGroup,
   SidebarGroupContent,
   useSidebar,
-} from "@/components/ui/sidebar"
+} from "@/components/ui/sidebar";
+import ContactSidebar from "./Contact/ContactSidebar";
+import { NavLink, useLocation } from "react-router-dom";
 
-// This is sample data.
 const data = {
   user: {
     name: "Đặng Đăng Duy",
@@ -33,35 +34,33 @@ const data = {
   },
   navMain: [
     { title: "Message", url: "/chats", icon: Inbox },
-    { title: "PhoneBook", url: "#", icon: BookUser },
-    { title: "Cloud", url: "#", icon: Cloud },
-    { title: "Block", url: "#", icon: Trash2 },
-    { title: "Agent Model", url: "#", icon: Brain },
+    { title: "Contact", url: "/contacts", icon: BookUser },
+    { title: "Cloud", url: "/cloud", icon: Cloud },
+    { title: "Block", url: "/block", icon: Trash2 },
+    { title: "Agent Chat", url: "/agent", icon: Brain },
   ],
-}
+};
 
-export function AppSidebar({ onMenuChange, activeMenu, chatState, ...props }) {
-  const [activeItem, setActiveItem] = React.useState(data.navMain[0])
-  const { open, setOpen } = useSidebar()
+export function AppSidebar({
+  chatState,
+  contactTab,
+  onContactTabChange,
+  ...props
+}) {
+  const { open, setOpen } = useSidebar();
+  const location = useLocation();
+
+  const isMessage = location.pathname.startsWith("/chats");
+  const isContact = location.pathname.startsWith("/contacts");
 
   return (
-    <Sidebar
-      collapsible="icon"
-      className="overflow-hidden [&>[data-sidebar=sidebar]]:flex-row"
-      {...props}
-    >
-      {/* Sidebar chính */}
-      <Sidebar
-        collapsible="none"
-        className="w-[180px] border-r"
-      >
+    <Sidebar collapsible="icon" className="overflow-hidden [&>[data-sidebar=sidebar]]:flex-row" {...props}>
+      {/* Left rail */}
+      <Sidebar collapsible="none" className="w-[180px] border-r">
         <SidebarHeader>
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton
-                size="lg"
-                className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
-              >
+              <SidebarMenuButton size="lg">
                 <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
                   <Inbox className="size-4" />
                 </div>
@@ -73,45 +72,43 @@ export function AppSidebar({ onMenuChange, activeMenu, chatState, ...props }) {
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarHeader>
+
         <SidebarContent>
           <SidebarGroup>
             <SidebarGroupContent className="px-1.5 md:px-0">
               <SidebarMenu>
-                {data.navMain.map((item) => (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton
-                      tooltip={{
-                        children: item.title,
-                        hidden: false,
-                      }}
-                      onClick={() => {
-                        setActiveItem(item)
-                        setOpen(true)
-                        if (onMenuChange) onMenuChange(item)
-                      }}
-                      isActive={activeItem?.title === item.title}
-                      className="px-2.5 md:px-2"
-                    >
-                      <item.icon />
-                      <span>{item.title}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
+                {data.navMain.map((item) => {
+                  const active = location.pathname.startsWith(item.url);
+                  return (
+                    <SidebarMenuItem key={item.title}>
+                      {/* Nếu SidebarMenuButton có prop asChild thì dùng: asChild + NavLink */}
+                      <SidebarMenuButton
+                        asChild
+                        isActive={active}
+                        className="px-2.5 md:px-2"
+                        onClick={() => setOpen(true)} // mở pane giữa
+                      >
+                        <NavLink to={item.url}>
+                          <item.icon />
+                          <span>{item.title}</span>
+                        </NavLink>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
         </SidebarContent>
+
         <SidebarFooter>
           <NavUser user={data.user} />
         </SidebarFooter>
       </Sidebar>
 
-      {/* ChatSidebar */}
-      {open && activeMenu === "Message" && chatState && (
-        <Sidebar 
-          collapsible="none" 
-          className="w-[450px] border-r bg-background"
-        >
+      {/* Middle pane - Message list */}
+      {open && isMessage && chatState && (
+        <Sidebar collapsible="none" className="w-[450px] border-r bg-background">
           <ChatSidebar
             chats={chatState.chats}
             contacts={chatState.contacts}
@@ -122,6 +119,16 @@ export function AppSidebar({ onMenuChange, activeMenu, chatState, ...props }) {
           />
         </Sidebar>
       )}
+
+      {/* Middle pane - Contact tabs */}
+      {open && isContact && (
+        <Sidebar collapsible="none" className="w-[450px] border-r bg-background">
+          <ContactSidebar
+            value={contactTab || "home"}
+            onValueChange={onContactTabChange || (() => {})}
+          />
+        </Sidebar>
+      )}
     </Sidebar>
-  )
+  );
 }
