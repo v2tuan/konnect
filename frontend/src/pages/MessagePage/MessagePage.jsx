@@ -1,11 +1,9 @@
 "use client"
 
 import React from "react"
-import { ChatSidebar } from "@/components/common/Chat/ChatSidebar"
-import { ChatArea } from "@/components/common/Chat/ChatArea"
-import { ContactsList } from "@/components/common/Chat/ContactsList"
-import { UserProfile } from "@/components/common/Chat/UserProfile"
-import { ChatSidePanel } from "@/components/common/Chat/ChatSidePanel"
+import { ChatArea } from "@/components/common/Sidebar/Chat/ChatArea"
+import { ContactsList } from "@/components/common/Sidebar/Chat/ContactsList"
+import { UserProfile } from "@/components/common/Sidebar/Chat/UserProfile"
 
 // Move mock data here
 const mockContacts = [
@@ -74,33 +72,15 @@ export default function MessagePage() {
   }
 
   return (
-    <div className="flex h-full w-full">
-      {/* ChatSidebar panel */}
-      <ChatSidePanel activeMenu="Message" width="w-80">
-        <ChatSidebar
-          chats={chats}
-          contacts={mockContacts}
-          selectedChat={selectedChat}
-          onChatSelect={setSelectedChat}
-          currentView={currentView}
-          onViewChange={setCurrentView}
-        />
-      </ChatSidePanel>
-
-      {/* Content */}
-      <div className="flex-1 flex flex-col min-w-0">
-        <div className="flex-1 min-h-0">
-          <div className="h-full w-full">
-            {currentView === "chat" && selectedChat && (
-              <ChatArea chat={selectedChat} onSendMessage={handleSendMessage} />
-            )}
-            {currentView === "contacts" && (
-              <ContactsList contacts={mockContacts} onContactSelect={openChatWithContact} />
-            )}
-            {currentView === "profile" && <UserProfile />}
-          </div>
-        </div>
-      </div>
+    // Không cần ChatSidePanel nữa vì đã được handle trong AppSidebar
+    <div className="h-full w-full">
+      {currentView === "chat" && selectedChat && (
+        <ChatArea chat={selectedChat} onSendMessage={handleSendMessage} />
+      )}
+      {currentView === "contacts" && (
+        <ContactsList contacts={mockContacts} onContactSelect={openChatWithContact} />
+      )}
+      {currentView === "profile" && <UserProfile />}
     </div>
   )
 }
