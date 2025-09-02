@@ -6,13 +6,13 @@ import {
   ChevronsUpDown,
   CreditCard,
   LogOut,
-  Sparkles
+  Sparkles,
 } from "lucide-react"
 
 import {
   Avatar,
   AvatarFallback,
-  AvatarImage
+  AvatarImage,
 } from "@/components/ui/avatar"
 import {
   DropdownMenu,
@@ -21,30 +21,20 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
-  DropdownMenuTrigger
+  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  useSidebar
+  useSidebar,
 } from "@/components/ui/sidebar"
-import { logoutUserAPI, selectCurrentUser } from "@/redux/user/userSlice"
-import { useDispatch, useSelector } from "react-redux"
-import { useNavigate } from "react-router-dom"
-import React from "react"
+import { useSelector } from "react-redux"
+import { selectCurrentUser } from "@/redux/user/userSlice"
 
 export function NavUser() {
   const { isMobile } = useSidebar()
   const user = useSelector(selectCurrentUser)
-  const dispatch = useDispatch()
-  const navigate = useNavigate()
-  const goProfile = React.useCallback(() => navigate("/settings/account"), [navigate])
-
-  const handleLogout = async () => {
-    await dispatch(logoutUserAPI()).unwrap()
-  }
-
   return (
     <SidebarMenu>
       <SidebarMenuItem>
@@ -52,21 +42,21 @@ export function NavUser() {
           <DropdownMenuTrigger asChild>
             <SidebarMenuButton
               size="lg"
-              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground md:h-8 md:p-0"
+              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
               <Avatar className="h-8 w-8 rounded-lg">
                 <AvatarImage src={user.avatarUrl} alt={user.fullName} />
                 <AvatarFallback className="rounded-lg">CN</AvatarFallback>
               </Avatar>
               <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-medium">{user.fullName}</span>
+                <span className="truncate font-semibold">{user.fullName}</span>
                 <span className="truncate text-xs">{user.email}</span>
               </div>
               <ChevronsUpDown className="ml-auto size-4" />
             </SidebarMenuButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent
-            className="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg"
+            className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
             side={isMobile ? "bottom" : "right"}
             align="end"
             sideOffset={4}
@@ -74,11 +64,11 @@ export function NavUser() {
             <DropdownMenuLabel className="p-0 font-normal">
               <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                 <Avatar className="h-8 w-8 rounded-lg">
-                  <AvatarImage src={user.avatarUrl} alt={user.fullName} />
+                  <AvatarImage src={user.avatarUrl} alt={user.name} />
                   <AvatarFallback className="rounded-lg">CN</AvatarFallback>
                 </Avatar>
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-medium">{user.fullName}</span>
+                  <span className="truncate font-semibold">{user.name}</span>
                   <span className="truncate text-xs">{user.email}</span>
                 </div>
               </div>
@@ -92,12 +82,7 @@ export function NavUser() {
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem
-                onClick={goProfile}
-                className="cursor-pointer"
-                // Nếu TeamSwitcher chặn bubble, dùng capture để chắc ăn:
-                onClickCapture={goProfile}
-              >
+              <DropdownMenuItem>
                 <BadgeCheck />
                 Account
               </DropdownMenuItem>
@@ -111,9 +96,7 @@ export function NavUser() {
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={handleLogout}
-            >
+            <DropdownMenuItem>
               <LogOut />
               Log out
             </DropdownMenuItem>

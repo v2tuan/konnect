@@ -44,10 +44,20 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+
+  /* BỔ SUNG thêm màu status - KHÔNG thay đổi gì khác */
+  --color-status-online: var(--status-online);
+  --color-status-away: var(--status-away);
+  --color-status-busy: var(--status-busy);
+  --color-status-offline: var(--status-offline);
+  --color-message-sent: var(--message-sent);
+  --color-message-delivered: var(--message-delivered);
+  --color-message-read: var(--message-read);
+  --color-notification-bg: var(--notification-bg);
 }
 
 /* ===========================
-   Zalo Chat Design System (HSL)
+   Zalo Chat Design System (HSL) - GIỮ NGUYÊN + BỔ SUNG
    =========================== */
 :root {
   /* Giữ radius cũ của bạn để không ảnh hưởng layout */
@@ -69,6 +79,20 @@
   --success: hsl(122 39% 49%);             /* #4CAF50 */
   --success-light: hsl(122 39% 85%);
   --online: hsl(122 100% 40%);
+
+  /* BỔ SUNG THÊM CÁC MÀU STATUS - KHÔNG ĐỘNG ĐẾN CÁI CŨ */
+  --status-online: hsl(122 100% 40%);      /* Xanh lá - online */
+  --status-away: hsl(45 100% 50%);         /* Vàng - away */
+  --status-busy: hsl(0 100% 60%);          /* Đỏ - busy */
+  --status-offline: hsl(0 0% 60%);         /* Xám - offline */
+  
+  /* Message Status */
+  --message-sent: hsl(0 0% 60%);           /* Đã gửi */
+  --message-delivered: hsl(214 100% 50%);  /* Đã nhận */
+  --message-read: hsl(122 39% 49%);        /* Đã đọc */
+  
+  /* Notification */
+  --notification-bg: hsl(0 84% 60%);       /* Badge đỏ */
 
   /* Background & Surface */
   --background: hsl(220 15% 97%);
@@ -233,5 +257,31 @@
   [data-slot="sidebar-content"] ::-webkit-scrollbar-thumb {
     background: color-mix(in srgb, var(--color-sidebar-border) 30%, transparent);
     border-radius: 8px;
+  }
+
+  /* BỔ SUNG THÊM - Utility classes cho status */
+  .status-dot {
+    @apply w-3 h-3 rounded-full border-2 border-white;
+  }
+  
+  .status-online {
+    background-color: var(--status-online);
+  }
+  
+  .status-away {
+    background-color: var(--status-away);
+  }
+  
+  .status-busy {
+    background-color: var(--status-busy);
+  }
+  
+  .status-offline {
+    background-color: var(--status-offline);
+  }
+
+  .notification-badge {
+    background-color: var(--notification-bg);
+    color: white;
   }
 }

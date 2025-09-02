@@ -1,59 +1,61 @@
-import { useState, useRef, useEffect } from 'react';
-import { Phone, Video, MoreHorizontal, Search, Pin, Image, Smile, Mic, Send, Paperclip } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
-import { MessageBubble } from './MessageBubble';
-import { EmojiPicker } from './EmojiPicker';
+import { useState, useRef, useEffect } from 'react'
+import { Phone, Video, MoreHorizontal, Search, Pin, Image, Smile, Mic, Send, Paperclip } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
+import { Badge } from '@/components/ui/badge'
+import { MessageBubble } from './MessageBubble'
+import { EmojiPicker } from './EmojiPicker'
 
 export function ChatArea({ chat, onSendMessage }) {
-  const [messageText, setMessageText] = useState('');
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
-  const messagesEndRef = useRef(null);
-  const inputRef = useRef(null);
+  const [messageText, setMessageText] = useState('')
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false)
+  const [isRecording, setIsRecording] = useState(false)
+  const messagesEndRef = useRef(null)
+  const inputRef = useRef(null)
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }
 
   useEffect(() => {
-    scrollToBottom();
-  }, [chat.messages]);
+    scrollToBottom()
+  }, [chat.messages])
 
   const handleSendMessage = () => {
     if (messageText.trim()) {
-      onSendMessage(messageText.trim());
-      setMessageText('');
-      setShowEmojiPicker(false);
+      onSendMessage(messageText.trim())
+      setMessageText('')
+      setShowEmojiPicker(false)
     }
-  };
+  }
 
   const handleKeyPress = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
+      e.preventDefault()
+      handleSendMessage()
     }
-  };
+  }
 
   const handleEmojiSelect = (emoji) => {
-    setMessageText(prev => prev + emoji);
-    inputRef.current?.focus();
-  };
+    setMessageText(prev => prev + emoji)
+    inputRef.current?.focus()
+  }
 
   const handleVoiceRecord = () => {
-    setIsRecording(!isRecording);
+    setIsRecording(!isRecording)
     // TODO: Implement voice recording
-  };
+  }
 
   const getStatusColor = (status) => {
     switch (status) {
-      case 'online': return 'text-success';
-      case 'away': return 'text-warning';
-      default: return 'text-muted-foreground';
+    case 'online': return { color: 'var(--status-online)' }
+    case 'away': return { color: 'var(--status-away)' }
+    case 'busy': return { color: 'var(--status-busy)' }
+    case 'offline': return { color: 'var(--status-offline)' }
+    default: return { color: 'var(--status-offline)' }
     }
-  };
+  }
 
   return (
     <div className="flex flex-col h-full w-full bg-gradient-chat"> {/* thêm w-full */}
@@ -65,17 +67,19 @@ export function ChatArea({ chat, onSendMessage }) {
               <AvatarImage src={chat.contact.avatar} />
               <AvatarFallback>{chat.contact.name[0]}</AvatarFallback>
             </Avatar>
-            <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${
-              chat.contact.status === 'online' ? 'bg-success' : 
-              chat.contact.status === 'away' ? 'bg-warning' : 'bg-muted-foreground'
-            }`}></div>
+            <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white"
+              style={{
+                backgroundColor: chat.contact.status === 'online' ? 'var(--status-online)' :
+                  chat.contact.status === 'away' ? 'var(--status-away)' :
+                    'var(--status-offline)'
+              }}></div>
           </div>
           <div>
             <h2 className="font-semibold text-foreground">{chat.contact.name}</h2>
             <p className={`text-sm ${getStatusColor(chat.contact.status)}`}>
-              {chat.contact.status === 'online' ? 'Đang hoạt động' : 
-               chat.contact.status === 'away' ? `Hoạt động ${chat.contact.lastSeen} trước` :
-               `Hoạt động ${chat.contact.lastSeen} trước`}
+              {chat.contact.status === 'online' ? 'Đang hoạt động' :
+                chat.contact.status === 'away' ? `Hoạt động ${chat.contact.lastSeen} trước` :
+                  `Hoạt động ${chat.contact.lastSeen} trước`}
             </p>
           </div>
         </div>
@@ -115,9 +119,9 @@ export function ChatArea({ chat, onSendMessage }) {
 
         {/* Messages */}
         {chat.messages.map((message, index) => {
-          const prevMessage = chat.messages[index - 1];
-          const showAvatar = !prevMessage || prevMessage.isOwn !== message.isOwn;
-          
+          const prevMessage = chat.messages[index - 1]
+          const showAvatar = !prevMessage || prevMessage.isOwn !== message.isOwn
+
           return (
             <MessageBubble
               key={message.id}
@@ -125,7 +129,7 @@ export function ChatArea({ chat, onSendMessage }) {
               showAvatar={showAvatar}
               contact={chat.contact}
             />
-          );
+          )
         })}
         <div ref={messagesEndRef} />
       </div>
@@ -153,7 +157,7 @@ export function ChatArea({ chat, onSendMessage }) {
               placeholder="Nhập tin nhắn..."
               className="pr-12 bg-input border-input-border focus:border-input-focus"
             />
-            
+
             {/* Emoji Button */}
             <Button
               variant="ghost"
@@ -198,5 +202,5 @@ export function ChatArea({ chat, onSendMessage }) {
         )}
       </div>
     </div>
-  );
+  )
 }
