@@ -1,7 +1,6 @@
 import { useSelector } from "react-redux"
 import { Navigate, Outlet, Route, Routes } from "react-router-dom"
 import Auth from "./pages/AuthPage/Auth"
-import ChatPage from "./pages/ChatPage"
 import HomePage from "./pages/HomePage/HomePage"
 import OtpPage from "./pages/OtpPage/OtpPage"
 import ProfilePage from "./pages/ProfilePage/ProfilePage"
@@ -36,7 +35,7 @@ export default function App() {
         {/* setting */}
         <Route path='settings/account' element={<ProfilePage/>} />
         <Route path='settings/security' element={<ProfilePage/>} />
-        <Route path='chats' element={<ChatPage/>} />
+        <Route path='chats' element={<HomePage/>} />
         {/* main */}
         <Route path="home" element={<HomePage/>} />
       </Route>
