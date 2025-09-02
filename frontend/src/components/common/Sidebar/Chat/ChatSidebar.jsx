@@ -18,10 +18,11 @@ export function ChatSidebar({ chats, selectedChat, onChatSelect, currentView, on
 
   const getStatusColor = (status) => {
     switch (status) {
-      case 'online': return 'bg-success';
-      case 'away': return 'bg-warning'; 
-      case 'offline': return 'bg-muted-foreground';
-      default: return 'bg-muted-foreground';
+    case 'online': return 'bg-status-online';
+    case 'away': return 'bg-status-away'; 
+    case 'busy': return 'bg-status-busy';
+    case 'offline': return 'bg-status-offline';
+    default: return 'bg-status-offline';
     }
   };
 
