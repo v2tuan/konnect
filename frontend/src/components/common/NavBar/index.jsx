@@ -38,19 +38,9 @@ export default function NavBar() {
             </Sheet>
           </div>
 
-          <SidebarTrigger className="-ml-1" />
-          {/* Center: Search (desktop) */}
-          <div className="hidden flex-1 items-center justify-center lg:flex">
-            <div className="w-full max-w-xl">
-              <div className="flex items-center gap-2 rounded-2xl border border-black/10 dark:border-white/10 bg-black/[.03] dark:bg-white/[.06] px-3 py-2.5 shadow-sm">
-                <Search className="h-5 w-5 opacity-70" />
-                <Input className="h-8 border-0 bg-transparent focus-visible:ring-0" placeholder="Search people, chats…" />
-              </div>
-            </div>
-          </div>
-
+          <SidebarTrigger className="-ml-1 flex flex-row" />
           {/* Right: Actions */}
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 justify-between">
             <ModeToggle />
 
             <DropdownMenu>
