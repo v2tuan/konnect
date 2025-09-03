@@ -16,11 +16,15 @@ let userSchema = new mongoose.Schema({
     },
     avatarUrl: {
         type: String,
-        default: 'https://example.com/default-avatar.png' // Default avatar URL
+        default: 'https://github.com/shadcn.png' // Default avatar URL
     },
     fullName: {
         type: String,
         required: true
+    },
+    username: {
+        type: String, 
+        require: true
     },
     dateOfBirth: {
         type: Date
