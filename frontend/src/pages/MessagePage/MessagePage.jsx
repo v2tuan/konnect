@@ -1,16 +1,16 @@
-import { useOutletContext } from "react-router-dom";
-import { ChatArea } from "@/components/common/Sidebar/Chat/ChatArea"; // đúng path của bạn
+import { useOutletContext } from "react-router-dom"
+import { ChatArea } from "@/components/common/Sidebar/Chat/ChatArea" // đúng path của bạn
 
 export default function MessagePage() {
-  const { chatState } = useOutletContext();
-  const chat = chatState?.selectedChat;
+  const { chatState } = useOutletContext()
+  const chat = chatState?.selectedChat
 
   if (!chat) {
     return (
       <div className="h-full w-full flex items-center justify-center text-muted-foreground">
         Chọn một cuộc trò chuyện để bắt đầu
       </div>
-    );
+    )
   }
 
   return (
@@ -20,5 +20,5 @@ export default function MessagePage() {
         onSendMessage={chatState.onSendMessage}
       />
     </div>
-  );
+  )
 }

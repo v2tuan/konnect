@@ -1,10 +1,10 @@
-import { useState } from 'react';
-import { Camera, Edit3, MapPin, Calendar, Phone, Mail, Settings, Image, Heart, MessageCircle } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
+import { useState } from 'react'
+import { Camera, Edit3, MapPin, Calendar, Phone, Mail, Settings, Image, Heart, MessageCircle } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
+import { Separator } from '@/components/ui/separator'
 
 const mockPosts = [
   {
@@ -16,9 +16,9 @@ const mockPosts = [
     image: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400&h=300&fit=crop'
   },
   {
-    id: '2', 
+    id: '2',
     content: 'Vừa thử món mới ở quán cafe gần nhà, ngon lắm! 🍰☕',
-    timestamp: '1 ngày trước', 
+    timestamp: '1 ngày trước',
     likes: 8,
     comments: 2
   },
@@ -29,10 +29,10 @@ const mockPosts = [
     likes: 5,
     comments: 7
   }
-];
+]
 
 export function UserProfile() {
-  const [activeTab, setActiveTab] = useState('posts');
+  const [activeTab, setActiveTab] = useState('posts')
 
   return (
     <div className="h-full overflow-y-auto bg-background">
@@ -45,16 +45,16 @@ export function UserProfile() {
               <AvatarImage src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&h=200&fit=crop&crop=face" />
               <AvatarFallback>TN</AvatarFallback>
             </Avatar>
-            <Button 
-              size="sm" 
+            <Button
+              size="sm"
               className="absolute bottom-2 right-2 w-8 h-8 rounded-full p-0 shadow-medium"
             >
               <Camera className="w-4 h-4" />
             </Button>
           </div>
         </div>
-        <Button 
-          variant="secondary" 
+        <Button
+          variant="secondary"
           className="absolute top-4 right-4 shadow-medium"
         >
           <Edit3 className="w-4 h-4 mr-2" />
@@ -167,19 +167,19 @@ export function UserProfile() {
                         <span className="text-sm text-muted-foreground">{post.timestamp}</span>
                       </div>
                       <p className="text-sm mb-3">{post.content}</p>
-                      
+
                       {post.image && (
                         <div className="mb-3">
-                          <img 
-                            src={post.image} 
-                            alt="Post image" 
+                          <img
+                            src={post.image}
+                            alt="Post image"
                             className="rounded-lg w-full max-h-64 object-cover"
                           />
                         </div>
                       )}
 
                       <Separator className="mb-3" />
-                      
+
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4">
                           <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive">
@@ -202,7 +202,7 @@ export function UserProfile() {
 
         {activeTab === 'photos' && (
           <div className="grid grid-cols-3 gap-2">
-            {Array.from({length: 12}).map((_, i) => (
+            {Array.from({ length: 12 }).map((_, i) => (
               <div key={i} className="aspect-square bg-muted rounded-lg animate-pulse"></div>
             ))}
           </div>
@@ -233,5 +233,5 @@ export function UserProfile() {
         )}
       </div>
     </div>
-  );
+  )
 }

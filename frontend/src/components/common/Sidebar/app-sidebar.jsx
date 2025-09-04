@@ -1,44 +1,47 @@
 "use client"
 
-import * as React from "react"
 import {
+  Bell,
   BookUser,
   Brain,
   Cloud,
+  GalleryVerticalEnd,
   Inbox,
-  Trash2,
+  Trash2
 } from "lucide-react"
 
-import { NavUser } from "@/components/common/Sidebar/nav-user"
 import { ChatSidebar } from "@/components/common/Sidebar/Chat/ChatSidebar"
+import { NavUser } from "@/components/common/Sidebar/nav-user"
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarGroup,
-  SidebarGroupContent,
-  useSidebar,
+  useSidebar
 } from "@/components/ui/sidebar"
-import ContactSidebar from "./Contact/ContactSidebar"
 import { NavLink, useLocation } from "react-router-dom"
+import ModeToggle from "../NavBar/ThemeToggle"
+import ContactSidebar from "./Contact/ContactSidebar"
+import { ContactsList } from "./Contact/ContactsList"
 
 const data = {
   user: {
     name: "Đặng Đăng Duy",
     email: "duyproven987@gmail.com",
-    avatar: "/avatars/shadcn.jpg",
+    avatar: "/avatars/shadcn.jpg"
   },
   navMain: [
     { title: "Message", url: "/chats", icon: Inbox },
     { title: "Contact", url: "/contacts", icon: BookUser },
     { title: "Cloud", url: "/cloud", icon: Cloud },
     { title: "Block", url: "/block", icon: Trash2 },
-    { title: "Agent Chat", url: "/agent", icon: Brain },
-  ],
+    { title: "Agent Chat", url: "/agent", icon: Brain }
+  ]
 }
 
 export function AppSidebar({
@@ -54,29 +57,29 @@ export function AppSidebar({
   const isContact = location.pathname.startsWith("/contacts")
 
   return (
-    <Sidebar 
-      collapsible="icon" 
-      className="overflow-hidden [&>[data-sidebar=sidebar]]:flex-row" 
+    <Sidebar
+      collapsible="icon"
+      className="overflow-hidden [&>[data-sidebar=sidebar]]:flex-row"
       {...props}
     >
       {/* Left rail - Luôn chỉ hiện icon, không expand */}
-      <Sidebar 
-        collapsible="none" 
+      <Sidebar
+        collapsible="none"
         className="w-[calc(var(--sidebar-width-icon))] border-r"
       >
         <SidebarHeader className="flex items-center justify-center">
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton 
+              <SidebarMenuButton
                 size="lg"
                 tooltip={{
                   children: "Konnect",
-                  hidden: false,
+                  hidden: false
                 }}
                 className="w-full justify-center px-0"
               >
                 <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                  <Inbox className="size-4" />
+                  <GalleryVerticalEnd className="size-4" />
                 </div>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -97,7 +100,7 @@ export function AppSidebar({
                         className="w-full justify-center px-0"
                         tooltip={{
                           children: item.title,
-                          hidden: false,
+                          hidden: false
                         }}
                         onClick={() => setOpen(true)} // mở submenu
                       >
@@ -113,7 +116,9 @@ export function AppSidebar({
           </SidebarGroup>
         </SidebarContent>
 
-        <SidebarFooter className="flex items-center justify-center">
+        <SidebarFooter className="flex items-center justify-center gap-3">
+          <Bell/>
+          <ModeToggle/>
           <NavUser />
         </SidebarFooter>
       </Sidebar>

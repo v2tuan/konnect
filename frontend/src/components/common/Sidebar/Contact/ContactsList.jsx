@@ -1,44 +1,44 @@
-import { useState } from 'react';
-import { Search, UserPlus, Users, Filter, Phone, Video, MessageCircle } from 'lucide-react';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
+import { useState } from 'react'
+import { Search, UserPlus, Users, Filter, Phone, Video, MessageCircle } from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent } from '@/components/ui/card'
 
 export function ContactsList({ contacts, onContactSelect }) {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('')
+  const [filterStatus, setFilterStatus] = useState('all')
 
   const filteredContacts = contacts.filter(contact => {
-    const matchesSearch = contact.name.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesFilter = filterStatus === 'all' || 
+    const matchesSearch = contact.name.toLowerCase().includes(searchQuery.toLowerCase())
+    const matchesFilter = filterStatus === 'all' ||
       (filterStatus === 'online' && contact.status === 'online') ||
-      (filterStatus === 'offline' && contact.status !== 'online');
-    
-    return matchesSearch && matchesFilter;
-  });
+      (filterStatus === 'offline' && contact.status !== 'online')
+
+    return matchesSearch && matchesFilter
+  })
 
   const getStatusColor = (status) => {
     switch (status) {
-    case 'online': return 'bg-status-online';
-    case 'away': return 'bg-status-away'; 
-    case 'busy': return 'bg-status-busy';
-    case 'offline': return 'bg-status-offline';
-    default: return 'bg-status-offline';
+    case 'online': return 'bg-status-online'
+    case 'away': return 'bg-status-away'
+    case 'busy': return 'bg-status-busy'
+    case 'offline': return 'bg-status-offline'
+    default: return 'bg-status-offline'
     }
-  };
+  }
 
   const getStatusText = (contact) => {
     switch (contact.status) {
-      case 'online': return 'Đang hoạt động';
-      case 'away': return `Hoạt động ${contact.lastSeen} trước`;
-      case 'offline': return `Hoạt động ${contact.lastSeen} trước`;
-      default: return 'Không xác định';
+    case 'online': return 'Đang hoạt động'
+    case 'away': return `Hoạt động ${contact.lastSeen} trước`
+    case 'offline': return `Hoạt động ${contact.lastSeen} trước`
+    default: return 'Không xác định'
     }
-  };
+  }
 
-  const onlineCount = contacts.filter(c => c.status === 'online').length;
+  const onlineCount = contacts.filter(c => c.status === 'online').length
 
   return (
     <div className="h-full flex flex-col bg-background">
@@ -60,7 +60,7 @@ export function ContactsList({ contacts, onContactSelect }) {
         {/* Search */}
         <div className="relative mb-4">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-          <Input 
+          <Input
             placeholder="Tìm kiếm bạn bè..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -106,7 +106,7 @@ export function ContactsList({ contacts, onContactSelect }) {
           </h3>
           <div className="grid grid-cols-4 gap-3">
             {contacts.filter(c => c.status === 'online').slice(0, 8).map(contact => (
-              <div 
+              <div
                 key={contact.id}
                 onClick={() => onContactSelect(contact)}
                 className="flex flex-col items-center p-2 rounded-lg cursor-pointer hover:bg-card-hover transition-colors"
@@ -142,7 +142,7 @@ export function ContactsList({ contacts, onContactSelect }) {
                     </Avatar>
                     <div className={`absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full border-2 border-white ${getStatusColor(contact.status)}`}></div>
                   </div>
-                  
+
                   <div className="flex-1 min-w-0">
                     <h4 className="font-medium text-foreground truncate">{contact.name}</h4>
                     <p className="text-sm text-muted-foreground truncate">
@@ -155,8 +155,8 @@ export function ContactsList({ contacts, onContactSelect }) {
                       variant="ghost"
                       size="sm"
                       onClick={(e) => {
-                        e.stopPropagation();
-                        onContactSelect(contact);
+                        e.stopPropagation()
+                        onContactSelect(contact)
                       }}
                     >
                       <MessageCircle className="w-4 h-4" />
@@ -185,5 +185,5 @@ export function ContactsList({ contacts, onContactSelect }) {
         )}
       </div>
     </div>
-  );
+  )
 }

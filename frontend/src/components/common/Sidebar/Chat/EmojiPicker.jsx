@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Button } from '@/components/ui/button';
+import { useState } from 'react'
+import { Button } from '@/components/ui/button'
 
 const emojiCategories = {
   'Gần đây': ['😊', '😂', '❤️', '👍', '🎉', '😍', '😭', '🤔'],
@@ -10,10 +10,10 @@ const emojiCategories = {
   'Hoạt động': ['⚽', '🏀', '🏈', '⚾', '🥎', '🎾', '🏐', '🏉', '🥏', '🎱', '🪀', '🏓', '🏸', '🏒', '🏑', '🥍', '🏏', '🪃', '🥅', '⛳', '🪁', '🏹', '🎣', '🤿', '🥊', '🥋'],
   'Du lịch': ['🚗', '🚕', '🚙', '🚌', '🚎', '🏎️', '🚓', '🚑', '🚒', '🚐', '🛻', '🚚', '🚛', '🚜', '🏍️', '🛵', '🚲', '🛴', '🛹', '🛼', '🚁', '🛸', '✈️', '🛩️', '🛫', '🛬'],
   'Đồ vật': ['⌚', '📱', '📲', '💻', '⌨️', '🖥️', '🖨️', '🖱️', '🖲️', '🕹️', '🗜️', '💽', '💾', '💿', '📀', '📼', '📷', '📸', '📹', '🎥', '📽️', '🎞️', '📞', '☎️', '📟', '📠']
-};
+}
 
 export function EmojiPicker({ onEmojiSelect }) {
-  const [selectedCategory, setSelectedCategory] = useState('Gần đây');
+  const [selectedCategory, setSelectedCategory] = useState('Gần đây')
 
   return (
     <div className="bg-card border border-border rounded-lg shadow-strong p-4 w-80 max-h-96">
@@ -65,5 +65,5 @@ export function EmojiPicker({ onEmojiSelect }) {
         </div>
       </div>
     </div>
-  );
+  )
 }

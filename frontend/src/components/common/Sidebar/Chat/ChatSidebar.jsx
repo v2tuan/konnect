@@ -1,56 +1,39 @@
-import { Search, MessageCircle, Users, User, Settings, Phone, Video } from 'lucide-react';
-import { useState } from 'react';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import { Search, MessageCircle, Users, User, Settings, Phone, Video } from 'lucide-react'
+import { useState } from 'react'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 
 export function ChatSidebar({ chats, selectedChat, onChatSelect, currentView, onViewChange }) {
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState('')
 
-  const filteredChats = chats.filter(chat => 
+  const filteredChats = chats.filter(chat =>
     chat.contact.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  )
 
   const formatTime = (timestamp) => {
-    return timestamp;
-  };
+    return timestamp
+  }
 
   const getStatusColor = (status) => {
     switch (status) {
-    case 'online': return 'bg-status-online';
-    case 'away': return 'bg-status-away'; 
-    case 'busy': return 'bg-status-busy';
-    case 'offline': return 'bg-status-offline';
-    default: return 'bg-status-offline';
+    case 'online': return 'bg-status-online'
+    case 'away': return 'bg-status-away'
+    case 'busy': return 'bg-status-busy'
+    case 'offline': return 'bg-status-offline'
+    default: return 'bg-status-offline'
     }
-  };
+  }
 
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
       <div className="p-4 border-b border-border">
-        <div className="flex items-center gap-3 mb-4">
-          <Avatar className="w-10 h-10">
-            <AvatarImage src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop&crop=face" />
-            <AvatarFallback>You</AvatarFallback>
-          </Avatar>
-          <div className="flex-1">
-            <h2 className="font-semibold text-foreground">Zalo Chat</h2>
-            <p className="text-xs text-success flex items-center gap-1">
-              <div className="w-2 h-2 bg-success rounded-full"></div>
-              Đang hoạt động
-            </p>
-          </div>
-          <Button variant="ghost" size="sm">
-            <Settings className="w-4 h-4" />
-          </Button>
-        </div>
-
         {/* Search */}
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-          <Input 
+          <Input
             placeholder="Tìm kiếm bạn bè, tin nhắn..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -62,8 +45,8 @@ export function ChatSidebar({ chats, selectedChat, onChatSelect, currentView, on
       {/* Navigation Tabs */}
       <div className="px-4 py-2 border-b border-border">
         <div className="flex gap-1">
-          <Button 
-            variant={currentView === 'chat' ? 'default' : 'ghost'} 
+          <Button
+            variant={currentView === 'chat' ? 'default' : 'ghost'}
             size="sm"
             onClick={() => onViewChange('chat')}
             className="flex-1"
@@ -71,23 +54,14 @@ export function ChatSidebar({ chats, selectedChat, onChatSelect, currentView, on
             <MessageCircle className="w-4 h-4 mr-2" />
             Chat
           </Button>
-          <Button 
-            variant={currentView === 'contacts' ? 'default' : 'ghost'} 
+          <Button
+            variant={currentView === 'contacts' ? 'default' : 'ghost'}
             size="sm"
-            onClick={() => onViewChange('contacts')}
+            onClick={() => onViewChange('priority')}
             className="flex-1"
           >
             <Users className="w-4 h-4 mr-2" />
-            Bạn bè
-          </Button>
-          <Button 
-            variant={currentView === 'profile' ? 'default' : 'ghost'} 
-            size="sm"
-            onClick={() => onViewChange('profile')}
-            className="flex-1"
-          >
-            <User className="w-4 h-4 mr-2" />
-            Cá nhân
+            Others
           </Button>
         </div>
       </div>
@@ -112,7 +86,7 @@ export function ChatSidebar({ chats, selectedChat, onChatSelect, currentView, on
                     </Avatar>
                     <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${getStatusColor(chat.contact.status)}`}></div>
                   </div>
-                  
+
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-1">
                       <h3 className="font-medium text-foreground truncate">{chat.contact.name}</h3>
@@ -122,7 +96,7 @@ export function ChatSidebar({ chats, selectedChat, onChatSelect, currentView, on
                         </span>
                       )}
                     </div>
-                    
+
                     <div className="flex items-center justify-between">
                       <p className="text-sm text-muted-foreground truncate">
                         {chat.lastMessage?.isOwn ? 'Bạn: ' : ''}
@@ -156,5 +130,5 @@ export function ChatSidebar({ chats, selectedChat, onChatSelect, currentView, on
         </div>
       </div>
     </div>
-  );
+  )
 }
