@@ -1,4 +1,4 @@
-import User from "~/models/userModel"
+import User from "~/models/user"
 
 export const searchByUsername = async (username) => {
     try {
