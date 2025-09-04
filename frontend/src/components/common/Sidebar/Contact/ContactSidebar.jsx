@@ -1,9 +1,9 @@
 "use client"
 
-import { Input } from "@/components/ui/input";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, UserPlus, UserSearch } from "lucide-react";
-import { FaUsers, FaUsersCog } from "react-icons/fa";
+import { Input } from "@/components/ui/input"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Search, UserPlus, Users, UserSearch } from "lucide-react"
+import { FaUsers, FaUsersCog } from "react-icons/fa"
 
 export const CONTACT_TABS = [
   { name: "Friends list", value: "friends", icon: UserSearch },
@@ -15,15 +15,17 @@ export const CONTACT_TABS = [
 export default function ContactSidebar({ value, onValueChange }) {
   return (
     <div className="h-full">
-      <div className="p-4 border-b border-border">
+      <div className="p-4 border-b border-border flex flex-row gap-3 items-center">
         {/* Search */}
         <div className="relative w-[80%]">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-          <Input 
+          <Input
             placeholder="Tìm kiếm ..."
             className="pl-10 bg-input border-input-border focus:border-input-focus"
           />
         </div>
+        <UserPlus/>
+        <Users/>
       </div>
       <Tabs
         orientation="vertical"
