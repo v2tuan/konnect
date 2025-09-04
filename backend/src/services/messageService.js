@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
-import Conversation from '~/models/conversation.model.js';
-import Message from '~/models/message.model.js';
+import Conversation from '~/models/conversations';
+import Message from '~/models/messages';
 
 function toPublicMessage(m) {
   return {

@@ -4,7 +4,7 @@ import authMiddleware from '~/middlewares/authMiddleware'
 
 const Router = express.Router()
 
-Router.use('/')
+Router.route('/')
   .get(authMiddleware, cloudController.fetchCloudConversation)
 
 export const cloudRoutes = Router
