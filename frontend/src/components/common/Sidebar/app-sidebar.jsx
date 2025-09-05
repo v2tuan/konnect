@@ -149,15 +149,6 @@ export function AppSidebar({
           />
         </Sidebar>
       )}
-
-      {open && isCloud && (
-        <Sidebar collapsible="none" className="w-[450px] border-r bg-background">
-          <CloudSidebar
-            value={cloudTab || "cloud"}
-            onValueChange={onCloudTabChange || (() => {})}
-          />
-        </Sidebar>
-      )}
     </Sidebar>
   )
 }

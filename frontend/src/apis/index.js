@@ -42,6 +42,6 @@ export const getCloudConversation = async () => {
 }
 
 export const sendMessage = async (conversationId, text) => {
-  const response = await authorizeAxiosInstance.post(`${API_ROOT}/api/messages`)
+  const response = await authorizeAxiosInstance.post(`${API_ROOT}/api/messages`, { conversationId, text })
   return response.data
 }
