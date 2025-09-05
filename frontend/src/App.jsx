@@ -8,6 +8,7 @@ import { selectCurrentUser } from "./redux/user/userSlice"
 import MainLayout from "./pages/HomePage/HomePage"
 import MessagePage from "./pages/MessagePage/MessagePage"
 import ContactPage from "./pages/ContactPage/ContactPage"
+import CloudPage from "./pages/CloudPage/CloudPage"
 
 const ProtectedRoute = () => {
   const currentUser = useSelector(selectCurrentUser)
@@ -37,6 +38,7 @@ export default function App() {
         <Route element={<MainLayout />}>
           <Route path="chats" element={<MessagePage />} />
           <Route path="contacts" element={<ContactPage />} />
+          <Route path="cloud" element={<CloudPage/>} />
           {/* các route khác nếu cần */}
         </Route>
       </Route>

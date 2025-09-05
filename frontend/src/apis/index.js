@@ -54,3 +54,12 @@ export const resetPasswordAPI = async (data) => {
   return response.data
 }
 
+export const getCloudConversation = async () => {
+  const response = await authorizeAxiosInstance.get(`${API_ROOT}/api/cloud`)
+  return response.data
+}
+
+export const sendMessage = async (conversationId, text) => {
+  const response = await authorizeAxiosInstance.post(`${API_ROOT}/api/messages`, { conversationId, text })
+  return response.data
+}

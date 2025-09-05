@@ -4,7 +4,7 @@ import { messageService } from "~/services/messageService"
 const sendMessage = async (req, res, next) => {
   try {
     const userId = req.userId
-    const { conversationId, type, text} = req.body
+    const { conversationId, type='text', text=''} = req.body
 
     if (!conversationId) {
       return res.status(StatusCodes.BAD_REQUEST).json({ message: 'conversationId is required'})
