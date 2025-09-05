@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { SkeletonConversation } from '../Skeleton/SkeletonConversation'
-import { searchUserByUsername } from '@/apis'
+import { findUserById, searchUserByUsername } from '@/apis'
 
 export function ChatSidebar({ chats, selectedChat, onChatSelect, currentView, onViewChange }) {
   const [searchQuery, setSearchQuery] = useState('')
@@ -57,6 +57,12 @@ export function ChatSidebar({ chats, selectedChat, onChatSelect, currentView, on
       controller.abort() // Hủy request cũ nếu user gõ tiếp
     }
   }, [searchQuery])
+
+  const handleClickUser = async (userId) => {
+    const detail = await findUserById(userId)
+    onChatSelect(detail)
+    console.log(detail)
+  }
 
 
   return (
@@ -111,6 +117,7 @@ export function ChatSidebar({ chats, selectedChat, onChatSelect, currentView, on
         </div>
       </div>
 
+      {/* Skeleton khi search User */}
       {currentView === "search" && loading &&
         <>
           <SkeletonConversation></SkeletonConversation>
@@ -121,6 +128,7 @@ export function ChatSidebar({ chats, selectedChat, onChatSelect, currentView, on
         </>
       }
 
+      {/* User search list */}
       {currentView === "search" && !loading && (searchList.length === 0 ? (
         <p className={`p-3 rounded-lg cursor-pointer transition-all duration-fast hover:bg-card-hover `}>No users found</p>
       ) : (
@@ -129,6 +137,7 @@ export function ChatSidebar({ chats, selectedChat, onChatSelect, currentView, on
             <div
               key={user._id}
               className={`p-3 rounded-lg cursor-pointer transition-all duration-fast hover:bg-card-hover`}
+              onClick={() => {handleClickUser(user.id)}}
             >
               <div className="flex items-center gap-3">
                 <div className="relative">

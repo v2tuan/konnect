@@ -1,9 +1,10 @@
-import { searchByUsername } from "~/services/userService"
+import { StatusCodes } from "http-status-codes"
+import { userService } from "~/services/userService"
 
 const searchUser = async (req, res, next) => {
     try {
         let { keyword } = req.query
-        const users = await searchByUsername(keyword)
+        const users = await userService.searchByUsername(keyword)
         if (users.length !== 0) {
             res.json(users)
         }
@@ -18,6 +19,25 @@ const searchUser = async (req, res, next) => {
     }
 }
 
+const searchUserById = async (req, res, next) => {
+    try{
+        let {userId} = req.query
+        const user = await userService.findById(userId, req.userId)
+        if(user){
+            res.json(user)
+        }
+        else{
+            res.status(StatusCodes.NOT_FOUND).json({
+                message: "No user found"
+            })
+        }
+    }
+    catch(error){
+        next(error)
+    }
+}
+
 export const userController = {
-    searchUser
+    searchUser,
+    searchUserById
 }
