@@ -32,7 +32,6 @@ export const searchUserByUsername = async (keyword) => {
       keyword
     }
   })
-  console.log(response)
   return response.data
 }
 

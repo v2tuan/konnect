@@ -9,18 +9,18 @@ export function SkeletonConversation() {
         >
           <div className="flex items-center gap-3">
             <div className="relative">
-              <Skeleton className="h-12 w-12 rounded-full" />
+              <Skeleton className="h-12 w-12 rounded-full bg-gray-200 dark:bg-gray-800" />
             </div>
 
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between mb-1">
-                <Skeleton className="h-4 w-[150px]" />
+                <Skeleton className="h-4 w-[150px] bg-gray-200 dark:bg-gray-800" />
               </div>
 
               <div className="flex items-center justify-between">
-                <p className="text-sm text-muted-foreground truncate">
-                  <Skeleton className="h-4 w-[200px]" />
-                </p>
+                <span className="text-sm text-muted-foreground truncate">
+                  <Skeleton className="h-4 w-[200px] bg-gray-200 dark:bg-gray-800" />
+                </span>
               </div>
             </div>
           </div>

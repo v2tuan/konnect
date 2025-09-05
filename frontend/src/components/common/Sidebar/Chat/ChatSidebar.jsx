@@ -31,6 +31,11 @@ export function ChatSidebar({ chats, selectedChat, onChatSelect, currentView, on
   }
 
   useEffect(() => {
+    if (!searchQuery.trim()) {
+      setSearchList([])
+      setLoading(false)
+      return
+    }
     const controller = new AbortController()
     setLoading(true)
     const delayDebounce = setTimeout(async () => {
@@ -38,9 +43,7 @@ export function ChatSidebar({ chats, selectedChat, onChatSelect, currentView, on
         const dataRespone = await searchUserByUsername(searchQuery)
         setSearchList(dataRespone)
       }
-      catch (error) {
-        console.log(error)
-        console.log(error.response.data.message)
+      catch {
         setSearchList([])
       }
       finally {
@@ -96,8 +99,8 @@ export function ChatSidebar({ chats, selectedChat, onChatSelect, currentView, on
             <Users className="w-4 h-4 mr-2" />
             Bạn bè
           </Button>
-          <Button 
-            variant={currentView === 'profile' ? 'default' : 'ghost'} 
+          <Button
+            variant={currentView === 'profile' ? 'default' : 'ghost'}
             size="sm"
             onClick={() => onViewChange('profile')}
             className="flex-1"
@@ -119,9 +122,9 @@ export function ChatSidebar({ chats, selectedChat, onChatSelect, currentView, on
       }
 
       {currentView === "search" && !loading && (searchList.length === 0 ? (
-        <p className={`p-3 rounded-lg cursor-pointer transition-all duration-fast hover:bg-card-hover`}>No users found</p>
+        <p className={`p-3 rounded-lg cursor-pointer transition-all duration-fast hover:bg-card-hover `}>No users found</p>
       ) : (
-        <>
+        <div className="overflow-y-auto">
           {searchList.map((user) => (
             <div
               key={user._id}
@@ -154,7 +157,7 @@ export function ChatSidebar({ chats, selectedChat, onChatSelect, currentView, on
               </div>
             </div>
           ))}
-        </>
+        </div>
       )
       )}
 
