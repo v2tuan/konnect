@@ -36,6 +36,9 @@ export default function MainLayout() {
   // Contact tab state
   const [contactTab, setContactTab] = React.useState("home")
 
+  //cloud state
+  const [cloudTab, setCloudTab] = React.useState("cloud")
+
   const openChatWithContact = (contact) => {
     let existing = chats.find((c) => c.contact.id === contact.id)
     if (!existing) {
@@ -94,13 +97,15 @@ export default function MainLayout() {
           chatState={chatState}
           contactTab={contactTab}
           onContactTabChange={setContactTab}
+          cloudTab={cloudTab}
+          onCloudTabChange={setCloudTab}
         />
 
         {/* Main content area = NavBar + Outlet */}
         <div className="flex-1 flex flex-col min-w-0">
           <div className="flex-1 min-h-0">
             {/* Truyền state xuống page qua Outlet context */}
-            <Outlet context={{ chatState, contactTab, setContactTab }} />
+            <Outlet context={{ chatState, contactTab, setContactTab, cloudTab, setCloudTab }} />
           </div>
         </div>
       </div>

@@ -27,7 +27,7 @@ import {
 import { NavLink, useLocation } from "react-router-dom"
 import ModeToggle from "../NavBar/ThemeToggle"
 import ContactSidebar from "./Contact/ContactSidebar"
-import { ContactsList } from "./Contact/ContactsList"
+import CloudSidebar from "./Cloud/CloudSidebar"
 
 const data = {
   user: {
@@ -48,6 +48,8 @@ export function AppSidebar({
   chatState,
   contactTab,
   onContactTabChange,
+  cloudTab,
+  onCloudTabChange,
   ...props
 }) {
   const { open, setOpen } = useSidebar()
@@ -55,6 +57,7 @@ export function AppSidebar({
 
   const isMessage = location.pathname.startsWith("/chats")
   const isContact = location.pathname.startsWith("/contacts")
+  const isCloud = location.pathname.startsWith("/cloud")
 
   return (
     <Sidebar
@@ -143,6 +146,15 @@ export function AppSidebar({
           <ContactSidebar
             value={contactTab || "home"}
             onValueChange={onContactTabChange || (() => {})}
+          />
+        </Sidebar>
+      )}
+
+      {open && isCloud && (
+        <Sidebar collapsible="none" className="w-[450px] border-r bg-background">
+          <CloudSidebar
+            value={cloudTab || "cloud"}
+            onValueChange={onCloudTabChange || (() => {})}
           />
         </Sidebar>
       )}

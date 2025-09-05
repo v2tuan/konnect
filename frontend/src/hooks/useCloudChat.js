@@ -3,6 +3,15 @@ import { API_ROOT } from "@/utils/constant"
 import { useEffect, useRef, useState } from "react"
 import { io } from "socket.io-client"
 
+function extractId(raw) {
+  if (!raw) return null
+  if (typeof raw === 'string') return raw
+  if (raw._id) return raw._id.toString()
+  if (raw.id) return raw.id.toString()
+  if (raw.conversationId) return raw.conversationId.toString()
+  if (raw.$oid) return raw.$oid.toString()
+  return null
+}
 
 export const useCloudChat = () => {
   const [conversationId, setConversationId] = useState(null)
@@ -14,7 +23,8 @@ export const useCloudChat = () => {
     let mounted = true;
     (async () => {
       try {
-        const id = await getCloudConversation()
+        const res = await getCloudConversation()
+        const id = extractId(res)
         if (mounted) setConversationId(id)
       } catch (e) {
         console.error(e)
