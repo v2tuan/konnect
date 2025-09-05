@@ -1,12 +1,16 @@
 import { Search, MessageCircle, Users, User, Settings, Phone, Video } from 'lucide-react'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
+import { SkeletonConversation } from '../Skeleton/SkeletonConversation'
+import { findUserById, searchUserByUsername } from '@/apis'
 
 export function ChatSidebar({ chats, selectedChat, onChatSelect, currentView, onViewChange }) {
   const [searchQuery, setSearchQuery] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [searchList, setSearchList] = useState([])
 
   const filteredChats = chats.filter(chat =>
     chat.contact.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -26,6 +30,41 @@ export function ChatSidebar({ chats, selectedChat, onChatSelect, currentView, on
     }
   }
 
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setSearchList([])
+      setLoading(false)
+      return
+    }
+    const controller = new AbortController()
+    setLoading(true)
+    const delayDebounce = setTimeout(async () => {
+      try {
+        const dataRespone = await searchUserByUsername(searchQuery)
+        setSearchList(dataRespone)
+      }
+      catch {
+        setSearchList([])
+      }
+      finally {
+        setLoading(false)
+      }
+      // setSearchQuery(e.target.value)
+    }, 500)
+
+    return () => {
+      clearTimeout(delayDebounce) // Hủy debounce cũ
+      controller.abort() // Hủy request cũ nếu user gõ tiếp
+    }
+  }, [searchQuery])
+
+  const handleClickUser = async (userId) => {
+    const detail = await findUserById(userId)
+    onChatSelect(detail)
+    console.log(detail)
+  }
+
+
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
@@ -35,8 +74,11 @@ export function ChatSidebar({ chats, selectedChat, onChatSelect, currentView, on
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
           <Input
             placeholder="Tìm kiếm bạn bè, tin nhắn..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            // value={searchQuery}
+            onChange={async (e) => {
+              onViewChange("search")
+              setSearchQuery(e.target.value)
+            }}
             className="pl-10 bg-input border-input-border focus:border-input-focus"
           />
         </div>
@@ -61,10 +103,72 @@ export function ChatSidebar({ chats, selectedChat, onChatSelect, currentView, on
             className="flex-1"
           >
             <Users className="w-4 h-4 mr-2" />
-            Others
+            Bạn bè
+          </Button>
+          <Button
+            variant={currentView === 'profile' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => onViewChange('profile')}
+            className="flex-1"
+          >
+            <User className="w-4 h-4 mr-2" />
+            Cá nhân
           </Button>
         </div>
       </div>
+
+      {/* Skeleton khi search User */}
+      {currentView === "search" && loading &&
+        <>
+          <SkeletonConversation></SkeletonConversation>
+          <SkeletonConversation></SkeletonConversation>
+          <SkeletonConversation></SkeletonConversation>
+          <SkeletonConversation></SkeletonConversation>
+          <SkeletonConversation></SkeletonConversation>
+        </>
+      }
+
+      {/* User search list */}
+      {currentView === "search" && !loading && (searchList.length === 0 ? (
+        <p className={`p-3 rounded-lg cursor-pointer transition-all duration-fast hover:bg-card-hover `}>No users found</p>
+      ) : (
+        <div className="overflow-y-auto">
+          {searchList.map((user) => (
+            <div
+              key={user._id}
+              className={`p-3 rounded-lg cursor-pointer transition-all duration-fast hover:bg-card-hover`}
+              onClick={() => {handleClickUser(user.id)}}
+            >
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <Avatar className="w-12 h-12">
+                    <AvatarImage src={user.avatarUrl} />
+                    <AvatarFallback>{user.username}</AvatarFallback>
+                  </Avatar>
+                  <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white`}></div>
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between mb-1">
+                    <h3 className="font-medium text-foreground truncate">{user.username}</h3>
+                    {user.fullName && (
+                      <span className="text-xs text-muted-foreground">
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-muted-foreground truncate">
+                      {user.fullName || ""}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )
+      )}
 
       {/* Chat List */}
       <div className="flex-1 overflow-y-auto">
@@ -74,8 +178,7 @@ export function ChatSidebar({ chats, selectedChat, onChatSelect, currentView, on
               <div
                 key={chat.id}
                 onClick={() => onChatSelect(chat)}
-                className={`p-3 rounded-lg cursor-pointer transition-all duration-fast hover:bg-card-hover ${
-                  selectedChat?.id === chat.id ? 'bg-primary/10 border border-primary/20' : ''
+                className={`p-3 rounded-lg cursor-pointer transition-all duration-fast hover:bg-card-hover ${selectedChat?.id === chat.id ? 'bg-primary/10 border border-primary/20' : ''
                 }`}
               >
                 <div className="flex items-center gap-3">

@@ -31,7 +31,7 @@ export default function MainLayout() {
   // Chat state
   const [currentView, setCurrentView] = React.useState("chat")
   const [chats, setChats] = React.useState(mockChatsInitial)
-  const [selectedChat, setSelectedChat] = React.useState(mockChatsInitial[0])
+  const [selectedChat, setSelectedChat] = React.useState(null)
 
   // Contact tab state
   const [contactTab, setContactTab] = React.useState("home")
