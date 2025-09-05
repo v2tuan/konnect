@@ -1,4 +1,4 @@
-import User from "../models/userModel.js";
+import User from "../models/user.js";
 import sendMail from "../lib/sendMailUtil";
 import bcrypt from "bcryptjs";
 import HttpError from '../error/HttpError';

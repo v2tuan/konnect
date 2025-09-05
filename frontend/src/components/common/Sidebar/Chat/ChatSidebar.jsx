@@ -60,23 +60,6 @@ export function ChatSidebar({ chats, selectedChat, onChatSelect, currentView, on
     <div className="h-full flex flex-col">
       {/* Header */}
       <div className="p-4 border-b border-border">
-        <div className="flex items-center gap-3 mb-4">
-          <Avatar className="w-10 h-10">
-            <AvatarImage src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop&crop=face" />
-            <AvatarFallback>You</AvatarFallback>
-          </Avatar>
-          <div className="flex-1">
-            <h2 className="font-semibold text-foreground">Zalo Chat</h2>
-            <p className="text-xs text-success flex items-center gap-1">
-              <div className="w-2 h-2 bg-success rounded-full"></div>
-              Đang hoạt động
-            </p>
-          </div>
-          <Button variant="ghost" size="sm">
-            <Settings className="w-4 h-4" />
-          </Button>
-        </div>
-
         {/* Search */}
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
@@ -107,14 +90,14 @@ export function ChatSidebar({ chats, selectedChat, onChatSelect, currentView, on
           <Button
             variant={currentView === 'contacts' ? 'default' : 'ghost'}
             size="sm"
-            onClick={() => onViewChange('contacts')}
+            onClick={() => onViewChange('priority')}
             className="flex-1"
           >
             <Users className="w-4 h-4 mr-2" />
             Bạn bè
           </Button>
-          <Button
-            variant={currentView === 'profile' ? 'default' : 'ghost'}
+          <Button 
+            variant={currentView === 'profile' ? 'default' : 'ghost'} 
             size="sm"
             onClick={() => onViewChange('profile')}
             className="flex-1"

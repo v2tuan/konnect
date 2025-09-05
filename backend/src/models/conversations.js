@@ -26,6 +26,9 @@ let conversationSchema = new mongoose.Schema({
             default: 'https://example.com/default-group-avatar.png' // Default group avatar URL
         }
     },
+    cloud: {
+        ownerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true}
+    },
     messageSeq: {
         type: Number,
         default: 0
@@ -52,6 +55,11 @@ conversationSchema.pre('save', function(next) {
     this.updatedAt = Date.now();
     next();
 });
+
+conversationSchema.index(
+    { type:1, 'cloud.ownerId': 1 },
+    { unique: true, partialFilterExpression: {type: 'cloud'} } 
+)
 
 let Conversation = mongoose.model('Conversation', conversationSchema);
 export default Conversation;

@@ -1,30 +1,33 @@
 "use client"
 
-import * as React from "react"
 import {
+  Bell,
   BookUser,
   Brain,
   Cloud,
+  GalleryVerticalEnd,
   Inbox,
   Trash2
 } from "lucide-react"
 
-import { NavUser } from "@/components/common/Sidebar/nav-user"
 import { ChatSidebar } from "@/components/common/Sidebar/Chat/ChatSidebar"
+import { NavUser } from "@/components/common/Sidebar/nav-user"
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarGroup,
-  SidebarGroupContent,
   useSidebar
 } from "@/components/ui/sidebar"
-import ContactSidebar from "./Contact/ContactSidebar"
 import { NavLink, useLocation } from "react-router-dom"
+import ModeToggle from "../NavBar/ThemeToggle"
+import ContactSidebar from "./Contact/ContactSidebar"
+import { ContactsList } from "./Contact/ContactsList"
 
 const data = {
   user: {
@@ -76,7 +79,7 @@ export function AppSidebar({
                 className="w-full justify-center px-0"
               >
                 <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                  <Inbox className="size-4" />
+                  <GalleryVerticalEnd className="size-4" />
                 </div>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -113,7 +116,9 @@ export function AppSidebar({
           </SidebarGroup>
         </SidebarContent>
 
-        <SidebarFooter className="flex items-center justify-center">
+        <SidebarFooter className="flex items-center justify-center gap-3">
+          <Bell/>
+          <ModeToggle/>
           <NavUser />
         </SidebarFooter>
       </Sidebar>
