@@ -26,6 +26,16 @@ export const registerUserAPI = async (data) => {
   return response.data
 }
 
+export const searchUserByUsername = async (keyword) => {
+  const response = await authorizeAxiosInstance.get(`${API_ROOT}/api/search`, {
+    params: {
+      keyword
+    }
+  })
+  console.log(response)
+  return response.data
+}
+
 export const forgotPasswordAPI = async (data) => {
   const response = await authorizeAxiosInstance.post(`${API_ROOT}/api/auth/forgot`, data)
   return response.data

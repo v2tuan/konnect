@@ -6,7 +6,7 @@ import {
   Brain,
   Cloud,
   Inbox,
-  Trash2,
+  Trash2
 } from "lucide-react"
 
 import { NavUser } from "@/components/common/Sidebar/nav-user"
@@ -21,7 +21,7 @@ import {
   SidebarMenuItem,
   SidebarGroup,
   SidebarGroupContent,
-  useSidebar,
+  useSidebar
 } from "@/components/ui/sidebar"
 import ContactSidebar from "./Contact/ContactSidebar"
 import { NavLink, useLocation } from "react-router-dom"
@@ -30,15 +30,15 @@ const data = {
   user: {
     name: "Đặng Đăng Duy",
     email: "duyproven987@gmail.com",
-    avatar: "/avatars/shadcn.jpg",
+    avatar: "/avatars/shadcn.jpg"
   },
   navMain: [
     { title: "Message", url: "/chats", icon: Inbox },
     { title: "Contact", url: "/contacts", icon: BookUser },
     { title: "Cloud", url: "/cloud", icon: Cloud },
     { title: "Block", url: "/block", icon: Trash2 },
-    { title: "Agent Chat", url: "/agent", icon: Brain },
-  ],
+    { title: "Agent Chat", url: "/agent", icon: Brain }
+  ]
 }
 
 export function AppSidebar({
@@ -54,24 +54,24 @@ export function AppSidebar({
   const isContact = location.pathname.startsWith("/contacts")
 
   return (
-    <Sidebar 
-      collapsible="icon" 
-      className="overflow-hidden [&>[data-sidebar=sidebar]]:flex-row" 
+    <Sidebar
+      collapsible="icon"
+      className="overflow-hidden [&>[data-sidebar=sidebar]]:flex-row"
       {...props}
     >
       {/* Left rail - Luôn chỉ hiện icon, không expand */}
-      <Sidebar 
-        collapsible="none" 
+      <Sidebar
+        collapsible="none"
         className="w-[calc(var(--sidebar-width-icon))] border-r"
       >
         <SidebarHeader className="flex items-center justify-center">
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton 
+              <SidebarMenuButton
                 size="lg"
                 tooltip={{
                   children: "Konnect",
-                  hidden: false,
+                  hidden: false
                 }}
                 className="w-full justify-center px-0"
               >
@@ -97,7 +97,7 @@ export function AppSidebar({
                         className="w-full justify-center px-0"
                         tooltip={{
                           children: item.title,
-                          hidden: false,
+                          hidden: false
                         }}
                         onClick={() => setOpen(true)} // mở submenu
                       >
