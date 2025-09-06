@@ -329,7 +329,7 @@ export function ChatArea({ chat, onSendMessage }) {
             </div>
           </div> */}
 
-          <Accordion type="multiple" className="w-full">
+          <Accordion type="multiple" className="w-full" defaultValue = {["a", "b", "c", "d"]}>
 
             {/* Media Section */}
             <AccordionItem value="a">
