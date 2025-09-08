@@ -136,8 +136,8 @@ export function ChatSidebar({ chats, selectedChat, onChatSelect, currentView, on
           {searchList.map((user) => (
             <div
               key={user._id}
-              className={`p-3 rounded-lg cursor-pointer transition-all duration-fast hover:bg-card-hover`}
-              onClick={() => {handleClickUser(user.id)}}
+              className={`p-3 rounded-lg cursor-pointer transition-all duration-fast hover:bg-primary/10`}
+              onClick={() => {handleClickUser(user.id); onChatSelect(user)}}
             >
               <div className="flex items-center gap-3">
                 <div className="relative">
