@@ -74,7 +74,7 @@ const createConversation = async (conversationData, userId) => {
     // Thêm member vào conversation
     const memberPromises = membersToAdd.map(member => {
         const conversationMember = new ConversationMember({
-            conversationId: newConversation._id,
+            conversation: newConversation._id,
             userId: member.userId,
             role: member.role
         })
@@ -87,6 +87,79 @@ const createConversation = async (conversationData, userId) => {
     return newConversation
 }
 
+// Get Conversation
+const getConversation = async (page, limit, userId) => {
+    const memberRecords = await ConversationMember.find({userId})
+    .populate({
+        path: 'conversation',
+        populate: [
+            {
+                path: 'lastMessage.senderId',
+                select: 'fullName userName avatarUrl'
+            }
+        ]
+    })
+    .sort({'conversation.createdAt': -1})
+    .limit(limit)
+    .skip((page - 1) * limit)
+
+    console.log(memberRecords)
+
+    const conversations = await Promise.all(
+        memberRecords.map(async (member) => {
+            const conversation = member.conversation
+            let conversationData = {
+                id: conversation._id,
+                type: conversation.type,
+                lastMessage: conversation.lastMessage,
+                messageSeq: conversation.messageSeq,
+                updatedAt: conversation.updatedAt
+            }
+
+            // Xử lý theo từng loại conversation
+            if(conversation.type === 'direct'){
+                // Tìm user còn lại trong cuộc trò chuyện
+                const members = await ConversationMember.find({conversation: conversation._id})
+                const otherUserId = members.find(user => user.userId !== userId).userId
+                const otherUser = await User.findById(otherUserId)
+
+                conversationData.direct = {
+                    otherUser: {
+                        id: otherUser._id,
+                        fullName: otherUser.fullName,
+                        userName: otherUser.username,
+                        avatarURL: otherUser.avatarUrl,
+                        status: otherUser.status
+                    }
+                }
+
+                conversationData.displayName = otherUser.fullName,
+                conversationData.conversationAvatarURL = otherUser.avatarUrl
+            }
+            else if(conversation.type === 'group'){
+                // Đếm số thành viên
+
+                conversationData.group = {
+                    name: conversation.group.name,
+                    avatarURL: conversation.group.avatarURL
+                }
+
+                conversationData.displayName = conversation.group.name
+                conversationData.conversationAvaterUrl = conversation.group.avatarURL
+            }
+            else if(conversation.type === 'cloud'){
+                conversationData.displayName = 'Your Cloud',
+                conversationData.conversationAvatarURL = 'https://cdn-icons-png.flaticon.com/512/8038/8038388.png'
+            }
+
+            return conversationData
+        })
+    )
+
+    return conversations
+}
+
 export const conversationService = {
-    createConversation
+    createConversation,
+    getConversation
 }

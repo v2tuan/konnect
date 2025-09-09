@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 
 let conversationMemberSchema = new mongoose.Schema({
-    conversationId: {
+    conversation: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Conversation',
         required: true

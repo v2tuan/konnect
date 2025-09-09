@@ -13,6 +13,22 @@ const createConversation = async (req, res, next) => {
     }
 }
 
+const getConversation = async (req, res, next) => {
+    try {
+        const { page, limit } = req.query
+        const userId = req.userId
+
+        const conversations = await conversationService.getConversation(page, limit, userId)
+        res.status(StatusCodes.OK).json({
+            data: conversations
+        })
+    }
+    catch (error) {
+        next(error)
+    }
+}
+
 export const conversationController = {
-    createConversation
+    createConversation,
+    getConversation
 }
