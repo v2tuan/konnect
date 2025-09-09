@@ -1,9 +1,10 @@
 import Conversation from "~/models/conversations";
-import ConversationMember from"~/models/conversation_members";
+import ConversationMember from "~/models/conversation_members";
 import User from "~/models/user";
+import FriendShip from "~/models/friendships";
 
 const createConversation = async (conversationData, userId) => {
-    const {type, memberIds} = conversationData
+    const { type, memberIds } = conversationData
 
     const conversationDataToCreate = {
         type,
@@ -12,28 +13,32 @@ const createConversation = async (conversationData, userId) => {
 
     let membersToAdd = []
 
-    if(type === 'cloud'){
+    if (type === 'cloud') {
         // Kiểm tra đã có cloud conversation chưa
 
         // Set up conversation data
         conversationData.cloud = {
             ownerId: userId
         }
+
+        membersToAdd = [
+            { userId: userId, role: 'owner' }
+        ]
     }
-    else if(type === 'direct'){
+    else if (type === 'direct') {
         // Kiểm tra recipient có tồn tại không
-        if(memberIds.length > 2){
+        if (memberIds.length > 2) {
             throw new Error('Tin nhắn trực tiếp chỉ có tối đa 2 thành viên')
         }
 
         const recipientId = memberIds.find(id => id !== userId)
         const recipient = await User.findById(recipientId)
-        if(!recipientId){
+        if (!recipientId) {
             throw new Error('Recipient not found')
         }
 
         // Kiểm tra không thể tạo conversation với chính mình
-        if(userId === recipientId){
+        if (userId === recipientId) {
             throw new Error('Cannot create a conversation with yourself')
         }
 
@@ -43,14 +48,14 @@ const createConversation = async (conversationData, userId) => {
 
         // Set up conversation data
         membersToAdd = [
-            {userId: userId, role: 'member'},
-            {userId: recipientId, role: 'member'}
+            { userId: userId, role: 'member' },
+            { userId: recipientId, role: 'member' }
         ]
     }
-    else if(type === 'group'){
+    else if (type === 'group') {
         // Kiểm tra tất cả member có tồn tại không
         // Kiểm tra có user hiện tại trong danh sách không nếu không thì thêm vào
-        if(memberIds.length <= 2){
+        if (memberIds.length <= 2) {
             throw new Error('Không thể tạo nhóm chỉ với 2 thành viên')
         }
         const uniqueMemberIds = [...new Set([userId, ...memberIds])]
@@ -89,19 +94,19 @@ const createConversation = async (conversationData, userId) => {
 
 // Get Conversation
 const getConversation = async (page, limit, userId) => {
-    const memberRecords = await ConversationMember.find({userId})
-    .populate({
-        path: 'conversation',
-        populate: [
-            {
-                path: 'lastMessage.senderId',
-                select: 'fullName userName avatarUrl'
-            }
-        ]
-    })
-    .sort({'conversation.createdAt': -1})
-    .limit(limit)
-    .skip((page - 1) * limit)
+    const memberRecords = await ConversationMember.find({ userId })
+        .populate({
+            path: 'conversation',
+            populate: [
+                {
+                    path: 'lastMessage.senderId',
+                    select: 'fullName userName avatarUrl'
+                }
+            ]
+        })
+        .sort({ 'conversation.createdAt': -1 })
+        .limit(limit)
+        .skip((page - 1) * limit)
 
     console.log(memberRecords)
 
@@ -117,11 +122,19 @@ const getConversation = async (page, limit, userId) => {
             }
 
             // Xử lý theo từng loại conversation
-            if(conversation.type === 'direct'){
+            if (conversation.type === 'direct') {
                 // Tìm user còn lại trong cuộc trò chuyện
-                const members = await ConversationMember.find({conversation: conversation._id})
+                const members = await ConversationMember.find({ conversation: conversation._id })
                 const otherUserId = members.find(user => user.userId !== userId).userId
                 const otherUser = await User.findById(otherUserId)
+
+                // Get friendship
+                const friendship = await FriendShip.findOne({
+                    $or: [
+                        { profileRequest: otherUserId, profileAccept: userId },
+                        { profileRequest: userId, profileAcept: otherUserId }
+                    ]
+                })
 
                 conversationData.direct = {
                     otherUser: {
@@ -129,14 +142,15 @@ const getConversation = async (page, limit, userId) => {
                         fullName: otherUser.fullName,
                         userName: otherUser.username,
                         avatarURL: otherUser.avatarUrl,
-                        status: otherUser.status
+                        status: otherUser.status,
+                        friendship: friendship ? true : false
                     }
                 }
 
                 conversationData.displayName = otherUser.fullName,
-                conversationData.conversationAvatarURL = otherUser.avatarUrl
+                    conversationData.conversationAvatarURL = otherUser.avatarUrl
             }
-            else if(conversation.type === 'group'){
+            else if (conversation.type === 'group') {
                 // Đếm số thành viên
 
                 conversationData.group = {
@@ -147,9 +161,9 @@ const getConversation = async (page, limit, userId) => {
                 conversationData.displayName = conversation.group.name
                 conversationData.conversationAvaterUrl = conversation.group.avatarURL
             }
-            else if(conversation.type === 'cloud'){
+            else if (conversation.type === 'cloud') {
                 conversationData.displayName = 'Your Cloud',
-                conversationData.conversationAvatarURL = 'https://cdn-icons-png.flaticon.com/512/8038/8038388.png'
+                    conversationData.conversationAvatarURL = 'https://cdn-icons-png.flaticon.com/512/8038/8038388.png'
             }
 
             return conversationData
