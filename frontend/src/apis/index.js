@@ -2,6 +2,11 @@ import authorizeAxiosInstance from "@/utils/authorizeAxios"
 import axios from "axios"
 import { API_ROOT } from "@/utils/constant"
 
+/* ======================== AUTH APIs ======================== */
+
+/**
+ * Kiểm tra trạng thái đăng nhập của user
+ */
 export const checkAuth = async () => {
   try {
     const response = await authorizeAxiosInstance.get(
@@ -21,45 +26,85 @@ export const checkAuth = async () => {
   }
 }
 
+/**
+ * Đăng ký tài khoản mới
+ */
 export const registerUserAPI = async (data) => {
   const response = await axios.post(`${API_ROOT}/api/auth/register`, data)
   return response.data
 }
 
-export const searchUserByUsername = async (keyword) => {
-  const response = await authorizeAxiosInstance.get(`${API_ROOT}/api/search`, {
-    params: {
-      keyword
-    }
-  })
-  return response.data
-}
-
-export const findUserById = async (userId) => {
-  const response = await authorizeAxiosInstance.get(`${API_ROOT}/api/findUser`, {
-    params: {
-      userId
-    }
-  })
-  return response.data
-}
-
+/**
+ * Quên mật khẩu (gửi email reset)
+ */
 export const forgotPasswordAPI = async (data) => {
   const response = await authorizeAxiosInstance.post(`${API_ROOT}/api/auth/forgot`, data)
   return response.data
 }
 
+/**
+ * Đặt lại mật khẩu sau khi xác minh
+ */
 export const resetPasswordAPI = async (data) => {
   const response = await authorizeAxiosInstance.post(`${API_ROOT}/api/auth/reset-password`, data)
   return response.data
 }
 
+/* ======================== USER APIs ======================== */
+
+/**
+ * Tìm user theo username (search)
+ */
+export const searchUserByUsername = async (keyword) => {
+  const response = await authorizeAxiosInstance.get(`${API_ROOT}/api/search`, {
+    params: { keyword }
+  })
+  return response.data
+}
+
+/**
+ * Tìm user theo userId
+ */
+export const findUserById = async (userId) => {
+  const response = await authorizeAxiosInstance.get(`${API_ROOT}/api/findUser`, {
+    params: { userId }
+  })
+  return response.data
+}
+
+/* ======================== CONVERSATION APIs ======================== */
+
+/**
+ * Lấy danh sách cloud conversation
+ */
 export const getCloudConversation = async () => {
   const response = await authorizeAxiosInstance.get(`${API_ROOT}/api/cloud`)
   return response.data
 }
 
+/**
+ * Lấy danh sách các conversation
+ */
+export const getConversations = async (page, limit) => {
+  const response = await authorizeAxiosInstance.get(`${API_ROOT}/api/conversation`, {
+    params: {
+      page,
+      limit
+    }
+  })
+
+  return response.data
+}
+
+/* ======================== MESSAGE APIs ======================== */
+
+/**
+ * Gửi tin nhắn trong conversation
+ */
 export const sendMessage = async (conversationId, text) => {
-  const response = await authorizeAxiosInstance.post(`${API_ROOT}/api/messages`, { conversationId, text })
+  const response = await authorizeAxiosInstance.post(`${API_ROOT}/api/messages`, {
+    conversationId,
+    text
+  })
   return response.data
 }

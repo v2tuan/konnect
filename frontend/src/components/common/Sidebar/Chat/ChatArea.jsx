@@ -26,7 +26,7 @@ import { MessageBubble } from './MessageBubble'
 import { EmojiPicker } from './EmojiPicker'
 import { Switch } from "@/components/ui/switch"
 
-export function ChatArea({ chat, onSendMessage }) {
+export function ChatArea({ conversation, onSendMessage }) {
   const [messageText, setMessageText] = useState('')
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
@@ -70,9 +70,9 @@ export function ChatArea({ chat, onSendMessage }) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
 
-  useEffect(() => {
-    scrollToBottom()
-  }, [chat.messages])
+  // useEffect(() => {
+  //   scrollToBottom()
+  // }, [chat.messages])
 
   const handleSendMessage = () => {
     if (messageText.trim()) {
@@ -118,19 +118,18 @@ export function ChatArea({ chat, onSendMessage }) {
           <div className="flex items-center gap-3">
             <div className="relative">
               <Avatar className="w-10 h-10">
-                <AvatarImage src={chat.avatarUrl} />
-                <AvatarFallback>{chat.username}</AvatarFallback>
+                <AvatarImage src={conversation?.conversationAvatarUrl} />
+                <AvatarFallback>{conversation?.displayName}</AvatarFallback>
               </Avatar>
-              <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white"
+              {conversation.direct && <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white"
                 style={{
-                  backgroundColor: chat.status === 'online' ? 'var(--status-online)' :
-                    chat.status === 'away' ? 'var(--status-away)' :
-                      'var(--status-offline)'
+                  backgroundColor: conversation?.direct?.otherUser?.status?.isOnline ? 'var(--status-online)' : 'var(--status-offline)'
                 }}></div>
+              }
             </div>
             <div>
-              <h2 className="font-semibold text-foreground">{chat.fullName}</h2>
-              <p className={`text-sm ${getStatusColor(chat.status)}`}>
+              <h2 className="font-semibold text-foreground">{conversation?.displayName}</h2>
+              <p className={`text-sm ${getStatusColor(conversation?.direct?.otherUser?.status?.isOnline ? 'online' : 'offline')}`}>
                 {/* {chat.status && chat.status === 'online' ? 'Đang hoạt động' :
                 chat.status === 'away' ? `Hoạt động ${chat.contact.lastSeen} trước` :
                   `Hoạt động ${chat.contact.lastSeen} trước`} */}
@@ -157,7 +156,7 @@ export function ChatArea({ chat, onSendMessage }) {
         {/* Messages Area */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {/* Nếu chưa là bạn bè thì hiển thị gửi lời mời kết bạn */}
-          {!chat.friendShip && (
+          {conversation.direct && !conversation.friendShip && (
             <div className="flex items-center justify-between w-full p-3 border rounded-lg shadow-sm">
               {/* Icon + text */}
               <div className="flex items-center space-x-2 text-sm">
@@ -288,15 +287,15 @@ export function ChatArea({ chat, onSendMessage }) {
           {/* User Profile */}
           <div className="p-6 text-center border-b">
             <div className="w-20 h-20 bg-blue-500 rounded-full flex items-center justify-center mx-auto mb-4">
-              {chat.avatarUrl ?
+              {conversation.conversationAvatarUrl ?
                 <Avatar className="w-20 h-20">
-                  <AvatarImage src={chat.avatarUrl} />
-                  <AvatarFallback>{chat.username}</AvatarFallback>
-                </Avatar> : <span className="text-2xl font-bold text-white">D</span>
+                  <AvatarImage src={conversation.conversationAvatarUrl} />
+                  <AvatarFallback>{conversation.displayName}</AvatarFallback>
+                </Avatar> : <span className="text-2xl font-bold text-white">{conversation.displayName[0]}</span>
               }
             </div>
             <div className="flex items-center justify-center mb-4">
-              <h3 className="text-xl font-semibold">{chat.fullName}</h3>
+              <h3 className="text-xl font-semibold">{conversation.displayName}</h3>
               <Edit size={16} className="ml-2 cursor-pointer" />
             </div>
 

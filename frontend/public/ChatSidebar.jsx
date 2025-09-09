@@ -202,18 +202,18 @@ export function ChatSidebar({ chats, selectedChat, onChatSelect, currentView, on
             {conversationList.map((conversation) => (
               <div
                 key={conversation.id}
-                onClick={() => onChatSelect(conversation)}
+                // onClick={() => onChatSelect(chat)}
                 className={`p-3 rounded-lg cursor-pointer transition-all duration-fast hover:bg-card-hover ${selectedChat?.id === conversation.id ? 'bg-primary/10 border border-primary/20' : ''
                   }`}
               >
+                <h1>aslk;djfgl;ạkdg</h1>
                 <div className="flex items-center gap-3">
                   <div className="relative">
                     <Avatar className="w-12 h-12">
-                      <AvatarImage src={conversation.conversationAvatarUrl} />
+                      <AvatarImage src={conversation.conversationAvatarURL} />
                       <AvatarFallback>{conversation.displayName}</AvatarFallback>
                     </Avatar>
-                    {conversation.direct && <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${getStatusColor(conversation?.direct?.otherUser?.status?.isOnline ? 'online' : 'offline')}
-`}></div>}
+                    <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${getStatusColor(conversation.status)}`}></div>
                   </div>
 
                   <div className="flex-1 min-w-0">
@@ -226,17 +226,17 @@ export function ChatSidebar({ chats, selectedChat, onChatSelect, currentView, on
                       )}
                     </div>
 
-                    <div className="flex items-center justify-between">
+                    {/* <div className="flex items-center justify-between">
                       <p className="text-sm text-muted-foreground truncate">
-                        {/* {chat.lastMessage?.isOwn ? 'Bạn: ' : ''} */}
-                        {conversation.lastMessage?.textPreview || 'Chưa có tin nhắn'}
+                        {chat.lastMessage?.isOwn ? 'Bạn: ' : ''}
+                        {chat.lastMessage?.text || 'Chưa có tin nhắn'}
                       </p>
-                      {/* {chat.unreadCount > 0 && (
+                      {chat.unreadCount > 0 && (
                         <Badge variant="destructive" className="ml-2 px-1.5 py-0.5 text-xs">
                           {chat.unreadCount > 99 ? '99+' : chat.unreadCount}
                         </Badge>
-                      )} */}
-                    </div>
+                      )}
+                    </div> */}
                   </div>
                 </div>
               </div>

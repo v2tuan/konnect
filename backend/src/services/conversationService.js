@@ -55,10 +55,11 @@ const createConversation = async (conversationData, userId) => {
     else if (type === 'group') {
         // Kiểm tra tất cả member có tồn tại không
         // Kiểm tra có user hiện tại trong danh sách không nếu không thì thêm vào
-        if (memberIds.length <= 2) {
+        const uniqueMemberIds = [...new Set([userId, ...memberIds])]
+
+        if (uniqueMemberIds.length <= 2) {
             throw new Error('Không thể tạo nhóm chỉ với 2 thành viên')
         }
-        const uniqueMemberIds = [...new Set([userId, ...memberIds])]
 
         // Set up conversation data
         conversationData.group = {
@@ -148,7 +149,7 @@ const getConversation = async (page, limit, userId) => {
                 }
 
                 conversationData.displayName = otherUser.fullName,
-                    conversationData.conversationAvatarURL = otherUser.avatarUrl
+                    conversationData.conversationAvatarUrl = otherUser.avatarUrl
             }
             else if (conversation.type === 'group') {
                 // Đếm số thành viên
@@ -159,11 +160,11 @@ const getConversation = async (page, limit, userId) => {
                 }
 
                 conversationData.displayName = conversation.group.name
-                conversationData.conversationAvaterUrl = conversation.group.avatarURL
+                conversationData.conversationAvatarUrl = conversation.group.avatarUrl
             }
             else if (conversation.type === 'cloud') {
                 conversationData.displayName = 'Your Cloud',
-                    conversationData.conversationAvatarURL = 'https://cdn-icons-png.flaticon.com/512/8038/8038388.png'
+                    conversationData.conversationAvatarUrl = 'https://cdn-icons-png.flaticon.com/512/8038/8038388.png'
             }
 
             return conversationData

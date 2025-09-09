@@ -18,7 +18,7 @@ export default function MessagePage() {
   return (
     <div className="h-full w-full">
       <ChatArea
-        chat={chat}
+        conversation={chat}
         onSendMessage={chatState.onSendMessage}
       />
     </div>
