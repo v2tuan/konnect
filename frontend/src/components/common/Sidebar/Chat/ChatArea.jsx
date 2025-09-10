@@ -1,28 +1,24 @@
+// ChatArea.jsx
 import { useState, useRef, useEffect } from 'react'
-import { Phone, Video, MoreHorizontal, Search as SearchIcon, UserPlus, Image, Smile, Mic, Send, Paperclip } from 'lucide-react'
+import {
+  Phone, Video, MoreHorizontal, Search as SearchIcon, UserPlus,
+  Image, Smile, Mic, Send, Paperclip
+} from 'lucide-react'
 import { Bell, Pin, Users, Edit, ExternalLink, Shield, EyeOff, TriangleAlert, Trash } from 'lucide-react'
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion"
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { Switch } from "@/components/ui/switch"
-
-// Optional: Nếu bạn đang dùng MessageBubble
+// Optional
 import { MessageBubble } from './MessageBubble'
 
-/**
- * Props:
- * - mode: 'direct' | 'cloud' (mặc định 'direct')
- * - conversation: { displayName, conversationAvatarUrl, direct?, friendShip? }
- * - messages: [{ id, isOwn, text, createdAt, ... }]
- * - onSendMessage(text)
- * - loading, sending
- */
 export function ChatArea({
   mode = 'direct',
   conversation,
   messages = [],
   onSendMessage,
+  onSendFriendRequest, // <-- thêm callback nếu cần
   loading,
   sending
 }) {
@@ -33,7 +29,10 @@ export function ChatArea({
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
 
-    const mediaItems = [
+  const isCloud = mode === 'cloud' || conversation?.type === 'cloud'
+  const isDirect = mode === 'direct' || !!conversation?.direct
+
+  const mediaItems = [
     { id: 1, url: 'http://localhost:5173/381.jpg' },
     { id: 2, url: 'http://localhost:5173/382.jpg' },
     { id: 3, url: 'http://localhost:5173/383.jpg' },
@@ -60,6 +59,9 @@ export function ChatArea({
     }
   ]
 
+  const getStatusColor = (online) =>
+    online ? 'text-emerald-500' : 'text-muted-foreground'
+
   const togglePanel = () => setIsOpen(!isOpen)
 
   const handleSendMessage = () => {
@@ -70,19 +72,12 @@ export function ChatArea({
     setShowEmojiPicker(false)
   }
 
-  const handleKeyPress = (e) => {
+  const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSendMessage()
     }
   }
-
-  const handleEmojiSelect = (emoji) => {
-    setMessageText(prev => prev + emoji)
-    inputRef.current?.focus()
-  }
-
-  const handleVoiceRecord = () => setIsRecording(v => !v)
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -90,7 +85,7 @@ export function ChatArea({
 
   return (
     <div className="min-h-screen flex">
-      {/* Main Content */}
+      {/* Main */}
       <div className={`flex flex-col flex-1 transition-all duration-300 ease-in-out ${isOpen ? 'mr-80' : 'mr-0'}`}>
         {/* Header */}
         <div className="flex items-center justify-between p-4 bg-card/80 backdrop-blur-sm border-b border-border shadow-soft">
@@ -100,15 +95,29 @@ export function ChatArea({
                 <AvatarImage src={conversation?.conversationAvatarUrl} />
                 <AvatarFallback>{conversation?.displayName?.[0] ?? 'C'}</AvatarFallback>
               </Avatar>
+
+              {/* Chấm online: chỉ hiện với direct, KHÔNG hiện với cloud */}
+              {isDirect && !isCloud && (
+                <div
+                  className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-background"
+                  style={{
+                    backgroundColor: conversation?.direct?.otherUser?.status?.isOnline
+                      ? 'var(--status-online)'
+                      : 'var(--status-offline)'
+                  }}
+                />
+              )}
             </div>
+
             <div>
               <h2 className="font-semibold text-foreground">
-                {conversation?.displayName ?? (mode === 'cloud' ? 'Cloud Chat' : 'Conversation')}
+                {conversation?.displayName ?? (isCloud ? 'Cloud Chat' : 'Conversation')}
               </h2>
-              {/* Cloud mode: không hiển thị status */}
-              {mode !== 'cloud' && (
-                <p className="text-sm text-muted-foreground">
-                  {/* show online/offline nếu cần */}
+
+              {/* Trạng thái: ẩn với cloud */}
+              {!isCloud && (
+                <p className={`text-sm ${getStatusColor(conversation?.direct?.otherUser?.status?.isOnline)}`}>
+                  {conversation?.direct?.otherUser?.status?.isOnline ? 'Đang hoạt động' : 'Ngoại tuyến'}
                 </p>
               )}
             </div>
@@ -118,8 +127,9 @@ export function ChatArea({
             <Button variant="ghost" size="sm">
               <SearchIcon className="w-5 h-5" />
             </Button>
-            {/* Cloud mode: ẩn call/video */}
-            {mode !== 'cloud' && (
+
+            {/* Call/Video: ẩn với cloud */}
+            {!isCloud && (
               <>
                 <Button variant="ghost" size="sm">
                   <Phone className="w-5 h-5" />
@@ -129,6 +139,7 @@ export function ChatArea({
                 </Button>
               </>
             )}
+
             <Button variant="ghost" size="sm" onClick={togglePanel}>
               <MoreHorizontal className="w-5 h-5" />
             </Button>
@@ -137,18 +148,32 @@ export function ChatArea({
 
         {/* Messages Area */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          {/* Cloud mode: không có “gửi kết bạn” */}
-          {/* Render messages */}
+          {/* “Gửi yêu cầu kết bạn”: hiện với direct khi CHƯA friend, ẩn với cloud */}
+          {isDirect && !isCloud && !conversation?.friendShip && (
+            <div className="flex items-center justify-between w-full p-3 border rounded-lg shadow-sm bg-card">
+              <div className="flex items-center text-sm">
+                <UserPlus className="w-4 h-4 mr-2" />
+                <span>Gửi yêu cầu kết bạn tới người này</span>
+              </div>
+
+              <Button
+                className="px-3 py-1 text-sm font-medium"
+                onClick={() => onSendFriendRequest?.(conversation?.direct?.otherUser?._id)}
+              >
+                Gửi kết bạn
+              </Button>
+            </div>
+          )}
+
+          {/* Danh sách tin nhắn */}
           {messages.length === 0 && (
             <div className="text-center text-xs opacity-60 mt-10">
-              {mode === 'cloud' ? 'Chưa có ghi chú nào.' : 'Chưa có tin nhắn.'}
+              {isCloud ? 'Chưa có ghi chú nào.' : 'Chưa có tin nhắn.'}
             </div>
           )}
 
           {messages.map((message, index) => {
-            const prev = messages[index - 1]
-            const showAvatar = false // cloud: luôn không cần avatar
-            // Nếu bạn có MessageBubble:
+            const showAvatar = false // cloud/direct đơn giản: ẩn avatar bong bóng
             if (MessageBubble) {
               return (
                 <MessageBubble
@@ -163,7 +188,7 @@ export function ChatArea({
                 />
               )
             }
-            // fallback bubble đơn giản
+            // fallback bubble
             return (
               <div
                 key={message.id || message._id || index}
@@ -181,7 +206,7 @@ export function ChatArea({
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Input Area */}
+        {/* Input */}
         <div className="p-4 bg-card/80 backdrop-blur-sm border-t border-border">
           <div className="flex items-end gap-2">
             <Button variant="ghost" size="sm" className="shrink-0">
@@ -196,8 +221,8 @@ export function ChatArea({
                 ref={inputRef}
                 value={messageText}
                 onChange={(e) => setMessageText(e.target.value)}
-                onKeyPress={handleKeyPress}
-                placeholder={mode === 'cloud' ? "Viết ghi chú..." : "Nhập tin nhắn..."}
+                onKeyDown={handleKeyDown}
+                placeholder={isCloud ? "Viết ghi chú..." : "Nhập tin nhắn..."}
                 className="pr-12"
               />
               <Button
@@ -209,12 +234,6 @@ export function ChatArea({
               >
                 <Smile className="w-4 h-4" />
               </Button>
-              {/* EmojiPicker của bạn nếu có */}
-              {/* {showEmojiPicker && (
-                <div className="absolute bottom-full right-0 mb-2 z-50">
-                  <EmojiPicker onEmojiSelect={handleEmojiSelect} />
-                </div>
-              )} */}
             </div>
 
             {messageText.trim() ? (
@@ -225,7 +244,7 @@ export function ChatArea({
               <Button
                 variant={isRecording ? 'destructive' : 'ghost'}
                 size="sm"
-                onClick={handleVoiceRecord}
+                onClick={() => setIsRecording(v => !v)}
                 className="shrink-0"
                 type="button"
               >
