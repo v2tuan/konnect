@@ -1,32 +1,31 @@
 import { useState, useRef, useEffect } from 'react'
-import { Phone, Video, MoreHorizontal, Search, UserPlus, Image, Smile, Mic, Send, Paperclip } from 'lucide-react'
-import {
-  Bell,
-  Pin,
-  Users,
-  Edit,
-  ExternalLink,
-  Shield,
-  EyeOff,
-  TriangleAlert,
-  Trash
-} from 'lucide-react'
-import {
-  Accordion, // Thẻ cha bọc toàn bộ accordion
-  AccordionItem, // Một mục (item) trong accordion
-  AccordionTrigger, // Nút bấm để mở/đóng nội dung
-  AccordionContent // Nội dung hiển thị khi mở
-} from "@/components/ui/accordion"
-
+import { Phone, Video, MoreHorizontal, Search as SearchIcon, UserPlus, Image, Smile, Mic, Send, Paperclip } from 'lucide-react'
+import { Bell, Pin, Users, Edit, ExternalLink, Shield, EyeOff, TriangleAlert, Trash } from 'lucide-react'
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion"
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
-import { Badge } from '@/components/ui/badge'
-import { MessageBubble } from './MessageBubble'
-import { EmojiPicker } from './EmojiPicker'
 import { Switch } from "@/components/ui/switch"
 
-export function ChatArea({ conversation, onSendMessage }) {
+// Optional: Nếu bạn đang dùng MessageBubble
+import { MessageBubble } from './MessageBubble'
+
+/**
+ * Props:
+ * - mode: 'direct' | 'cloud' (mặc định 'direct')
+ * - conversation: { displayName, conversationAvatarUrl, direct?, friendShip? }
+ * - messages: [{ id, isOwn, text, createdAt, ... }]
+ * - onSendMessage(text)
+ * - loading, sending
+ */
+export function ChatArea({
+  mode = 'direct',
+  conversation,
+  messages = [],
+  onSendMessage,
+  loading,
+  sending
+}) {
   const [messageText, setMessageText] = useState('')
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
@@ -34,8 +33,7 @@ export function ChatArea({ conversation, onSendMessage }) {
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
 
-  // Sample media data
-  const mediaItems = [
+    const mediaItems = [
     { id: 1, url: 'http://localhost:5173/381.jpg' },
     { id: 2, url: 'http://localhost:5173/382.jpg' },
     { id: 3, url: 'http://localhost:5173/383.jpg' },
@@ -62,24 +60,14 @@ export function ChatArea({ conversation, onSendMessage }) {
     }
   ]
 
-  const togglePanel = () => {
-    setIsOpen(!isOpen)
-  }
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }
-
-  // useEffect(() => {
-  //   scrollToBottom()
-  // }, [chat.messages])
+  const togglePanel = () => setIsOpen(!isOpen)
 
   const handleSendMessage = () => {
-    if (messageText.trim()) {
-      onSendMessage(messageText.trim())
-      setMessageText('')
-      setShowEmojiPicker(false)
-    }
+    const value = messageText.trim()
+    if (!value || sending) return
+    onSendMessage?.(value)
+    setMessageText('')
+    setShowEmojiPicker(false)
   }
 
   const handleKeyPress = (e) => {
@@ -94,24 +82,15 @@ export function ChatArea({ conversation, onSendMessage }) {
     inputRef.current?.focus()
   }
 
-  const handleVoiceRecord = () => {
-    setIsRecording(!isRecording)
-    // TODO: Implement voice recording
-  }
+  const handleVoiceRecord = () => setIsRecording(v => !v)
 
-  const getStatusColor = (status) => {
-    switch (status) {
-    case 'online': return { color: 'var(--status-online)' }
-    case 'away': return { color: 'var(--status-away)' }
-    case 'busy': return { color: 'var(--status-busy)' }
-    case 'offline': return { color: 'var(--status-offline)' }
-    default: return { color: 'var(--status-offline)' }
-    }
-  }
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, sending])
 
   return (
     <div className="min-h-screen flex">
-      {/* Main Content - sẽ thu hẹp khi panel mở */}
+      {/* Main Content */}
       <div className={`flex flex-col flex-1 transition-all duration-300 ease-in-out ${isOpen ? 'mr-80' : 'mr-0'}`}>
         {/* Header */}
         <div className="flex items-center justify-between p-4 bg-card/80 backdrop-blur-sm border-b border-border shadow-soft">
@@ -119,34 +98,37 @@ export function ChatArea({ conversation, onSendMessage }) {
             <div className="relative">
               <Avatar className="w-10 h-10">
                 <AvatarImage src={conversation?.conversationAvatarUrl} />
-                <AvatarFallback>{conversation?.displayName}</AvatarFallback>
+                <AvatarFallback>{conversation?.displayName?.[0] ?? 'C'}</AvatarFallback>
               </Avatar>
-              {conversation.direct && <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white"
-                style={{
-                  backgroundColor: conversation?.direct?.otherUser?.status?.isOnline ? 'var(--status-online)' : 'var(--status-offline)'
-                }}></div>
-              }
             </div>
             <div>
-              <h2 className="font-semibold text-foreground">{conversation?.displayName}</h2>
-              <p className={`text-sm ${getStatusColor(conversation?.direct?.otherUser?.status?.isOnline ? 'online' : 'offline')}`}>
-                {/* {chat.status && chat.status === 'online' ? 'Đang hoạt động' :
-                chat.status === 'away' ? `Hoạt động ${chat.contact.lastSeen} trước` :
-                  `Hoạt động ${chat.contact.lastSeen} trước`} */}
-              </p>
+              <h2 className="font-semibold text-foreground">
+                {conversation?.displayName ?? (mode === 'cloud' ? 'Cloud Chat' : 'Conversation')}
+              </h2>
+              {/* Cloud mode: không hiển thị status */}
+              {mode !== 'cloud' && (
+                <p className="text-sm text-muted-foreground">
+                  {/* show online/offline nếu cần */}
+                </p>
+              )}
             </div>
           </div>
 
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="sm">
-              <Search className="w-5 h-5" />
+              <SearchIcon className="w-5 h-5" />
             </Button>
-            <Button variant="ghost" size="sm">
-              <Phone className="w-5 h-5" />
-            </Button>
-            <Button variant="ghost" size="sm">
-              <Video className="w-5 h-5" />
-            </Button>
+            {/* Cloud mode: ẩn call/video */}
+            {mode !== 'cloud' && (
+              <>
+                <Button variant="ghost" size="sm">
+                  <Phone className="w-5 h-5" />
+                </Button>
+                <Button variant="ghost" size="sm">
+                  <Video className="w-5 h-5" />
+                </Button>
+              </>
+            )}
             <Button variant="ghost" size="sm" onClick={togglePanel}>
               <MoreHorizontal className="w-5 h-5" />
             </Button>
@@ -154,100 +136,89 @@ export function ChatArea({ conversation, onSendMessage }) {
         </div>
 
         {/* Messages Area */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {/* Nếu chưa là bạn bè thì hiển thị gửi lời mời kết bạn */}
-          {conversation.direct && !conversation.friendShip && (
-            <div className="flex items-center justify-between w-full p-3 border rounded-lg shadow-sm">
-              {/* Icon + text */}
-              <div className="flex items-center space-x-2 text-sm">
-                <UserPlus className="w-4 h-4 mr-2" />
-                <span>Gửi yêu cầu kết bạn tới người này</span>
-              </div>
-
-              {/* Button */}
-              <Button className="px-3 py-1 text-sm font-medium">
-                Gửi kết bạn
-              </Button>
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {/* Cloud mode: không có “gửi kết bạn” */}
+          {/* Render messages */}
+          {messages.length === 0 && (
+            <div className="text-center text-xs opacity-60 mt-10">
+              {mode === 'cloud' ? 'Chưa có ghi chú nào.' : 'Chưa có tin nhắn.'}
             </div>
-
           )}
-          {/* Pinned Messages */}
-          {/* {chat.messages.some(m => m.isPinned) && (
-          <div className="bg-primary-light/20 rounded-lg p-3 mb-4">
-            <div className="flex items-center gap-2 text-primary mb-2">
-              <Pin className="w-4 h-4" />
-              <span className="text-sm font-medium">Tin nhắn đã ghim</span>
-            </div>
-            {chat.messages.filter(m => m.isPinned).map(message => (
-              <div key={message.id} className="text-sm text-foreground/80">
-                {message.text}
+
+          {messages.map((message, index) => {
+            const prev = messages[index - 1]
+            const showAvatar = false // cloud: luôn không cần avatar
+            // Nếu bạn có MessageBubble:
+            if (MessageBubble) {
+              return (
+                <MessageBubble
+                  key={message.id || message._id || index}
+                  message={{
+                    id: message.id || message._id,
+                    text: message.text ?? message.body?.text,
+                    isOwn: !!message.isOwn,
+                    createdAt: message.createdAt
+                  }}
+                  showAvatar={showAvatar}
+                />
+              )
+            }
+            // fallback bubble đơn giản
+            return (
+              <div
+                key={message.id || message._id || index}
+                className={`max-w-[75%] rounded-md border p-3 text-sm ${message.isOwn ? 'ml-auto bg-primary/10' : 'mr-auto bg-card'}`}
+              >
+                <div className="whitespace-pre-wrap">
+                  {message.text ?? message.body?.text}
+                </div>
+                <div className="mt-1 text-[10px] opacity-60">
+                  {new Date(message.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </div>
               </div>
-            ))}
-          </div>
-        )} */}
-
-          {/* Messages */}
-          {/* {chat.messages.map((message, index) => {
-          const prevMessage = chat.messages[index - 1]
-          const showAvatar = !prevMessage || prevMessage.isOwn !== message.isOwn
-
-          return (
-            <MessageBubble
-              key={message.id}
-              message={message}
-              showAvatar={showAvatar}
-              contact={chat.contact}
-            />
-          )
-        })}
-        <div ref={messagesEndRef} /> */}
+            )
+          })}
+          <div ref={messagesEndRef} />
         </div>
 
         {/* Input Area */}
         <div className="p-4 bg-card/80 backdrop-blur-sm border-t border-border">
           <div className="flex items-end gap-2">
-            {/* Attachment */}
             <Button variant="ghost" size="sm" className="shrink-0">
               <Paperclip className="w-5 h-5" />
             </Button>
-
-            {/* Image */}
             <Button variant="ghost" size="sm" className="shrink-0">
               <Image className="w-5 h-5" />
             </Button>
 
-            {/* Input Container */}
             <div className="flex-1 relative">
               <Input
                 ref={inputRef}
                 value={messageText}
                 onChange={(e) => setMessageText(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder="Nhập tin nhắn..."
-                className="pr-12 bg-input border-input-border focus:border-input-focus"
+                placeholder={mode === 'cloud' ? "Viết ghi chú..." : "Nhập tin nhắn..."}
+                className="pr-12"
               />
-
-              {/* Emoji Button */}
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                className="absolute right-2 top-1/2 transform -translate-y-1/2"
+                className="absolute right-2 top-1/2 -translate-y-1/2"
+                type="button"
               >
                 <Smile className="w-4 h-4" />
               </Button>
-
-              {/* Emoji Picker */}
-              {showEmojiPicker && (
+              {/* EmojiPicker của bạn nếu có */}
+              {/* {showEmojiPicker && (
                 <div className="absolute bottom-full right-0 mb-2 z-50">
                   <EmojiPicker onEmojiSelect={handleEmojiSelect} />
                 </div>
-              )}
+              )} */}
             </div>
 
-            {/* Voice/Send */}
             {messageText.trim() ? (
-              <Button onClick={handleSendMessage} className="shrink-0">
+              <Button onClick={handleSendMessage} className="shrink-0" disabled={sending}>
                 <Send className="w-4 h-4" />
               </Button>
             ) : (
@@ -256,13 +227,13 @@ export function ChatArea({ conversation, onSendMessage }) {
                 size="sm"
                 onClick={handleVoiceRecord}
                 className="shrink-0"
+                type="button"
               >
                 <Mic className={`w-5 h-5 ${isRecording ? 'animate-pulse' : ''}`} />
               </Button>
             )}
           </div>
 
-          {/* Recording indicator */}
           {isRecording && (
             <div className="flex items-center gap-2 mt-2 text-destructive">
               <div className="w-2 h-2 bg-destructive rounded-full animate-pulse"></div>
