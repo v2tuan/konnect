@@ -1,8 +1,7 @@
 import mongoose from 'mongoose'
 import Conversation from '~/models/conversations'
 import Message from '~/models/messages'
-
-const MAX_LIMIT = 100
+import { MAX_LIMIT_MESSAGE } from '~/utils/constant'
 
 function toPublicMessage(m) {
   return {
@@ -100,7 +99,7 @@ async function listMessages({ userId, conversationId, limit = 30, beforeSeq }) {
       if (Number.isFinite(n)) q.seq = { $lt: n }
     }
 
-    const _limit = Math.min(Number(limit) || 30, MAX_LIMIT)
+    const _limit = Math.min(Number(limit) || 30, MAX_LIMIT_MESSAGE)
 
     //dao nguoc tin nhan, moi nhat xep truoc
     const docs = await Message
