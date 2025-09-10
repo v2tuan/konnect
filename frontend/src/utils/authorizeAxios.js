@@ -65,50 +65,46 @@ authorizeAxiosInstance.interceptors.response.use(
     const status = error.response?.status
     const reqUrl = error.config?.url || ''
 
-    // Nếu 401 và không phải gọi auth endpoint -> chỉ clear state local (sync)
+    // 401 ngoài auth endpoints: clear local auth
     if (status === 401 && !isAuthEndpoint(reqUrl)) {
       if (!hasClearedAuth && axiosReduxStore) {
-        try {
-          axiosReduxStore.dispatch(clearCurrentUser())
-        } catch (e) {
-          // silent
-        }
+        try { axiosReduxStore.dispatch(clearCurrentUser()) } catch (e) { void e }
         hasClearedAuth = true
       }
     }
 
-    // Chuẩn hóa thông báo lỗi
+    // Lấy message từ backend (ưu tiên)
+    const data = error.response?.data
     let errorMessage = 'An error occurred'
-    if (error.response?.data?.message) errorMessage = error.response.data.message
-    else if (error.response?.data?.error) errorMessage = error.response.data.error
-    else if (status) {
-      switch (status) {
-      case 400: errorMessage = 'Bad request - Invalid data'; break
-      case 403: errorMessage = 'Access denied - You do not have permission'; break
-      case 404: errorMessage = 'Resource not found'; break
-      case 500: errorMessage = 'Server error - Please try again later'; break
-      default: errorMessage = `Request failed with status ${status}`
-      }
+    if (typeof data === 'string') errorMessage = data
+    else if (data?.message) errorMessage = String(data.message)
+    else if (data?.error) errorMessage = String(data.error)
+    else if (Array.isArray(data?.errors)) errorMessage = data.errors.join(', ')
+    else if (data?.errors && typeof data.errors === 'object') {
+      errorMessage = Object.values(data.errors).flat().join(', ')
     } else if (error.message) {
       errorMessage = error.message
+    } else if (status) {
+      errorMessage = `Request failed with status ${status}`
     }
 
-    // Hiện toast cho mọi lỗi trừ 401/410 (401 đã xử lý bằng clearCurrentUser)
-    if (status !== 401 && status !== 410) {
-      toast.error(errorMessage)
-    }
+    // Luôn toast lỗi (đơn giản, không ngoại lệ)
+    toast.error(errorMessage)
 
     console.error('API Error Details:', {
       url: error.config?.url,
       method: error.config?.method?.toUpperCase(),
       status,
-      backendMessage: error.response?.data?.message,
-      backendError: error.response?.data?.error,
+      backendMessage: data?.message,
+      backendError: data?.error,
       finalMessage: errorMessage
     })
 
+    // Gắn thêm message đã chuẩn hoá để phía gọi dùng (nếu cần)
+    error.normalizedMessage = errorMessage
     return Promise.reject(error)
   }
 )
+// ...existing code...
 
 export default authorizeAxiosInstance
