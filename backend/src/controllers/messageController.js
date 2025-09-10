@@ -27,7 +27,7 @@ const sendMessage = async (req, res, next) => {
 const listMessages = async(req, res, next) => {
   try {
     const userId = req.userId
-    const {conversationId} = req.query
+    const {conversationId} = req.params
     const limit = Number(req.query.limit ?? 30)
     const beforeSeq = req.query.beforeSeq ? Number(req.query.beforeSeq) : undefined
 
