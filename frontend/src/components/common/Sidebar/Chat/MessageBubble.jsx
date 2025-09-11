@@ -9,7 +9,7 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 
-export function MessageBubble({ message, showAvatar, contact }) {
+export function MessageBubble({ message, showAvatar, contact, showMeta = true }) {
   const [hovered, setHovered] = useState(false)
 
   const formatTime = (ts) => {
@@ -100,10 +100,12 @@ export function MessageBubble({ message, showAvatar, contact }) {
         </div>
 
         {/* Time + status (không còn action bar dưới nữa) */}
-        <div className={`flex items-center gap-1 mt-1 text-xs text-gray-500 ${isOwn ? 'justify-end' : 'justify-start'}`}>
-          <span>{formatTime(message.createdAt || message.timestamp)}</span>
-          <StatusIcon />
-        </div>
+        {showMeta && (
+          <div className={`flex items-center gap-1 mt-1 text-xs text-gray-500 ${isOwn ? 'justify-end' : 'justify-start'}`}>
+            <span>{formatTime(message.createdAt || message.timestamp)}</span>
+            <StatusIcon />
+          </div>
+        )}
       </div>
     </div>
   )

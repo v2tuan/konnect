@@ -12,6 +12,7 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { Switch } from "@/components/ui/switch"
 // Optional
 import { MessageBubble } from './MessageBubble'
+import { formatChip, groupByDay } from '@/utils/helper'
 
 export function ChatArea({
   mode = 'direct',
@@ -172,34 +173,49 @@ export function ChatArea({
             </div>
           )}
 
-          {messages.map((message, index) => {
-            const showAvatar = false // cloud/direct đơn giản: ẩn avatar bong bóng
-            if (MessageBubble) {
-              return (
-                <MessageBubble
-                  key={message.id || message._id || index}
-                  message={{
-                    id: message.id || message._id,
-                    text: message.text ?? message.body?.text,
-                    isOwn: !!message.isOwn,
-                    createdAt: message.createdAt
-                  }}
-                  showAvatar={showAvatar}
-                />
-              )
-            }
-            // fallback bubble
+          {groupByDay(messages).map((group, gi) => {
+            const count = group.items.length
+            const first = group.items[0]
+            // Chip giữa (ngày hoặc giờ          ngày nếu chỉ 1 tin)
             return (
-              <div
-                key={message.id || message._id || index}
-                className={`max-w-[75%] rounded-md border p-3 text-sm ${message.isOwn ? 'ml-auto bg-primary/10' : 'mr-auto bg-card'}`}
-              >
-                <div className="whitespace-pre-wrap">
-                  {message.text ?? message.body?.text}
+              <div key={group.key}>
+                <div className="flex justify-center my-3">
+                  <span className="px-3 py-1 rounded-full text-xs bg-muted text-muted-foreground">
+                    {formatChip(first.createdAt || first.timestamp, count)}
+                  </span>
                 </div>
-                <div className="mt-1 text-[10px] opacity-60">
-                  {new Date(message.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </div>
+
+                {group.items.map((m, mi) => {
+                  const showAvatar = false
+                  // chỉ bubble cuối ngày mới hiện meta (nếu >1 tin)
+                  const showMeta = count > 1 && mi === count - 1
+
+                  if (MessageBubble) {
+                    return (
+                      <MessageBubble
+                        key={m.id || m._id || `${gi}-${mi}`}
+                        message={{ ...m }}
+                        showAvatar={showAvatar}
+                        showMeta={showMeta}
+                      />
+                    )
+                  }
+
+                  // fallback bubble đơn giản
+                  return (
+                    <div
+                      key={m.id || m._id || `${gi}-${mi}`}
+                      className={`max-w-[75%] rounded-md border p-3 text-sm ${m.isOwn ? 'ml-auto bg-primary/10' : 'mr-auto bg-card'}`}
+                    >
+                      <div className="whitespace-pre-wrap">{m.text ?? m.body?.text}</div>
+                      {showMeta && (
+                        <div className="mt-1 text-[10px] opacity-60">
+                          {new Date(m.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             )
           })}
