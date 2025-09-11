@@ -9,6 +9,8 @@ import { persistStore } from 'redux-persist'
 import { Provider } from 'react-redux'
 import { PersistGate } from 'redux-persist/integration/react'
 import { ThemeProvider } from "@/components/theme-provider"
+import { ToastContainer } from 'react-toastify'
+import 'react-toastify/dist/ReactToastify.css'
 
 injectStore(store)
 
@@ -21,6 +23,17 @@ createRoot(document.getElementById('root')).render(
         <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
           <StrictMode>
             <App />
+            <ToastContainer
+              position="bottom-left"
+              autoClose={3500}
+              hideProgressBar={false}
+              newestOnTop={false}
+              closeOnClick
+              pauseOnFocusLoss
+              draggable
+              pauseOnHover
+              theme="colored"
+            />
           </StrictMode>
         </ThemeProvider>
       </PersistGate>
