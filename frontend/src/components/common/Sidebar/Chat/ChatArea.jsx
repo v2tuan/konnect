@@ -84,9 +84,9 @@ export function ChatArea({
   }, [messages, sending])
 
   return (
-    <div className="min-h-screen flex">
+    <div className="h-full flex">
       {/* Main */}
-      <div className={`flex flex-col flex-1 transition-all duration-300 ease-in-out ${isOpen ? 'mr-80' : 'mr-0'}`}>
+      <div className={`flex flex-col flex-1 min-h-0 transition-all duration-300 ease-in-out ${isOpen ? 'mr-80' : 'mr-0'}`}>
         {/* Header */}
         <div className="flex items-center justify-between p-4 bg-card/80 backdrop-blur-sm border-b border-border shadow-soft">
           <div className="flex items-center gap-3">
@@ -147,7 +147,7 @@ export function ChatArea({
         </div>
 
         {/* Messages Area */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
           {/* “Gửi yêu cầu kết bạn”: hiện với direct khi CHƯA friend, ẩn với cloud */}
           {isDirect && !isCloud && !conversation?.friendShip && (
             <div className="flex items-center justify-between w-full p-3 border rounded-lg shadow-sm bg-card">
@@ -207,7 +207,7 @@ export function ChatArea({
         </div>
 
         {/* Input */}
-        <div className="p-4 bg-card/80 backdrop-blur-sm border-t border-border">
+        <div className="p-4 bg-card/80 backdrop-blur-sm border-t border-border shrink-0">
           <div className="flex items-end gap-2">
             <Button variant="ghost" size="sm" className="shrink-0">
               <Paperclip className="w-5 h-5" />

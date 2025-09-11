@@ -1,38 +1,20 @@
-// CloudPage.jsx
 import { ChatArea } from '@/components/common/Sidebar/Chat/ChatArea'
-import { useCloudChat } from '@/hooks/useCloudChat'
 import { Loader2 } from 'lucide-react'
-import { useMemo, useState } from 'react'
-
-function normalizeMessage(m) {
-  return {
-    id: m.id || m._id || String(m.seq ?? Date.now()),
-    text: m.body?.text ?? m.text ?? '',
-    isOwn: m.isOwn ?? (m.sender === 'me' || m.userId === 'me'), // tuỳ API
-    createdAt: m.createdAt ?? m.timestamp ?? Date.now(),
-  }
-}
+import { useCloudChat } from '@/hooks/useCloudChat'
+import { useSelector } from 'react-redux'
+import { selectCurrentUser } from '@/redux/user/userSlice'
 
 export default function CloudPage() {
-  const { loading, conversationId, messages, send } = useCloudChat()
-  const [sending, setSending] = useState(false)
+  const currentUser = useSelector(selectCurrentUser)
+  const currentUserId = currentUser._id
 
-  const normalizedMessages = useMemo(
-    () => (messages || []).sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0)).map(normalizeMessage),
-    [messages]
-  )
-
-  const handleSend = async (text) => {
-    if (!text || sending) return
-    setSending(true)
-    try {
-      await send(text) // socket sẽ đẩy message mới về -> messages cập nhật
-    } catch (e) {
-      console.error(e)
-    } finally {
-      setSending(false)
-    }
-  }
+  const {
+    loading,
+    sending,
+    conversation,
+    messages,
+    send
+  } = useCloudChat('cloud', currentUserId)
 
   if (loading) {
     return (
@@ -42,18 +24,19 @@ export default function CloudPage() {
     )
   }
 
-  // Conversation tối giản cho cloud
-  const conversation = {
-    displayName: `My Cloud`,
-    conversationAvatarUrl: '/cloud-note-icon.svg'
+  // Conversation tối giản cho Cloud (có thể lấy từ API)
+  const convUi = {
+    displayName: conversation?.group?.name || 'My Cloud',
+    conversationAvatarUrl:
+      conversation?.group?.avatarUrl || '/cloud-note-icon.svg'
   }
 
   return (
     <ChatArea
       mode="cloud"
-      conversation={conversation}
-      messages={normalizedMessages}
-      onSendMessage={handleSend}
+      conversation={convUi}
+      messages={messages}
+      onSendMessage={send}
       sending={sending}
       loading={loading}
     />
