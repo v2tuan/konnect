@@ -1,6 +1,7 @@
+"use client"
 import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
-import { cva } from "class-variance-authority";
+import { cva } from "class-variance-authority"
 import { PanelLeftIcon } from "lucide-react"
 
 import { useIsMobile } from "@/hooks/use-mobile"
@@ -13,21 +14,21 @@ import {
   SheetContent,
   SheetDescription,
   SheetHeader,
-  SheetTitle,
+  SheetTitle
 } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
-  TooltipTrigger,
+  TooltipTrigger
 } from "@/components/ui/tooltip"
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
-const SIDEBAR_WIDTH = "16rem"
+const SIDEBAR_WIDTH = "25rem"
 const SIDEBAR_WIDTH_MOBILE = "18rem"
-const SIDEBAR_WIDTH_ICON = "3rem"
+const SIDEBAR_WIDTH_ICON = "4.5rem"
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"
 
 const SidebarContext = React.createContext(null)
@@ -71,7 +72,7 @@ function SidebarProvider({
 
   // Helper to toggle the sidebar.
   const toggleSidebar = React.useCallback(() => {
-    return isMobile ? setOpenMobile((open) => !open) : setOpen((open) => !open);
+    return isMobile ? setOpenMobile((open) => !open) : setOpen((open) => !open)
   }, [isMobile, setOpen, setOpenMobile])
 
   // Adds a keyboard shortcut to toggle the sidebar.
@@ -87,7 +88,7 @@ function SidebarProvider({
     }
 
     window.addEventListener("keydown", handleKeyDown)
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown)
   }, [toggleSidebar])
 
   // We add a state so that we can do data-state="expanded" or "collapsed".
@@ -101,7 +102,7 @@ function SidebarProvider({
     isMobile,
     openMobile,
     setOpenMobile,
-    toggleSidebar,
+    toggleSidebar
   }), [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar])
 
   return (
@@ -125,7 +126,7 @@ function SidebarProvider({
         </div>
       </TooltipProvider>
     </SidebarContext.Provider>
-  );
+  )
 }
 
 function Sidebar({
@@ -149,7 +150,7 @@ function Sidebar({
         {...props}>
         {children}
       </div>
-    );
+    )
   }
 
   if (isMobile) {
@@ -173,7 +174,7 @@ function Sidebar({
           <div className="flex h-full w-full flex-col">{children}</div>
         </SheetContent>
       </Sheet>
-    );
+    )
   }
 
   return (
@@ -217,7 +218,7 @@ function Sidebar({
         </div>
       </div>
     </div>
-  );
+  )
 }
 
 function SidebarTrigger({
@@ -242,7 +243,7 @@ function SidebarTrigger({
       <PanelLeftIcon />
       <span className="sr-only">Toggle Sidebar</span>
     </Button>
-  );
+  )
 }
 
 function SidebarRail({
@@ -269,7 +270,7 @@ function SidebarRail({
         className
       )}
       {...props} />
-  );
+  )
 }
 
 function SidebarInset({
@@ -285,7 +286,7 @@ function SidebarInset({
         className
       )}
       {...props} />
-  );
+  )
 }
 
 function SidebarInput({
@@ -298,7 +299,7 @@ function SidebarInput({
       data-sidebar="input"
       className={cn("bg-background h-8 w-full shadow-none", className)}
       {...props} />
-  );
+  )
 }
 
 function SidebarHeader({
@@ -309,9 +310,9 @@ function SidebarHeader({
     <div
       data-slot="sidebar-header"
       data-sidebar="header"
-      className={cn("flex flex-col gap-2 p-2", className)}
+      className={cn("flex flex-col gap-2 pt-5", className)}
       {...props} />
-  );
+  )
 }
 
 function SidebarFooter({
@@ -324,7 +325,7 @@ function SidebarFooter({
       data-sidebar="footer"
       className={cn("flex flex-col gap-2 p-2", className)}
       {...props} />
-  );
+  )
 }
 
 function SidebarSeparator({
@@ -337,7 +338,7 @@ function SidebarSeparator({
       data-sidebar="separator"
       className={cn("bg-sidebar-border mx-2 w-auto", className)}
       {...props} />
-  );
+  )
 }
 
 function SidebarContent({
@@ -353,7 +354,7 @@ function SidebarContent({
         className
       )}
       {...props} />
-  );
+  )
 }
 
 function SidebarGroup({
@@ -366,7 +367,7 @@ function SidebarGroup({
       data-sidebar="group"
       className={cn("relative flex w-full min-w-0 flex-col p-2", className)}
       {...props} />
-  );
+  )
 }
 
 function SidebarGroupLabel({
@@ -386,7 +387,7 @@ function SidebarGroupLabel({
         className
       )}
       {...props} />
-  );
+  )
 }
 
 function SidebarGroupAction({
@@ -408,7 +409,7 @@ function SidebarGroupAction({
         className
       )}
       {...props} />
-  );
+  )
 }
 
 function SidebarGroupContent({
@@ -421,7 +422,7 @@ function SidebarGroupContent({
       data-sidebar="group-content"
       className={cn("w-full text-sm", className)}
       {...props} />
-  );
+  )
 }
 
 function SidebarMenu({
@@ -434,7 +435,7 @@ function SidebarMenu({
       data-sidebar="menu"
       className={cn("flex w-full min-w-0 flex-col gap-1", className)}
       {...props} />
-  );
+  )
 }
 
 function SidebarMenuItem({
@@ -447,7 +448,7 @@ function SidebarMenuItem({
       data-sidebar="menu-item"
       className={cn("group/menu-item relative", className)}
       {...props} />
-  );
+  )
 }
 
 const sidebarMenuButtonVariants = cva(
@@ -457,18 +458,18 @@ const sidebarMenuButtonVariants = cva(
       variant: {
         default: "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
         outline:
-          "bg-background shadow-[0_0_0_1px_hsl(var(--sidebar-border))] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:shadow-[0_0_0_1px_hsl(var(--sidebar-accent))]",
+          "bg-background shadow-[0_0_0_1px_hsl(var(--sidebar-border))] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:shadow-[0_0_0_1px_hsl(var(--sidebar-accent))]"
       },
       size: {
         default: "h-8 text-sm",
         sm: "h-7 text-xs",
-        lg: "h-12 text-sm group-data-[collapsible=icon]:p-0!",
-      },
+        lg: "h-12 text-sm group-data-[collapsible=icon]:p-0!"
+      }
     },
     defaultVariants: {
       variant: "default",
-      size: "default",
-    },
+      size: "default"
+    }
   }
 )
 
@@ -500,7 +501,7 @@ function SidebarMenuButton({
 
   if (typeof tooltip === "string") {
     tooltip = {
-      children: tooltip,
+      children: tooltip
     }
   }
 
@@ -513,7 +514,7 @@ function SidebarMenuButton({
         hidden={state !== "collapsed" || isMobile}
         {...tooltip} />
     </Tooltip>
-  );
+  )
 }
 
 function SidebarMenuAction({
@@ -541,7 +542,7 @@ function SidebarMenuAction({
         className
       )}
       {...props} />
-  );
+  )
 }
 
 function SidebarMenuBadge({
@@ -562,7 +563,7 @@ function SidebarMenuBadge({
         className
       )}
       {...props} />
-  );
+  )
 }
 
 function SidebarMenuSkeleton({
@@ -572,7 +573,7 @@ function SidebarMenuSkeleton({
 }) {
   // Random width between 50 to 90%.
   const width = React.useMemo(() => {
-    return `${Math.floor(Math.random() * 40) + 50}%`;
+    return `${Math.floor(Math.random() * 40) + 50}%`
   }, [])
 
   return (
@@ -593,7 +594,7 @@ function SidebarMenuSkeleton({
           }
         } />
     </div>
-  );
+  )
 }
 
 function SidebarMenuSub({
@@ -610,7 +611,7 @@ function SidebarMenuSub({
         className
       )}
       {...props} />
-  );
+  )
 }
 
 function SidebarMenuSubItem({
@@ -623,7 +624,7 @@ function SidebarMenuSubItem({
       data-sidebar="menu-sub-item"
       className={cn("group/menu-sub-item relative", className)}
       {...props} />
-  );
+  )
 }
 
 function SidebarMenuSubButton({
@@ -650,7 +651,7 @@ function SidebarMenuSubButton({
         className
       )}
       {...props} />
-  );
+  )
 }
 
 export {
@@ -677,5 +678,5 @@ export {
   SidebarRail,
   SidebarSeparator,
   SidebarTrigger,
-  useSidebar,
+  useSidebar
 }

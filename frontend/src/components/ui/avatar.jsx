@@ -12,7 +12,7 @@ function Avatar({
       data-slot="avatar"
       className={cn("relative flex size-8 shrink-0 overflow-hidden rounded-full", className)}
       {...props} />
-  );
+  )
 }
 
 function AvatarImage({
@@ -24,7 +24,7 @@ function AvatarImage({
       data-slot="avatar-image"
       className={cn("aspect-square size-full", className)}
       {...props} />
-  );
+  )
 }
 
 function AvatarFallback({
@@ -39,7 +39,7 @@ function AvatarFallback({
         className
       )}
       {...props} />
-  );
+  )
 }
 
 export { Avatar, AvatarImage, AvatarFallback }

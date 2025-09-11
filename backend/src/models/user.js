@@ -3,7 +3,8 @@ import mongoose from 'mongoose'
 let userSchema = new mongoose.Schema({
     phone: {
         type: String,
-        unique: true
+        unique: true,
+        sparse: true 
     },
     email: {
         type: String,
@@ -16,11 +17,15 @@ let userSchema = new mongoose.Schema({
     },
     avatarUrl: {
         type: String,
-        default: 'https://example.com/default-avatar.png' // Default avatar URL
+        default: 'https://github.com/shadcn.png' // Default avatar URL
     },
     fullName: {
         type: String,
         required: true
+    },
+    username: {
+        type: String, 
+        require: true
     },
     dateOfBirth: {
         type: Date
@@ -56,24 +61,20 @@ userSchema.pre('save', function(next) {
     this.updatedAt = Date.now();
     next();
 });
-// Chuẩn hoá JSON trả ra client (ẩn field nhạy cảm)
-// userSchema.set('toJSON', {
-//     transform: (doc, ret) => {
-//         ret.id = ret._id.toString();
-//         delete ret._id;
-//         delete ret.password;
-//         delete ret.resetOtp;
-//         delete ret.resetOtpExpiresAt;
-//         delete ret.resetOtpAttempts;
-//         delete ret.resetLastSentAt;
-//         return ret;
-//     }
-// });
-// Nghiên cứu về Index để tăng tốc truy vấn
-// userSchema.index({ phone: 1 });
 
-// Sparse index (MongoDB shell)
-userSchema.index({ phone: 1 }, { unique: true, sparse: true });
+// Chuẩn hoá JSON trả ra client (ẩn field nhạy cảm)
+userSchema.set('toJSON', {
+    transform: (doc, ret) => {
+        ret.id = ret._id.toString();
+        delete ret._id;
+        delete ret.password;
+        delete ret.resetOtp;
+        delete ret.resetOtpExpiresAt;
+        delete ret.resetOtpAttempts;
+        delete ret.resetLastSentAt;
+        return ret;
+    }
+});
 
 
 let User = mongoose.model('User', userSchema);

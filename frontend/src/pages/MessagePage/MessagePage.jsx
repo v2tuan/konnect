@@ -1,0 +1,26 @@
+import { useOutletContext } from "react-router-dom"
+import { ChatArea } from "@/components/common/Sidebar/Chat/ChatArea" // đúng path của bạn
+import WelcomeScreen from "@/components/common/WelcomeScreen"
+
+export default function MessagePage() {
+  const { chatState } = useOutletContext()
+  const chat = chatState?.selectedChat
+
+  if (!chat) {
+    return (
+      // <div className="h-full w-full flex items-center justify-center text-muted-foreground">
+      //   Chọn một cuộc trò chuyện để bắt đầu
+      // </div>
+      <WelcomeScreen/>
+    )
+  }
+
+  return (
+    <div className="h-full w-full">
+      <ChatArea
+        conversation={chat}
+        onSendMessage={chatState.onSendMessage}
+      />
+    </div>
+  )
+}

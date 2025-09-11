@@ -1,10 +1,10 @@
-import { Eye, EyeOff, GalleryVerticalEnd } from "lucide-react"
+import { GalleryVerticalEnd, Eye, EyeOff } from "lucide-react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState, useEffect } from "react"
 import { useForm } from "react-hook-form"
 import { toast } from "react-toastify"
 // ❌ bỏ useDispatch ở đây
@@ -15,9 +15,9 @@ export default function ForgotResetPage() {
   const location = useLocation()
 
   const email =
-    location.state?.email || new URLSearchParams(location.search).get("email") || ""
+        location.state?.email || new URLSearchParams(location.search).get("email") || ""
   const otp =
-    location.state?.otp || new URLSearchParams(location.search).get("otp") || ""
+        location.state?.otp || new URLSearchParams(location.search).get("otp") || ""
 
   // Điều hướng nên làm trong effect (tránh side-effect trong render)
   useEffect(() => {
@@ -70,9 +70,9 @@ export default function ForgotResetPage() {
         <div className="flex justify-center gap-2 md:justify-start">
           <Link to="/" className="flex items-center gap-2 font-medium">
             <div className="bg-primary text-primary-foreground flex size-6 items-center justify-center rounded-md">
-              <GalleryVerticalEnd className="size-4"/>
+              <GalleryVerticalEnd className="size-4" />
             </div>
-            Konnect.
+                        Konnect.
           </Link>
         </div>
 
@@ -82,7 +82,7 @@ export default function ForgotResetPage() {
               <div className="flex flex-col items-center gap-2 text-center">
                 <h1 className="text-2xl font-bold">Set a new password</h1>
                 <p className="text-muted-foreground text-sm text-balance">
-                  For <span className="font-medium">{email}</span>
+                                    For <span className="font-medium">{email}</span>
                 </p>
               </div>
 
@@ -107,14 +107,14 @@ export default function ForgotResetPage() {
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-black"
                       aria-label={showPwd ? "Hide password" : "Show password"}
                     >
-                      {showPwd ? <EyeOff className="h-5 w-5"/> : <Eye className="h-5 w-5"/>}
+                      {showPwd ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                     </button>
                   </div>
                   {errors.newPassword && <p className="text-sm text-red-500">{errors.newPassword.message}</p>}
 
                   {/* Strength meter */}
                   <div className="mt-1 h-1 w-full rounded bg-neutral-200">
-                    <div className="h-1 rounded bg-primary transition-all" style={{ width: `${(strength / 5) * 100}%` }}/>
+                    <div className="h-1 rounded bg-primary transition-all" style={{ width: `${(strength / 5) * 100}%` }} />
                   </div>
                 </div>
 
@@ -138,7 +138,7 @@ export default function ForgotResetPage() {
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-black"
                       aria-label={showConfirmPwd ? "Hide password" : "Show password"}
                     >
-                      {showConfirmPwd ? <EyeOff className="h-5 w-5"/> : <Eye className="h-5 w-5"/>}
+                      {showConfirmPwd ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                     </button>
                   </div>
                   {errors.confirmPassword && <p className="text-sm text-red-500">{errors.confirmPassword.message}</p>}
@@ -154,7 +154,7 @@ export default function ForgotResetPage() {
                     className="underline underline-offset-4"
                     onClick={() => navigate(`/forgot/otp?email=${encodeURIComponent(email)}`)}
                   >
-                    Back
+                                        Back
                   </button>
                 </div>
               </div>
@@ -164,10 +164,9 @@ export default function ForgotResetPage() {
       </div>
 
       <div className="bg-muted relative hidden lg:block">
-        <video autoPlay loop muted playsInline
-          className="absolute inset-0 h-full w-full object-cover dark:brightness-[0.2] dark:grayscale">
-          <source src="/intro.mp4" type="video/mp4"/>
-          Your browser does not support the video tag.
+        <video autoPlay loop muted playsInline className="absolute inset-0 h-full w-full object-cover dark:brightness-[0.2] dark:grayscale">
+          <source src="/intro.mp4" type="video/mp4" />
+                    Your browser does not support the video tag.
         </video>
       </div>
     </div>

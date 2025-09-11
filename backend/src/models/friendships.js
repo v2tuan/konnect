@@ -1,13 +1,12 @@
 import mongoose from "mongoose";
-import { use } from "react";
 
 let frinendshipSchema = new mongoose.Schema({
-    userId: {
+    profileAcept: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
         required: true
     },
-    requestedBy: {
+    profileRequest: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
         required: true

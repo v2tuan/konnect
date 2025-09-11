@@ -18,7 +18,7 @@ export default function SignUpPage() {
   const [open, setOpen] = useState(false)
 
   const { register, handleSubmit, control, formState: { errors, isSubmitting } } = useForm({
-    defaultValues: { fullName: "", email: "", password: "", dateOfBirth: null, gender: "" }
+    defaultValues: { fullName: "", username: "", email: "", password: "", dateOfBirth: null, gender: "" }
   })
 
   const onSubmit = async (data) => {
@@ -75,18 +75,18 @@ export default function SignUpPage() {
               <div className="grid gap-6">
                 {/* Name */}
                 <div className="grid gap-3">
-                  <Label htmlFor="fullName">Name</Label>
+                  <Label htmlFor="fullName">Full Name</Label>
                   <Input
                     id="fullName"
                     type="text"
                     placeholder="Your name"
-                    {...register("fullName", { required: "Username is required" })}
+                    {...register("fullName", { required: "Full name is required" })}
                     className={cn(
                       "pr-10",
-                      errors.email ? "border-red-500 focus:border-red-500 focus:ring-red-500" : ""
+                      errors.fullName ? "border-red-500 focus:border-red-500 focus:ring-red-500" : ""
                     )}
                   />
-                  {errors.username && <p className="text-red-500 text-sm">{errors.username.message}</p>}
+                  {errors.fullName && <p className="text-red-500 text-sm">{errors.fullName.message}</p>}
                 </div>
 
                 {/* Date of Birth + Gender */}
@@ -162,6 +162,22 @@ export default function SignUpPage() {
                   </div>
                 </div>
 
+                {/* Username */}
+                <div className="grid gap-3">
+                  <Label htmlFor="username">Username</Label>
+                  <Input
+                    id="username"
+                    type="text"
+                    placeholder="Username"
+                    {...register("username", { required: "Username is required" })}
+                    className={cn(
+                      "pr-10",
+                      errors.username ? "border-red-500 focus:border-red-500 focus:ring-red-500" : ""
+                    )}
+                  />
+                  {errors.username && <p className="text-red-500 text-sm">{errors.username.message}</p>}
+                </div>
+
                 {/* Email */}
                 <div className="grid gap-3">
                   <Label htmlFor="email">Email</Label>
@@ -195,7 +211,7 @@ export default function SignUpPage() {
                       {...register("password", { required: "Password is required", minLength: { value: 6, message: "Password must be at least 6 characters" } })}
                       className={cn(
                         "pr-10",
-                        errors.email ? "border-red-500 focus:border-red-500 focus:ring-red-500" : ""
+                        errors.password ? "border-red-500 focus:border-red-500 focus:ring-red-500" : ""
                       )}
                     />
                     <button

@@ -3,7 +3,7 @@ import { StatusCodes } from 'http-status-codes';
 import mongoose from 'mongoose';
 import { generateToken } from '../lib/jwtToken.js';
 import sendMail from '../lib/sendMailUtil.js';
-import User from '../models/userModel.js';
+import User from '../models/user.js';
 import { authService } from '../services/authService.js';
 
 // POST /auth/register
@@ -59,6 +59,7 @@ let logout = (req, res) => {
 const update = async (req, res, next ) => {
     try {
         const userId = req.userId
+        console.log('userId: ', userId)
         if (!userId) {
             return res.status(401).json({ message: 'Unauthorized' })
         }
