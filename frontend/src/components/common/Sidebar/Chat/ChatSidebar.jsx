@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { SkeletonConversation } from '../Skeleton/SkeletonConversation'
-import { findUserById, getConversations, searchUserByUsername } from '@/apis'
+import { getConversationByUserId, getConversations, searchUserByUsername } from '@/apis'
 import { useAsyncError } from 'react-router-dom'
 
 export function ChatSidebar({ chats, selectedChat, onChatSelect, currentView, onViewChange }) {
@@ -59,6 +59,7 @@ export function ChatSidebar({ chats, selectedChat, onChatSelect, currentView, on
     if (!searchQuery.trim()) {
       setSearchList([])
       setLoading(false)
+      onViewChange('chat')
       return
     }
     const controller = new AbortController()
@@ -84,9 +85,9 @@ export function ChatSidebar({ chats, selectedChat, onChatSelect, currentView, on
   }, [searchQuery])
 
   const handleClickUser = async (userId) => {
-    const detail = await findUserById(userId)
-    onChatSelect(detail)
-    console.log(detail)
+    const conversation = await getConversationByUserId(userId)
+    onChatSelect(conversation.data)
+    console.log(conversation)
   }
 
 
@@ -162,7 +163,7 @@ export function ChatSidebar({ chats, selectedChat, onChatSelect, currentView, on
             <div
               key={user._id}
               className={`p-3 rounded-lg cursor-pointer transition-all duration-fast hover:bg-primary/10`}
-              onClick={() => { handleClickUser(user.id); onChatSelect(user) }}
+              onClick={() => { handleClickUser(user.id) }}
             >
               <div className="flex items-center gap-3">
                 <div className="relative">

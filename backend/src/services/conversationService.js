@@ -33,7 +33,8 @@ const createConversation = async (conversationData, userId) => {
 
         const recipientId = memberIds.find(id => id !== userId)
         const recipient = await User.findById(recipientId)
-        if (!recipientId) {
+        
+        if (!recipient) {
             throw new Error('Recipient not found')
         }
 
@@ -45,6 +46,23 @@ const createConversation = async (conversationData, userId) => {
         // Kiểm tra có bị block không
 
         // Kiểm tra conversation đã tồn tại chưa
+        const existingConversation = await Conversation.findOne({
+            type: 'direct',
+            $or: [
+                { 'direct.userA': userId, 'direct.userB': recipientId },
+                { 'direct.userA': recipientId, 'direct.userB': userId }
+            ]
+        });
+
+        if (existingConversation) {
+            return
+        }
+
+        // Set up conversation data
+        conversationData.direct = {
+            userA: userId,
+            userB: recipientId
+        };
 
         // Set up conversation data
         membersToAdd = [
