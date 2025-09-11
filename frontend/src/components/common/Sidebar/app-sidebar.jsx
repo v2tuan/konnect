@@ -24,10 +24,10 @@ import {
   SidebarMenuItem,
   useSidebar
 } from "@/components/ui/sidebar"
+import { useEffect } from "react"
 import { NavLink, useLocation } from "react-router-dom"
 import ModeToggle from "../NavBar/ThemeToggle"
 import ContactSidebar from "./Contact/ContactSidebar"
-import CloudSidebar from "./Cloud/CloudSidebar"
 
 const data = {
   user: {
@@ -48,8 +48,6 @@ export function AppSidebar({
   chatState,
   contactTab,
   onContactTabChange,
-  cloudTab,
-  onCloudTabChange,
   ...props
 }) {
   const { open, setOpen } = useSidebar()
@@ -57,7 +55,11 @@ export function AppSidebar({
 
   const isMessage = location.pathname.startsWith("/chats")
   const isContact = location.pathname.startsWith("/contacts")
-  const isCloud = location.pathname.startsWith("/cloud")
+
+  useEffect(() => {
+    const shouldOpen = isMessage || isContact
+    if (open !== shouldOpen) setOpen(shouldOpen)
+  }, [isMessage, isContact, setOpen])
 
   return (
     <Sidebar

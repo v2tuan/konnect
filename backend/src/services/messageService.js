@@ -1,6 +1,7 @@
 import mongoose from 'mongoose'
 import Conversation from '~/models/conversations'
 import Message from '~/models/messages'
+import { MAX_LIMIT_MESSAGE } from '~/utils/constant'
 
 function toPublicMessage(m) {
   return {
@@ -81,14 +82,48 @@ async function sendMessage({ userId, conversationId, type, text, io }) {
 }
 
 async function listMessages({ userId, conversationId, limit = 30, beforeSeq }) {
-  const convo = await Conversation.findById(conversationId).lean()
-  await assertCanAccessConversation(userId, convo)
+  try {
+    if (!mongoose.isValidObjectId(conversationId)) {
+    throw new Error("Invalid conversationId")
+    }
 
-  const q = { conversationId: new mongoose.Types.ObjectId(conversationId) }
-  if (beforeSeq != null) q.seq = { $lt: Number(beforeSeq) }
+    const convo = await Conversation.findById(conversationId).lean()
+    if (!convo) {
+      throw new Error('Conversation not found')
+    }
+    await assertCanAccessConversation(userId, convo)
 
-  const items = await Message.find(q).sort({ seq: -1 }).limit(Number(limit))
-  return { items: items.reverse().map(toPublicMessage) }
+    const q = { conversationId: new mongoose.Types.ObjectId(conversationId) }
+    if (beforeSeq != null) {
+      const n = Number(beforeSeq)
+      if (Number.isFinite(n)) q.seq = { $lt: n }
+    }
+
+    const _limit = Math.min(Number(limit) || 30, MAX_LIMIT_MESSAGE)
+
+    //dao nguoc tin nhan, moi nhat xep truoc
+    const docs = await Message
+      .find(q)
+      .sort({ seq: -1 })
+      .limit(_limit)
+      .lean()
+
+    const items = docs.reverse()
+
+    return items.map(m => ({
+      _id: m._id,
+      conversationId: m.conversationId,
+      seq: m.seq,
+      senderId: m.senderId,
+      type: m.type,
+      body: m.body,
+      media: m.media,
+      recalled: m.recalled,
+      createdAt: m.createdAt
+    }))
+  } catch (error) {
+    throw new Error(error)
+  }
 }
 
 export const messageService = {
