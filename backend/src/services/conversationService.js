@@ -192,7 +192,16 @@ const getConversation = async (page, limit, userId) => {
     return conversations
 }
 
+const fetchConversationDetail = async () => {
+    try {
+        
+    } catch (error) {
+        throw new Error(error)
+    }
+}
+
 export const conversationService = {
     createConversation,
-    getConversation
+    getConversation,
+    fetchConversationDetail
 }

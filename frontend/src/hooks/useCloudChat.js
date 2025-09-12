@@ -19,6 +19,7 @@ export const useCloudChat = (mode="cloud", currentUserId) => {
   const [messages, setMessages] = useState([])
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
+  const [otherTyping, setOtherTyping] = useState(false)
   const socketRef = useRef(null)
 
   const normalizeIncoming = (m) => {
@@ -78,10 +79,24 @@ export const useCloudChat = (mode="cloud", currentUserId) => {
       })
     }
 
+    const onTypingStart = (payload) => {
+      if (extractId(payload?.conversationId) === conversationId )
+        setOtherTyping(true)
+    }
+
+    const onTypingStop = (payload) => {
+      if (extractId(payload?.conversationId) === conversationId)
+        setOtherTyping(false)
+    }
+
     s.on('message:new', onNewMessage)
+    s.on('typing:start', onTypingStart)
+    s.on('typing:stop', onTypingStop)
 
     return () => {
       s.off('message:new', onNewMessage)
+      s.off('typing:start', onTypingStart)
+      s.off('typing:stop', onTypingStop)
       s.disconnect()
       socketRef.current = null
     }
@@ -99,6 +114,16 @@ export const useCloudChat = (mode="cloud", currentUserId) => {
       setSending(false)
     }
   }
+  //export emit
+  const startTyping = () => {
+    if (!conversationId) return
+    socketRef?.current.emit('typing:start', { conversationId })
+  }
+
+  const stopTyping = () => {
+    if (!conversationId) return
+    socketRef?.current.emit('typing:stop', { conversationId })
+  }
 
   const normalizedMessages = useMemo(() => {
     const arr = [...messages]
@@ -112,6 +137,9 @@ export const useCloudChat = (mode="cloud", currentUserId) => {
     conversation,
     conversationId,
     messages: normalizedMessages,
-    send
+    send,
+    startTyping,
+    stopTyping,
+    otherTyping
   }
 }

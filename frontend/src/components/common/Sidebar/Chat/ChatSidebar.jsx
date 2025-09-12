@@ -131,15 +131,6 @@ export function ChatSidebar({ chats, selectedChat, onChatSelect, currentView, on
             <Users className="w-4 h-4 mr-2" />
             Bạn bè
           </Button>
-          <Button
-            variant={currentView === 'profile' ? 'default' : 'ghost'}
-            size="sm"
-            onClick={() => onViewChange('profile')}
-            className="flex-1"
-          >
-            <User className="w-4 h-4 mr-2" />
-            Cá nhân
-          </Button>
         </div>
       </div>
 

@@ -28,7 +28,20 @@ const getConversation = async (req, res, next) => {
     }
 }
 
+const fetchConversationDetail = async (req, res, next) => {
+    try {
+        const userId = req.userId
+        const conversationId = req.params.conversationId
+
+        const result = await conversationService.fetchConversationDetail(userId, conversationId)
+        return res.status(StatusCodes.OK).json(result)
+    } catch (error) {
+        next(error)
+    }
+}
+
 export const conversationController = {
     createConversation,
-    getConversation
+    getConversation,
+    fetchConversationDetail
 }

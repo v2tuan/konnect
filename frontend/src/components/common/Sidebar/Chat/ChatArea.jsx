@@ -13,6 +13,7 @@ import { Switch } from "@/components/ui/switch"
 // Optional
 import { MessageBubble } from './MessageBubble'
 import { formatChip, groupByDay } from '@/utils/helper'
+import { useCloudChat } from '@/hooks/useCloudChat'
 
 export function ChatArea({
   mode = 'direct',
