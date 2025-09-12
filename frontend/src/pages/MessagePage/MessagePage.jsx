@@ -1,27 +1,45 @@
-import { useOutletContext } from "react-router-dom"
+import { useOutletContext, useParams } from "react-router-dom"
 import { ChatArea } from "@/components/common/Sidebar/Chat/ChatArea" // đúng path của bạn
 import WelcomeScreen from "@/components/common/WelcomeScreen"
+import { useCloudChat } from "@/hooks/useCloudChat"
+import { useSelector } from "react-redux"
+import { selectCurrentUser } from "@/redux/user/userSlice"
 
 export default function MessagePage() {
   const { chatState } = useOutletContext()
-  const chat = chatState?.selectedChat
 
-  const 
+  const { conversationId } = useParams()
 
-  if (!chat) {
-    return (
-      // <div className="h-full w-full flex items-center justify-center text-muted-foreground">
-      //   Chọn một cuộc trò chuyện để bắt đầu
-      // </div>
-      <WelcomeScreen/>
-    )
-  }
+  if (!conversationId) <WelcomeScreen/>
 
+  const currentUser = useSelector(selectCurrentUser)
+
+  const {
+    loading,
+    sending,
+    messages,
+    send,
+    startTyping,
+    stopTyping,
+    othersTyping,
+    conversation
+  } = useCloudChat({
+    mode: "direct",
+    currentUserId: currentUser._id,
+    conversationId
+  })
   return (
     <div className="h-full w-full">
       <ChatArea
-        conversation={chat}
-        onSendMessage={chatState.onSendMessage}
+        mode="direct"
+        conversation={conversation || { _id: conversationId }}
+        messages={messages}
+        loading={loading}
+        sending={sending}
+        onSendMessage={send}
+        onStartTyping={startTyping}
+        onStopTyping={stopTyping}
+        othersTyping={othersTyping}
       />
     </div>
   )
