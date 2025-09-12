@@ -1,25 +1,33 @@
+// useCloudChat.js
 import { getCloudConversation, sendMessage } from "@/apis"
 import { API_ROOT } from "@/utils/constant"
+import { extractId } from "@/utils/helper"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { io } from "socket.io-client"
 
-function extractId(raw) {
-  if (!raw) return null
-  if (typeof raw === 'string') return raw
-  if (raw._id) return raw._id.toString()
-  if (raw.id) return raw.id.toString()
-  if (raw.conversationId) return raw.conversationId.toString()
-  if (raw.$oid) return raw.$oid.toString()
-  return null
-}
+/**
+ * options:
+ * - mode: "cloud" | "direct" | "group"
+ * - currentUserId: string
+ * - conversationId: string (lấy từ URL /chats/:conversationId)
+ * - initialConversation: object (nếu đã có sẵn để show header)
+ * - preloadHistory: boolean (để dành nếu bạn có API preload lịch sử direct/group)
+ */
+export const useCloudChat = (options = {}) => {
+  const {
+    mode = "cloud",
+    currentUserId,
+    conversationId: externalConversationId = null,
+    initialConversation = null,
+    preloadHistory = false // hiện chưa dùng
+  } = options
 
-export const useCloudChat = (mode="cloud", currentUserId) => {
-  const [conversation, setConversation] = useState(null)
-  const [conversationId, setConversationId] = useState(null)
+  const [conversation, setConversation] = useState(initialConversation)
+  const [cid, setCid] = useState(externalConversationId) // tránh trùng tên với prop
   const [messages, setMessages] = useState([])
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
-  const [otherTyping, setOtherTyping] = useState(false)
+  const [othersTyping, setOthersTyping] = useState(false)
   const socketRef = useRef(null)
 
   const normalizeIncoming = (m) => {
@@ -28,50 +36,75 @@ export const useCloudChat = (mode="cloud", currentUserId) => {
       seq: m.seq ?? 0,
       createdAt: m.createdAt ?? Date.now(),
       body: m.body,
-      text: m.body?.text ?? m.text ?? '',
+      text: m.body?.text ?? m.text ?? "",
       senderId: m.senderId,
       type: m.type
     }
-    if (mode === 'cloud') return { ...base, isOwn: true }
+    if (mode === "cloud") return { ...base, isOwn: true }
     return { ...base, isOwn: String(m.senderId) === String(currentUserId) }
   }
 
+  // 1) Khởi tạo conversation + lịch sử ban đầu (nếu có)
   useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const res = await getCloudConversation()
-        const convo = res?.conversation
-        const id = extractId(convo)
-        const msgs = Array.isArray(res?.messages) ? res.messages : []
+    let mounted = true
 
-        if (!mounted) return
-        setConversation(convo || null)
-        setConversationId(id)
-        setMessages(msgs.map(normalizeIncoming))
+    ;(async () => {
+      try {
+        setLoading(true)
+
+        // Có id từ URL (direct/group) -> set ngay
+        if (externalConversationId) {
+          if (mounted) {
+            setConversation((prev) => prev ?? { _id: externalConversationId })
+            setCid(externalConversationId)
+          }
+
+          // TODO: nếu có API lịch sử direct/group, fetch ở đây khi preloadHistory === true
+          // if (preloadHistory) {
+          //   const res = await getConversationMessages(externalConversationId)
+          //   if (!mounted) return
+          //   setMessages((res?.messages || []).map(normalizeIncoming))
+          // }
+          return
+        }
+
+        // Không có id nhưng là cloud -> tự load cloud conversation
+        if (mode === "cloud") {
+          const res = await getCloudConversation()
+          const convo = res?.conversation
+          const id = extractId(convo)
+          const msgs = Array.isArray(res?.messages) ? res.messages : []
+          if (!mounted) return
+          setConversation(convo || null)
+          setCid(id)
+          setMessages(msgs.map(normalizeIncoming))
+          return
+        }
       } catch (e) {
         console.error(e)
       } finally {
         if (mounted) setLoading(false)
       }
     })()
-    return () => { mounted = false }
-  }, [])
 
+    return () => { mounted = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [externalConversationId, mode])
+
+  // 2) Socket theo cid
   useEffect(() => {
-    if (!conversationId) return
+    if (!cid) return
+
     const s = io(API_ROOT, { withCredentials: true })
     socketRef.current = s
 
-    s.on('connect', () => {
-      s.emit('conversation:join', { conversationId })
+    s.on("connect", () => {
+      s.emit("conversation:join", { conversationId: cid })
     })
 
     const onNewMessage = (payload) => {
-      // payload gợi ý: { conversationId, message }
-      if (extractId(payload?.conversationId) !== conversationId) return
+      if (extractId(payload?.conversationId) !== cid) return
       const nm = normalizeIncoming(payload?.message || payload)
-      // append + giữ thứ tự theo seq
       setMessages((prev) => {
         const next = [...prev, nm]
         next.sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))
@@ -80,49 +113,47 @@ export const useCloudChat = (mode="cloud", currentUserId) => {
     }
 
     const onTypingStart = (payload) => {
-      if (extractId(payload?.conversationId) === conversationId )
-        setOtherTyping(true)
+      if (extractId(payload?.conversationId) === cid) setOthersTyping(true)
     }
-
     const onTypingStop = (payload) => {
-      if (extractId(payload?.conversationId) === conversationId)
-        setOtherTyping(false)
+      if (extractId(payload?.conversationId) === cid) setOthersTyping(false)
     }
 
-    s.on('message:new', onNewMessage)
-    s.on('typing:start', onTypingStart)
-    s.on('typing:stop', onTypingStop)
+    s.on("message:new", onNewMessage)
+    s.on("typing:start", onTypingStart)
+    s.on("typing:stop", onTypingStop)
 
     return () => {
-      s.off('message:new', onNewMessage)
-      s.off('typing:start', onTypingStart)
-      s.off('typing:stop', onTypingStop)
+      s.off("message:new", onNewMessage)
+      s.off("typing:start", onTypingStart)
+      s.off("typing:stop", onTypingStop)
       s.disconnect()
       socketRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversationId, mode, currentUserId])
+  }, [cid, mode, currentUserId])
 
+  // 3) Gửi tin
   const send = async (text) => {
-    if (!conversationId || !text || !text.trim() || sending ) return
+    if (!cid || !text || !text.trim() || sending) return
     try {
       setSending(true)
-      await sendMessage(conversationId, text.trim())
+      await sendMessage(cid, text.trim())
     } catch (error) {
-      console.error('Send failed', error)
+      console.error("Send failed", error)
     } finally {
       setSending(false)
     }
   }
-  //export emit
-  const startTyping = () => {
-    if (!conversationId) return
-    socketRef?.current.emit('typing:start', { conversationId })
-  }
 
+  // 4) Typing emitters
+  const startTyping = () => {
+    if (!cid) return
+    socketRef.current?.emit("typing:start", { conversationId: cid })
+  }
   const stopTyping = () => {
-    if (!conversationId) return
-    socketRef?.current.emit('typing:stop', { conversationId })
+    if (!cid) return
+    socketRef.current?.emit("typing:stop", { conversationId: cid })
   }
 
   const normalizedMessages = useMemo(() => {
@@ -135,11 +166,11 @@ export const useCloudChat = (mode="cloud", currentUserId) => {
     loading,
     sending,
     conversation,
-    conversationId,
+    conversationId: cid,
     messages: normalizedMessages,
     send,
     startTyping,
     stopTyping,
-    otherTyping
+    othersTyping
   }
 }

@@ -20,3 +20,13 @@ export const groupByDay = (items = []) => {
   // giữ thứ tự ngày theo tin nhắn
   return Array.from(map.entries()).map(([key, arr]) => ({ key, items: arr }))
 }
+
+export function extractId(raw) {
+  if (!raw) return null
+  if (typeof raw === 'string') return raw
+  if (raw._id) return raw._id.toString()
+  if (raw.id) return raw.id.toString()
+  if (raw.conversationId) return raw.conversationId.toString()
+  if (raw.$oid) return raw.$oid.toString()
+  return null
+}

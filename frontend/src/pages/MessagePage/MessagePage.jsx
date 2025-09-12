@@ -6,6 +6,8 @@ export default function MessagePage() {
   const { chatState } = useOutletContext()
   const chat = chatState?.selectedChat
 
+  const 
+
   if (!chat) {
     return (
       // <div className="h-full w-full flex items-center justify-center text-muted-foreground">

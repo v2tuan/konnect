@@ -37,6 +37,7 @@ export default function App() {
         {/* App shell + nested pages */}
         <Route element={<MainLayout />}>
           <Route path="chats" element={<MessagePage />} />
+          <Route path="chats/:conversationId" element={<MessagePage/>} />
           <Route path="contacts" element={<ContactPage />} />
           <Route path="cloud" element={<CloudPage/>} />
           {/* các route khác nếu cần */}
