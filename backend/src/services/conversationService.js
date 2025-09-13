@@ -2,6 +2,8 @@ import Conversation from "~/models/conversations";
 import ConversationMember from "~/models/conversation_members";
 import User from "~/models/user";
 import FriendShip from "~/models/friendships";
+import mongoose from "mongoose";
+import { messageService } from "./messageService";
 
 const createConversation = async (conversationData, userId) => {
     const { type, memberIds } = conversationData
@@ -192,7 +194,88 @@ const getConversation = async (page, limit, userId) => {
     return conversations
 }
 
+export const fetchConversationDetail = async (userId, conversationId, limit = 30, beforeSeq) => {
+  if (!mongoose.isValidObjectId(conversationId)) {
+    const err = new Error("Invalid conversationId")
+    err.status = 400
+    throw err
+  }
+
+  const convo = await Conversation.findById(conversationId).lean()
+  if (!convo) {
+    const err = new Error("Conversation not found")
+    err.status = 404
+    throw err
+  }
+
+  await messageService.assertCanAccessConversation(userId, convo)
+
+  let displayName = null
+  let conversationAvatarUrl = null
+  let enrichedDirect = convo.direct || null
+
+  if (convo.type === "direct") {
+    const [userA, userB] = await Promise.all([
+      User.findById(convo.direct?.userA).lean(),
+      User.findById(convo.direct?.userB).lean()
+    ])
+
+    const meIsA = String(convo.direct?.userA) === String(userId)
+    const other = meIsA ? userB : userA
+
+    if (other) {
+      displayName = other.fullName || other.username || "User"
+      conversationAvatarUrl = other.avatarUrl || null
+      enrichedDirect = {
+        ...convo.direct,
+        otherUser: {
+          _id: other._id,
+          fullName: other.fullName || null,
+          username: other.username || null,
+          avatarUrl: other.avatarUrl || null,
+          status: other.status || null
+        }
+      }
+    } else {
+      // fallback
+      displayName = "Conversation"
+    }
+  }
+
+  if (convo.type === "group") {
+    displayName = convo.group?.name || "Group"
+    conversationAvatarUrl = convo.group?.avatarUrl || null
+  }
+
+  if (convo.type === "cloud") {
+    displayName = "Cloud Chat"
+  }
+
+  // Lấy messages (đã đảo ngược sang oldest->newest trong service của bạn)
+  const messages = await messageService.listMessages({ userId, conversationId, limit, beforeSeq })
+  const nextBeforeSeq = messages.length > 0 ? messages[0].seq : null
+
+  return {
+    conversation: {
+      _id: convo._id,
+      type: convo.type,
+      direct: enrichedDirect,
+      group: convo.group || null,
+      cloud: convo.cloud || null,                    // ✅ sửa nhầm group -> cloud
+      displayName,                                   // ✅ thêm
+      conversationAvatarUrl,                         // ✅ thêm
+      lastMessage: convo.lastMessage || null,
+      createdAt: convo.createdAt,
+      updatedAt: convo.updatedAt
+    },
+    messages,
+    pageInfo: { limit, beforeSeq, nextBeforeSeq }
+  }
+}
+
+
 export const conversationService = {
     createConversation,
-    getConversation
+    getConversation,
+    fetchConversationDetail
 }

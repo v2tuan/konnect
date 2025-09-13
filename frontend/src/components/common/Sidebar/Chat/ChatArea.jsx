@@ -13,15 +13,19 @@ import { Switch } from "@/components/ui/switch"
 // Optional
 import { MessageBubble } from './MessageBubble'
 import { formatChip, groupByDay } from '@/utils/helper'
+import { useCloudChat } from '@/hooks/useCloudChat'
 
 export function ChatArea({
   mode = 'direct',
-  conversation,
+  conversation = {},
   messages = [],
   onSendMessage,
   onSendFriendRequest, // <-- thêm callback nếu cần
   loading,
-  sending
+  sending,
+  onStartTyping,
+  onStopTyping,
+  othersTyping = false
 }) {
   const [messageText, setMessageText] = useState('')
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
@@ -32,6 +36,9 @@ export function ChatArea({
 
   const isCloud = mode === 'cloud' || conversation?.type === 'cloud'
   const isDirect = mode === 'direct' || !!conversation?.direct
+
+  const safeName = conversation?.displayName ?? (isCloud ? 'Cloud Chat' : 'Conversation')
+  const initialChar = safeName?.charAt(0)?.toUpperCase?.() || 'C'
 
   const mediaItems = [
     { id: 1, url: 'http://localhost:5173/381.jpg' },
@@ -94,7 +101,7 @@ export function ChatArea({
             <div className="relative">
               <Avatar className="w-10 h-10">
                 <AvatarImage src={conversation?.conversationAvatarUrl} />
-                <AvatarFallback>{conversation?.displayName?.[0] ?? 'C'}</AvatarFallback>
+                <AvatarFallback>{initialChar}</AvatarFallback>
               </Avatar>
 
               {/* Chấm online: chỉ hiện với direct, KHÔNG hiện với cloud */}
@@ -112,7 +119,7 @@ export function ChatArea({
 
             <div>
               <h2 className="font-semibold text-foreground">
-                {conversation?.displayName ?? (isCloud ? 'Cloud Chat' : 'Conversation')}
+                {safeName}
               </h2>
 
               {/* Trạng thái: ẩn với cloud */}
@@ -222,6 +229,12 @@ export function ChatArea({
           <div ref={messagesEndRef} />
         </div>
 
+        {othersTyping && (
+          <div className="py-4 w-full text-md text-muted-foreground text-semibold flex justify-center">
+            {conversation?.direct?.otherUser?.fullName} đang nhập...
+          </div>
+        )}
+
         {/* Input */}
         <div className="p-4 bg-card/80 backdrop-blur-sm border-t border-border shrink-0">
           <div className="flex items-end gap-2">
@@ -238,9 +251,12 @@ export function ChatArea({
                 value={messageText}
                 onChange={(e) => setMessageText(e.target.value)}
                 onKeyDown={handleKeyDown}
+                onFocus={() => onStartTyping?.()}
+                onBlur={() => onStopTyping?.()}
                 placeholder={isCloud ? "Viết ghi chú..." : "Nhập tin nhắn..."}
                 className="pr-12"
               />
+
               <Button
                 variant="ghost"
                 size="sm"
@@ -293,15 +309,15 @@ export function ChatArea({
           {/* User Profile */}
           <div className="p-6 text-center border-b">
             <div className="w-20 h-20 bg-blue-500 rounded-full flex items-center justify-center mx-auto mb-4">
-              {conversation.conversationAvatarUrl ?
+              {conversation?.conversationAvatarUrl ?
                 <Avatar className="w-20 h-20">
-                  <AvatarImage src={conversation.conversationAvatarUrl} />
-                  <AvatarFallback>{conversation.displayName}</AvatarFallback>
-                </Avatar> : <span className="text-2xl font-bold text-white">{conversation.displayName[0]}</span>
+                  <AvatarImage src={conversation?.conversationAvatarUrl} />
+                  <AvatarFallback>{initialChar}</AvatarFallback>
+                </Avatar> : <span className="text-2xl font-bold text-white">{initialChar}</span>
               }
             </div>
             <div className="flex items-center justify-center mb-4">
-              <h3 className="text-xl font-semibold">{conversation.displayName}</h3>
+              <h3 className="text-xl font-semibold">{safeName}</h3>
               <Edit size={16} className="ml-2 cursor-pointer" />
             </div>
 
