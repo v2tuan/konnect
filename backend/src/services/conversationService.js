@@ -2,6 +2,8 @@ import Conversation from "~/models/conversations";
 import ConversationMember from "~/models/conversation_members";
 import User from "~/models/user";
 import FriendShip from "~/models/friendships";
+import mongoose from "mongoose";
+import { messageService } from "./messageService";
 
 const createConversation = async (conversationData, userId) => {
     const { type, memberIds } = conversationData
@@ -192,9 +194,45 @@ const getConversation = async (page, limit, userId) => {
     return conversations
 }
 
-const fetchConversationDetail = async () => {
+const fetchConversationDetail = async (userId, conversationId, limit = 30, beforeSeq) => {
     try {
-        
+        if (!mongoose.isValidObjectId(conversationId)) {
+            throw new Error('Invalid conversationId')
+        }
+
+        const convo = await Conversation.findById(conversationId).lean()
+        if (!convo) throw new Error('Conversation not found')
+
+        if (typeof messageService.assertCanAccessConversation === 'function')
+            await assertCanAccessConversation(userId, convo)
+
+        const messages = await messageService.listMessages({ userId, conversationId, limit, beforeSeq})
+
+        //Tính cursor cho phân trang lần tới (keyset pagination)
+        // listMessages trả items theo thứ tự tăng dần (oldest -> newest) do docs.reverse()
+        // => để lấy trang cũ hơn, ta dùng seq nhỏ nhất hiện tại (items[0].seq)
+
+        const nextBeforeSeq = messages.length > 0 ? messages[0].seq : null
+
+        //chuan hoa payload tra ve
+        return {
+            conversation: {
+                _id: convo._id,
+                type: convo.type,
+                direct: convo.direct || null,
+                group: convo.group || null,
+                cloud: convo.group || null,
+                lastMessage: convo.lastMessage || null,
+                createdAt: convo.createdAt,
+                updatedAt: convo.updatedAt
+            },
+            messages,
+            pageInfo: {
+                limit,
+                beforeSeq,
+                nextBeforeSeq
+            }
+        }
     } catch (error) {
         throw new Error(error)
     }

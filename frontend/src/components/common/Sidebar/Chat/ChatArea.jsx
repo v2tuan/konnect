@@ -17,7 +17,7 @@ import { useCloudChat } from '@/hooks/useCloudChat'
 
 export function ChatArea({
   mode = 'direct',
-  conversation,
+  conversation = {},
   messages = [],
   onSendMessage,
   onSendFriendRequest, // <-- thêm callback nếu cần
