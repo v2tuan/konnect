@@ -204,7 +204,7 @@ const fetchConversationDetail = async (userId, conversationId, limit = 30, befor
         if (!convo) throw new Error('Conversation not found')
 
         if (typeof messageService.assertCanAccessConversation === 'function')
-            await assertCanAccessConversation(userId, convo)
+            await messageService.assertCanAccessConversation(userId, convo)
 
         const messages = await messageService.listMessages({ userId, conversationId, limit, beforeSeq})
 

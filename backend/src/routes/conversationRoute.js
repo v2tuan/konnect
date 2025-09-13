@@ -9,6 +9,6 @@ route.post('/', authMiddleware, conversationController.createConversation)
 route.get('/', authMiddleware, conversationController.getConversation)
 route.get('/:userId', authMiddleware, userController.selectedUser)
 
-route.route('/:conversationId')
+route.route('/chats/:conversationId')
   .get(authMiddleware, conversationController.fetchConversationDetail)
 export const conversationRoute = route
