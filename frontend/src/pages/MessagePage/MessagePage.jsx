@@ -1,25 +1,17 @@
-import { useOutletContext, useParams } from "react-router-dom"
 import { ChatArea } from "@/components/common/Sidebar/Chat/ChatArea"
 import WelcomeScreen from "@/components/common/WelcomeScreen"
 import { useCloudChat } from "@/hooks/useCloudChat"
-import { useSelector } from "react-redux"
 import { selectCurrentUser } from "@/redux/user/userSlice"
+import { useSelector } from "react-redux"
+import { useParams } from "react-router-dom"
 
 export default function MessagePage() {
   const { conversationId } = useParams()
-
-
   const currentUser = useSelector(selectCurrentUser)
 
   const {
-    loading,
-    sending,
-    messages,
-    send,
-    startTyping,
-    stopTyping,
-    othersTyping,
-    conversation
+    loading, sending, messages, send,
+    startTyping, stopTyping, othersTyping, conversation
   } = useCloudChat({
     mode: "direct",
     currentUserId: currentUser?._id,

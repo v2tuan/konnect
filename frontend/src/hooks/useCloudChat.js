@@ -1,33 +1,24 @@
-// useCloudChat.js
-import { getCloudConversation, sendMessage } from "@/apis"
+import { fetchConversationDetail, getCloudConversation, sendMessage } from "@/apis"
 import { API_ROOT } from "@/utils/constant"
 import { extractId } from "@/utils/helper"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { io } from "socket.io-client"
 
-/**
- * options:
- * - mode: "cloud" | "direct" | "group"
- * - currentUserId: string
- * - conversationId: string (lấy từ URL /chats/:conversationId)
- * - initialConversation: object (nếu đã có sẵn để show header)
- * - preloadHistory: boolean (để dành nếu bạn có API preload lịch sử direct/group)
- */
 export const useCloudChat = (options = {}) => {
   const {
     mode = "cloud",
     currentUserId,
     conversationId: externalConversationId = null,
     initialConversation = null,
-    preloadHistory = false // hiện chưa dùng
   } = options
 
   const [conversation, setConversation] = useState(initialConversation)
-  const [cid, setCid] = useState(externalConversationId) // tránh trùng tên với prop
+  const [cid, setCid] = useState(externalConversationId)
   const [messages, setMessages] = useState([])
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
   const [othersTyping, setOthersTyping] = useState(false)
+  const [cursor, setCursor] = useState(null) //load tin nhan cu hon
   const socketRef = useRef(null)
 
   const normalizeIncoming = (m) => {
@@ -44,7 +35,7 @@ export const useCloudChat = (options = {}) => {
     return { ...base, isOwn: String(m.senderId) === String(currentUserId) }
   }
 
-  // 1) Khởi tạo conversation + lịch sử ban đầu (nếu có)
+  // 1) Khởi tạo conversation
   useEffect(() => {
     let mounted = true
 
@@ -53,18 +44,15 @@ export const useCloudChat = (options = {}) => {
         setLoading(true)
 
         // Có id từ URL (direct/group) -> set ngay
-        if (externalConversationId) {
-          if (mounted) {
-            setConversation((prev) => prev ?? { _id: externalConversationId })
-            setCid(externalConversationId)
-          }
-
-          // TODO: nếu có API lịch sử direct/group, fetch ở đây khi preloadHistory === true
-          // if (preloadHistory) {
-          //   const res = await getConversationMessages(externalConversationId)
-          //   if (!mounted) return
-          //   setMessages((res?.messages || []).map(normalizeIncoming))
-          // }
+        if (externalConversationId && mode !== 'cloud') {
+          const data = await fetchConversationDetail(externalConversationId)
+          if (!mounted) return
+          const convo = data?.conversation
+          const items = Array.isArray(data?.messages) ? data.messages: []
+          setConversation(convo || { id: externalConversationId, type: mode })
+          setCid(externalConversationId)
+          setMessages(items.map(normalizeIncoming))
+          setCursor(data?.pageInfo?.nextBeforeSeq ?? null)
           return
         }
 
@@ -73,11 +61,12 @@ export const useCloudChat = (options = {}) => {
           const res = await getCloudConversation()
           const convo = res?.conversation
           const id = extractId(convo)
-          const msgs = Array.isArray(res?.messages) ? res.messages : []
+          const items = Array.isArray(res?.messages) ? res.messages : []
           if (!mounted) return
           setConversation(convo || null)
           setCid(id)
-          setMessages(msgs.map(normalizeIncoming))
+          setMessages(items.map(normalizeIncoming))
+          setCursor(res?.paging?.nextBeforeReq ?? null)
           return
         }
       } catch (e) {
@@ -156,6 +145,28 @@ export const useCloudChat = (options = {}) => {
     socketRef.current?.emit("typing:stop", { conversationId: cid })
   }
 
+  const loadOlder = async () => {
+    if (!cid || cursor === null ) return { hasMore: false }
+    try {
+      const data = await fetchConversationDetail(cid, { beforeReq: cursor, limit: 30 })
+      const older = Array.isArray(data?.messages) ? data.messages : []
+      if (!older.length) {
+        setCursor(null)
+        return { hasMore: false }
+      }
+      setMessages((prev) => {
+        const merged = [...older.map(normalizeIncoming), ...prev]
+        merged.sort((a, b) => (a.seq??0) - (b.seq ?? 0))
+        return merged
+      })
+      setCursor(data?.pageInfo?.nextBeforeSeq ?? null)
+      return { hasMore: data?.pageInfo?.nextBeforeSeq != null }
+    } catch (error) {
+      console.error(error)
+      return { hasMore: false }
+    }
+  }
+
   const normalizedMessages = useMemo(() => {
     const arr = [...messages]
     arr.sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))
@@ -171,6 +182,8 @@ export const useCloudChat = (options = {}) => {
     send,
     startTyping,
     stopTyping,
-    othersTyping
+    othersTyping,
+    loadOlder, //load tin nhan cu
+    hasMore: cursor != null
   }
 }
