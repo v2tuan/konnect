@@ -7,6 +7,9 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { SkeletonConversation } from '../Skeleton/SkeletonConversation'
 import { getConversationByUserId, getConversations, searchUserByUsername } from '@/apis'
 import { useNavigate, useParams } from 'react-router-dom'
+import { useSelector } from 'react-redux'
+import { selectCurrentUser } from '@/redux/user/userSlice'
+import { formatTimeAgo } from '@/utils/helper'
 
 function extractId(raw) {
   if (!raw) return null
@@ -29,6 +32,20 @@ export function ChatSidebar({
 
   const navigate = useNavigate()
   const { conversationId: activeIdFromURL } = useParams()
+
+  const currentUser = useSelector(selectCurrentUser)
+
+  const getLastMessageText = (conv) => {
+    const lm = conv.lastMessage
+    if (!lm) return "Chưa có tin nhắn"
+    if (!lm.textPreview) return "Chưa có tin nhắn"
+
+    // nếu senderId = currentUser._id thì thêm prefix
+    if (lm.senderId && String(lm.senderId.id) === String(currentUser._id)) {
+      return `You: ${lm.textPreview}`
+    }
+    return lm.textPreview
+  }
 
   // Load conversations
   useEffect(() => {
@@ -219,15 +236,15 @@ export function ChatSidebar({
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between mb-1">
                           <h3 className="font-medium truncate">{conversation.displayName}</h3>
-                          {conversation.lastMessage && (
+                          {conversation.lastMessage?.createdAt && (
                             <span className="text-xs text-muted-foreground">
-                              {formatTime(conversation.lastMessage?.createdAt)}
+                              {formatTimeAgo(conversation.lastMessage.createdAt)}
                             </span>
                           )}
                         </div>
                         <div className="flex items-center justify-between">
                           <p className="text-sm text-muted-foreground truncate">
-                            {conversation.lastMessage?.textPreview || 'Chưa có tin nhắn'}
+                            {getLastMessageText(conversation)}
                           </p>
                         </div>
                       </div>
