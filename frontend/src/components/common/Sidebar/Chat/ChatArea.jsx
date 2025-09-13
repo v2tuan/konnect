@@ -22,7 +22,10 @@ export function ChatArea({
   onSendMessage,
   onSendFriendRequest, // <-- thêm callback nếu cần
   loading,
-  sending
+  sending,
+  onStartTyping,
+  onStopTyping,
+  othersTyping = false
 }) {
   const [messageText, setMessageText] = useState('')
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
@@ -226,6 +229,12 @@ export function ChatArea({
           <div ref={messagesEndRef} />
         </div>
 
+        {othersTyping && (
+          <div className="py-4 w-full text-md text-muted-foreground text-semibold flex justify-center">
+            {conversation?.direct?.otherUser?.fullName} đang nhập...
+          </div>
+        )}
+
         {/* Input */}
         <div className="p-4 bg-card/80 backdrop-blur-sm border-t border-border shrink-0">
           <div className="flex items-end gap-2">
@@ -242,9 +251,12 @@ export function ChatArea({
                 value={messageText}
                 onChange={(e) => setMessageText(e.target.value)}
                 onKeyDown={handleKeyDown}
+                onFocus={() => onStartTyping?.()}
+                onBlur={() => onStopTyping?.()}
                 placeholder={isCloud ? "Viết ghi chú..." : "Nhập tin nhắn..."}
                 className="pr-12"
               />
+
               <Button
                 variant="ghost"
                 size="sm"
