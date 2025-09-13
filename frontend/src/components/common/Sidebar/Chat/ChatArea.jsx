@@ -34,6 +34,9 @@ export function ChatArea({
   const isCloud = mode === 'cloud' || conversation?.type === 'cloud'
   const isDirect = mode === 'direct' || !!conversation?.direct
 
+  const safeName = conversation?.displayName ?? (isCloud ? 'Cloud Chat' : 'Conversation')
+  const initialChar = safeName?.charAt(0)?.toUpperCase?.() || 'C'
+
   const mediaItems = [
     { id: 1, url: 'http://localhost:5173/381.jpg' },
     { id: 2, url: 'http://localhost:5173/382.jpg' },
@@ -95,7 +98,7 @@ export function ChatArea({
             <div className="relative">
               <Avatar className="w-10 h-10">
                 <AvatarImage src={conversation?.conversationAvatarUrl} />
-                <AvatarFallback>{conversation?.displayName?.[0] ?? 'C'}</AvatarFallback>
+                <AvatarFallback>{initialChar}</AvatarFallback>
               </Avatar>
 
               {/* Chấm online: chỉ hiện với direct, KHÔNG hiện với cloud */}
@@ -113,7 +116,7 @@ export function ChatArea({
 
             <div>
               <h2 className="font-semibold text-foreground">
-                {conversation?.displayName ?? (isCloud ? 'Cloud Chat' : 'Conversation')}
+                {safeName}
               </h2>
 
               {/* Trạng thái: ẩn với cloud */}
@@ -294,15 +297,15 @@ export function ChatArea({
           {/* User Profile */}
           <div className="p-6 text-center border-b">
             <div className="w-20 h-20 bg-blue-500 rounded-full flex items-center justify-center mx-auto mb-4">
-              {conversation.conversationAvatarUrl ?
+              {conversation?.conversationAvatarUrl ?
                 <Avatar className="w-20 h-20">
-                  <AvatarImage src={conversation.conversationAvatarUrl} />
-                  <AvatarFallback>{conversation.displayName}</AvatarFallback>
-                </Avatar> : <span className="text-2xl font-bold text-white">{conversation.displayName[0]}</span>
+                  <AvatarImage src={conversation?.conversationAvatarUrl} />
+                  <AvatarFallback>{initialChar}</AvatarFallback>
+                </Avatar> : <span className="text-2xl font-bold text-white">{initialChar}</span>
               }
             </div>
             <div className="flex items-center justify-center mb-4">
-              <h3 className="text-xl font-semibold">{conversation.displayName}</h3>
+              <h3 className="text-xl font-semibold">{safeName}</h3>
               <Edit size={16} className="ml-2 cursor-pointer" />
             </div>
 
