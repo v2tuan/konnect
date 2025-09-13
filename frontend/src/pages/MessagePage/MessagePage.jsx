@@ -1,16 +1,13 @@
 import { useOutletContext, useParams } from "react-router-dom"
-import { ChatArea } from "@/components/common/Sidebar/Chat/ChatArea" // đúng path của bạn
+import { ChatArea } from "@/components/common/Sidebar/Chat/ChatArea"
 import WelcomeScreen from "@/components/common/WelcomeScreen"
 import { useCloudChat } from "@/hooks/useCloudChat"
 import { useSelector } from "react-redux"
 import { selectCurrentUser } from "@/redux/user/userSlice"
 
 export default function MessagePage() {
-  const { chatState } = useOutletContext()
-
   const { conversationId } = useParams()
 
-  if (!conversationId) <WelcomeScreen/>
 
   const currentUser = useSelector(selectCurrentUser)
 
@@ -25,9 +22,12 @@ export default function MessagePage() {
     conversation
   } = useCloudChat({
     mode: "direct",
-    currentUserId: currentUser._id,
+    currentUserId: currentUser?._id,
     conversationId
   })
+
+  if (!conversationId) return <WelcomeScreen />
+
   return (
     <div className="h-full w-full">
       <ChatArea
