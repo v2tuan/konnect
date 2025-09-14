@@ -8,6 +8,8 @@ import connectDB from './lib/connectDB.js';
 import { APIs_V1 } from './routes/index.js';
 import { Server } from 'socket.io'
 import jwt from 'jsonwebtoken'
+import User from './models/user.js'
+import { userService } from './services/userService.js';
 
 const app = express();
 
@@ -20,60 +22,90 @@ const io = new Server(server, {
     cors: {origin: env.WEBSITE_DOMAIN_DEVELOPMENT, credentials: true}
 })
 
-//lay token tu cookie
+const presenceMap = new Map()
+
 io.use(async (socket, next) => {
   try {
-    //
-    const cookieHeader = socket.handshake.headers.cookie || ''
-    const token = cookieHeader
-      .split(';')
-      .map(s => s.trim)
-      .find(s => s.startsWith('token='))?.split('=')[1]
-
-    if (!token) return next(new Error('Unthorized'))
+    const raw = socket.handshake.headers.cookie || ''
+    const tokenPair = raw.split(';').map(s => s.trim()).find(s => s.startsWith('token='))
+    const token = tokenPair ? tokenPair.split('=')[1] : null
+    if (!token) return next(new Error('Unauthorized'))
     const decoded = jwt.verify(token, env.JWT_SECRET)
-
-    //gan user cho phien socket
-    socket.user = {id: decoded.userId}
-    return next();
+    socket.user = { id: decoded.userId }
+    return next()
   } catch (err) {
-    return next(err);
+    return next(err)
   }
 })
 
 io.on('connection', (socket) => {
-  // console.log('Socket connected', socket.id, socket.user);
+  const userId = socket.user?.id
+  if (userId) {
+    let entry = presenceMap.get(userId)
+    if (!entry) {
+      entry = { sockets: new Set(), lastActiveAt: new Date() }
+      presenceMap.set(userId, entry)
+      // First connection -> mark online
+      userService.markUserStatus(userId, { isOnline: true, lastActiveAt: new Date() })
+      io.emit('presence:update', { userId, isOnline: true, lastActiveAt: new Date().toISOString() })
+    }
+    entry.sockets.add(socket.id)
+  }
 
-  // tham gia hoi thoai
+  // Client may request a presence snapshot
+  socket.on('presence:snapshot', (userIds = []) => {
+    const payload = userIds.map(uid => {
+      const entry = presenceMap.get(uid)
+      return {
+        userId: uid,
+        isOnline: !!entry,
+        lastActiveAt: entry?.lastActiveAt?.toISOString() || null
+      }
+    })
+    socket.emit('presence:snapshot', payload)
+  })
+
+  // Heartbeat -> update lastActiveAt in memory + (optionally) throttle DB writes
+  socket.on('presence:heartbeat', () => {
+    if (!userId) return
+    const entry = presenceMap.get(userId)
+    if (entry) {
+      entry.lastActiveAt = new Date()
+    }
+  })
+
+  // Conversation join/typing events (kept from previous version)
   socket.on('conversation:join', ({ conversationId }) => {
-    if (!conversationId) return;
-    socket.join(`conversation:${conversationId}`);
-  });
+    if (!conversationId) return
+    socket.join(`conversation:${conversationId}`)
+  })
 
-  // user are typing ...
   socket.on('typing:start', ({ conversationId }) => {
-    if (!conversationId) return;
-    socket.to(`conversation:${conversationId}`).emit('typing:start', {
-      conversationId,
-      userId: socket.user?.id
-    });
-  });
+    if (!conversationId) return
+    socket.to(`conversation:${conversationId}`).emit('typing:start', { conversationId, userId })
+  })
 
   socket.on('typing:stop', ({ conversationId }) => {
-    if (!conversationId) return;
-    socket.to(`conversation:${conversationId}`).emit('typing:stop', {
-      conversationId,
-      userId: socket.user?.id
-    });
-  });
+    if (!conversationId) return
+    socket.to(`conversation:${conversationId}`).emit('typing:stop', { conversationId, userId })
+  })
 
-  // update status user
   socket.on('disconnect', () => {
-    // TODO: cập nhật User.status.lastActiveAt / isOnline=false nếu bạn muốn
-  });
-});
+    if (!userId) return
+    const entry = presenceMap.get(userId)
+    if (!entry) return
+    entry.sockets.delete(socket.id)
+    if (entry.sockets.size === 0) {
+      // Mark offline now & broadcast
+      presenceMap.delete(userId)
+      const lastActiveAt = new Date()
+      userService.markUserStatus(userId, { isOnline: false, lastActiveAt })
+      io.emit('presence:update', { userId, isOnline: false, lastActiveAt: lastActiveAt.toISOString() })
+    }
+  })
+})
 app.use((req, _res, next) => { 
-    req.io = io 
+    req.io = io
     next() 
 })
 

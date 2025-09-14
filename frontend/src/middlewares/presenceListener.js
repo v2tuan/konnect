@@ -17,12 +17,12 @@ const startHeartbeat = () => {
     const sock = getSocket()
     if (sock?.connected) sock.emit("presence:heartbeat")
   }, 30000) // 30s (3s hơi dày)
-};
+}
 
 const stopHeartbeat = () => {
   if (heartbeatTimer) clearInterval(heartbeatTimer)
   heartbeatTimer = null
-};
+}
 
 export const presenceListener = createListenerMiddleware()
 
@@ -36,13 +36,21 @@ presenceListener.startListening({
     if (!socket) return
 
     socket.once("connect", () => {
-      api.dispatch(
-        setUserStatus({
-          userId: user._id,
-          isOnline: true,
-          lastActiveAt: new Date().toISOString()
-        })
-      )
+      // Immediately reflect own status
+      api.dispatch(setUserStatus({
+        userId: user._id,
+        isOnline: true,
+        lastActiveAt: new Date().toISOString()
+      }))
+      // Request snapshot of contacts (if we store them in state.user.usersById)
+      const state = api.getState()
+      const ids = Object.keys(state.user?.usersById || {})
+      if (ids.length) socket.emit('presence:snapshot', ids)
+    })
+
+    socket.on('presence:snapshot', (list) => {
+      // list: [{ userId, isOnline, lastActiveAt }]
+      list.forEach(item => api.dispatch(setUserStatus(item)))
     })
 
     socket.on("presence:update", (payload) => {
@@ -61,6 +69,7 @@ presenceListener.startListening({
     const s = getSocket()
     if (s) {
       s.off("presence:update")
+      s.off("presence:snapshot")
       s.off("connect")
       s.off("disconnect")
     }
