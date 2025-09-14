@@ -245,24 +245,24 @@ export function ChatSidebar({
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between mb-1">
                           <h3 className="font-medium truncate">{conversation.displayName}</h3>
-                          {conversation.lastMessage?.createdAt && (
-                            <span className="text-xs text-muted-foreground">
-                              {formatTimeAgo(conversation.lastMessage.createdAt)}
-                            </span>
-                          )}
+                          {conversation.direct && (() => {
+                            const { isOnline, lastActiveAt } = pickPeerStatus(conversation, usersById)
+                            return (
+                              <span className="text-xs text-muted-foreground">
+                                {renderPresenceText(isOnline, lastActiveAt)}
+                              </span>
+                            )
+                          })()}
                         </div>
                         <div className="flex items-center justify-between">
                           <p className="text-sm text-muted-foreground truncate">
                             {getLastMessageText(conversation)}
                           </p>
-                          {conversation.direct && (() => {
-                            const { isOnline, lastActiveAt } = pickPeerStatus(conversation, usersById)
-                            return (
-                              <span className="ml-3 shrink-0 text-xs text-muted-foreground">
-                                {renderPresenceText(isOnline, lastActiveAt)}
-                              </span>
-                            )
-                          })()}
+                          {conversation.lastMessage?.createdAt && (
+                            <span className="ml-3 shrink-0 text-xs text-muted-foreground">
+                              {formatTimeAgo(conversation.lastMessage.createdAt)}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>

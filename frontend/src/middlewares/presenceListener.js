@@ -3,11 +3,22 @@ import {
   loginUserAPI,
   logoutUserAPI,
   clearCurrentUser,
-  setUserStatus
+  setUserStatus,
+  upsertUsers
 } from "@/redux/user/userSlice"
 import { getSocket, connectSocket, disconnectSocket } from "@/lib/socket"
 
 let heartbeatTimer = null
+let snapshotDebounceTimer = null
+
+const requestSnapshot = (socket, api, userIds) => {
+  if (!socket || !userIds?.length) return
+  // debounce to batch multiple upsertUsers dispatches in same tick
+  clearTimeout(snapshotDebounceTimer)
+  snapshotDebounceTimer = setTimeout(() => {
+    socket.emit('presence:snapshot', userIds)
+  }, 150)
+}
 
 const startHeartbeat = () => {
   const s = getSocket()
@@ -35,18 +46,17 @@ presenceListener.startListening({
     const socket = connectSocket()
     if (!socket) return
 
-    socket.once("connect", () => {
-      // Immediately reflect own status
+    const handleConnect = () => {
       api.dispatch(setUserStatus({
         userId: user._id,
         isOnline: true,
         lastActiveAt: new Date().toISOString()
       }))
-      // Request snapshot of contacts (if we store them in state.user.usersById)
       const state = api.getState()
       const ids = Object.keys(state.user?.usersById || {})
-      if (ids.length) socket.emit('presence:snapshot', ids)
-    })
+      requestSnapshot(socket, api, ids)
+    }
+    socket.on("connect", handleConnect)
 
     socket.on('presence:snapshot', (list) => {
       // list: [{ userId, isOnline, lastActiveAt }]
@@ -58,6 +68,17 @@ presenceListener.startListening({
     })
 
     startHeartbeat()
+  }
+})
+
+// Khi thêm mới user vào store -> xin snapshot trạng thái nếu đã kết nối
+presenceListener.startListening({
+  actionCreator: upsertUsers,
+  effect: async (action, api) => {
+    const socket = getSocket()
+    if (!socket?.connected) return
+    const ids = (action.payload || []).map(u => u._id).filter(Boolean)
+    requestSnapshot(socket, api, ids)
   }
 })
 

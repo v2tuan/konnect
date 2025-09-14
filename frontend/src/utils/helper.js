@@ -72,7 +72,8 @@ export const pickPeerStatus = (conversation, usersMap) => {
 }
 
 export const renderPresenceText = (isOnline, lastActiveAt) => {
-  if (isOnline) return 'Online'
-  if (lastActiveAt) return `Online ${formatTimeAgo(lastActiveAt)}`
+  if (isOnline || formatTimeAgo(lastActiveAt) === 'Just now') return 'Online'
+  else
+    if (lastActiveAt) return `Online ${formatTimeAgo(lastActiveAt)} ago`
   return 'Offline'
 }
