@@ -11,6 +11,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate, useParams } from 'react-router-dom'
 import { SkeletonConversation } from '../Skeleton/SkeletonConversation'
 import { usePresenceText } from '@/hooks/use-relative-time'
+import { extractId } from '@/utils/helper'
 
 // Separate item component so we can safely use hooks
 function ConversationListItem({ conversation, usersById, isActive, onClick, getLastMessageText }) {
@@ -58,15 +59,6 @@ function ConversationListItem({ conversation, usersById, isActive, onClick, getL
       </div>
     </div>
   )
-}
-
-function extractId(raw) {
-  if (!raw) return null
-  if (typeof raw === 'string') return raw
-  if (raw._id) return String(raw._id)
-  if (raw.id) return String(raw.id)
-  if (raw.conversationId) return String(raw.conversationId)
-  return null
 }
 
 export function ChatSidebar({
