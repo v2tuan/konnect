@@ -1,41 +1,61 @@
+import { createAsyncThunk, createSlice } from "@reduxjs/toolkit"
 import authorizeAxiosInstance from "@/utils/authorizeAxios"
 import { API_ROOT } from "@/utils/constant"
-import { createAsyncThunk, createSlice } from "@reduxjs/toolkit"
 
 const initialState = {
-  currentUser: null
+  currentUser: null,
+  usersById: {} //catche nhieu user
 }
 
 export const loginUserAPI = createAsyncThunk(
   "/auth/loginUserAPI",
   async (data) => {
-    const response = await authorizeAxiosInstance.post(`${API_ROOT}/api/auth/login`, data)
-    return response.data
+    const res = await authorizeAxiosInstance.post(`${API_ROOT}/api/auth/login`, data)
+    return res.data
   }
 )
 
 export const updateUserAPI = createAsyncThunk(
   "/auth/updateUserAPI",
   async (data) => {
-    const response = await authorizeAxiosInstance.put(`${API_ROOT}/api/auth/update`, data)
-    return response.data
+    const res = await authorizeAxiosInstance.put(`${API_ROOT}/api/auth/update`, data)
+    return res.data
   }
 )
 
 export const logoutUserAPI = createAsyncThunk(
   "/auth/logoutUserAPI",
-  async (data) => {
-    const response = await authorizeAxiosInstance.post(`${API_ROOT}/api/auth/logout`, data)
-    return response.data
+  async () => {
+    const res = await authorizeAxiosInstance.post(`${API_ROOT}/api/auth/logout`)
+    return res.data
   }
 )
 
 export const userSlice = createSlice({
-  name: 'user',
+  name: "user",
   initialState,
   reducers: {
-    clearCurrentUser: (state) => {
-      state.currentUser = null
+    clearCurrentUser: (state) => { state.currentUser = null },
+    setUserStatus: (state, action) => {
+      const { userId, isOnline, lastActiveAt } = action.payload || {}
+      if (state.currentUser?._id === userId) {
+        state.currentUser = {
+          ...state.currentUser,
+          status: { ...(state.currentUser.status || {}), isOnline, lastActiveAt }
+        }
+      }
+      const u = state.usersById[userId]
+      if (u) {
+        state.usersById[userId] = {
+          ...u,
+          status: { ...(u.status || {}), isOnline, lastActiveAt }
+        }
+      }
+    },
+    upsertUsers: (state, action) => {
+      (action.payload || []).forEach(u => {
+        state.usersById[u._id] = u
+      })
     }
   },
   extraReducers: (builder) => {
@@ -51,11 +71,9 @@ export const userSlice = createSlice({
       })
   }
 })
-//sync function
-export const { clearCurrentUser } = userSlice.actions
 
-export const selectCurrentUser = (state) => {
-  return state.user.currentUser
-}
+export const { clearCurrentUser, setUserStatus, upsertUsers } = userSlice.actions
+
+export const selectCurrentUser = (state) => state.user.currentUser
 
 export const userReducer = userSlice.reducer
