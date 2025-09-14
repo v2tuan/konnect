@@ -4,7 +4,8 @@ import {
   logoutUserAPI,
   clearCurrentUser,
   setUserStatus,
-  upsertUsers
+  upsertUsers,
+  repairUsersMap
 } from "@/redux/user/userSlice"
 import { getSocket, connectSocket, disconnectSocket } from "@/lib/socket"
 
@@ -37,37 +38,68 @@ const stopHeartbeat = () => {
 
 export const presenceListener = createListenerMiddleware()
 
-// After login -> connect socket + listen presence
-presenceListener.startListening({
-  matcher: isAnyOf(loginUserAPI.fulfilled),
-  effect: async (action, api) => {
-    const user = action.payload
+// Helper: attach handlers & do initial snapshot
+function ensurePresenceStarted(api) {
+  const state = api.getState()
+  const user = state.user?.currentUser
+  if (!user) return
+  let socket = getSocket()
+  if (!socket) socket = connectSocket()
+  if (!socket) return
 
-    const socket = connectSocket()
-    if (!socket) return
-
-    const handleConnect = () => {
+  if (!socket._presenceHandlersAttached) {
+    socket._presenceHandlersAttached = true
+    // Presence updates
+    socket.on('presence:update', (payload) => {
+      api.dispatch(setUserStatus(payload))
+    })
+    socket.on('presence:snapshot', (list) => {
+      ;(list || []).forEach(item => api.dispatch(setUserStatus(item)))
+    })
+    // On connect (first or reconnect)
+    socket.on('connect', () => {
       api.dispatch(setUserStatus({
         userId: user._id,
         isOnline: true,
         lastActiveAt: new Date().toISOString()
       }))
-      const state = api.getState()
-      const ids = Object.keys(state.user?.usersById || {})
-      requestSnapshot(socket, api, ids)
-    }
-    socket.on("connect", handleConnect)
-
-    socket.on('presence:snapshot', (list) => {
-      // list: [{ userId, isOnline, lastActiveAt }]
-      list.forEach(item => api.dispatch(setUserStatus(item)))
+      const ids = Object.keys(api.getState().user?.usersById || {})
+      if (ids.length) socket.emit('presence:snapshot', ids)
     })
+  }
+  // If socket already connected when we attach, manually trigger connect logic once
+  if (socket.connected && !socket._presenceInitialSyncDone) {
+    socket._presenceInitialSyncDone = true
+    api.dispatch(setUserStatus({
+      userId: user._id,
+      isOnline: true,
+      lastActiveAt: new Date().toISOString()
+    }))
+    const ids = Object.keys(api.getState().user?.usersById || {})
+    if (ids.length) socket.emit('presence:snapshot', ids)
+  }
+  startHeartbeat()
+}
 
-    socket.on("presence:update", (payload) => {
-      api.dispatch(setUserStatus(payload))
-    })
+// After login -> connect socket + listen presence
+presenceListener.startListening({
+  matcher: isAnyOf(loginUserAPI.fulfilled),
+  effect: async (_action, api) => {
+    ensurePresenceStarted(api)
+  }
+})
 
-    startHeartbeat()
+// On rehydrate (Option B): auto bootstrap presence if user already persisted
+presenceListener.startListening({
+  predicate: (action, currentState, previousState) => {
+    if (action.type !== 'persist/REHYDRATE') return false
+    const prevHadUser = !!previousState?.user?.currentUser
+    const nowHasUser = !!currentState?.user?.currentUser
+    return !prevHadUser && nowHasUser
+  },
+  effect: async (_action, api) => {
+    api.dispatch(repairUsersMap())
+    ensurePresenceStarted(api)
   }
 })
 

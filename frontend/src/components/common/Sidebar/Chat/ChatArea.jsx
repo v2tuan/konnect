@@ -109,7 +109,6 @@ export function ChatArea({
                 <AvatarFallback>{initialChar}</AvatarFallback>
               </Avatar>
 
-              {/* Chấm online: chỉ hiện với direct, KHÔNG hiện với cloud */}
               {isDirect && !isCloud && (
                 <div
                   className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-background"
