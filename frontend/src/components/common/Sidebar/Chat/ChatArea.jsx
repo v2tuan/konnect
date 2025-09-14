@@ -12,7 +12,8 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { Switch } from "@/components/ui/switch"
 // Optional
 import { MessageBubble } from './MessageBubble'
-import { formatChip, groupByDay, pickPeerStatus, renderPresenceText } from '@/utils/helper'
+import { formatChip, groupByDay, pickPeerStatus } from '@/utils/helper'
+import { usePresenceText } from '@/hooks/use-relative-time'
 import { useSelector } from 'react-redux'
 
 export function ChatArea({
@@ -74,6 +75,7 @@ export function ChatArea({
   // Live presence from Redux store
   const usersById = useSelector(state => state.user.usersById || {})
   const { isOnline, lastActiveAt } = pickPeerStatus(conversation, usersById)
+  const presenceText = usePresenceText({ isOnline, lastActiveAt })
 
   const handleSendMessage = () => {
     const value = messageText.trim()
@@ -123,9 +125,7 @@ export function ChatArea({
 
               {/* Trạng thái: ẩn với cloud */}
               {!isCloud && (
-                <p className={`text-sm ${getStatusColor(isOnline)}`}>
-                  {isOnline ? 'Đang hoạt động' : renderPresenceText(false, lastActiveAt)}
-                </p>
+                <p className={`text-sm ${getStatusColor(isOnline)}`}>{presenceText}</p>
               )}
             </div>
           </div>

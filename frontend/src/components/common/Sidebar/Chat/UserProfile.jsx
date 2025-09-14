@@ -82,7 +82,7 @@ export function UserProfile() {
           <div className="flex items-center gap-2">
             <Badge variant="secondary" className="bg-success/20 text-success">
               <div className="w-2 h-2 bg-success rounded-full mr-2"></div>
-              Đang hoạt động
+              Online
             </Badge>
           </div>
         </div>

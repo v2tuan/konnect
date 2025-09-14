@@ -31,7 +31,7 @@ export function useRelativeTime(iso, { intervalMs = 60000, enabled = true } = {}
  */
 export function usePresenceText({ isOnline, lastActiveAt }, opts) {
   const relative = useRelativeTime(lastActiveAt, opts)
-  if (isOnline) return 'Đang hoạt động'
-  if (lastActiveAt) return `Online ${relative}`
-  return 'Ngoại tuyến'
+  if (isOnline) return 'Online'
+  if (lastActiveAt) return `Online ${relative} ago`
+  return 'Offline'
 }

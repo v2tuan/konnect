@@ -4,12 +4,61 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { selectCurrentUser, upsertUsers } from '@/redux/user/userSlice'
-import { formatTimeAgo, pickPeerStatus, renderPresenceText } from '@/utils/helper'
+import { formatTimeAgo, pickPeerStatus } from '@/utils/helper'
 import { MessageCircle, Phone, Search, Users, Video } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate, useParams } from 'react-router-dom'
 import { SkeletonConversation } from '../Skeleton/SkeletonConversation'
+import { usePresenceText } from '@/hooks/use-relative-time'
+
+// Separate item component so we can safely use hooks
+function ConversationListItem({ conversation, usersById, isActive, onClick, getLastMessageText }) {
+  const id = extractId(conversation)
+  const status = conversation.direct ? pickPeerStatus(conversation, usersById) : { isOnline: false, lastActiveAt: null }
+  // Always call hook (even if not direct) to keep consistent call order
+  const presenceTextRaw = usePresenceText({ isOnline: status.isOnline, lastActiveAt: status.lastActiveAt })
+  const presenceText = conversation.direct ? presenceTextRaw : null
+  const getStatusDotClass = (isOnline) => (isOnline ? 'bg-status-online' : 'bg-status-offline')
+
+  return (
+    <div
+      key={id}
+      onClick={onClick}
+      className={`p-3 rounded-lg cursor-pointer transition-colors hover:bg-card-hover ${isActive ? 'bg-primary/10 border border-primary/20' : ''}`}
+    >
+      <div className="flex items-center gap-3">
+        <div className="relative">
+          <Avatar className="w-12 h-12">
+            <AvatarImage src={conversation.conversationAvatarUrl} />
+            <AvatarFallback>{conversation.displayName?.[0]}</AvatarFallback>
+          </Avatar>
+          {conversation.direct && status && (
+            <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${getStatusDotClass(status.isOnline)}`} />
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between mb-1">
+            <h3 className="font-medium truncate">{conversation.displayName}</h3>
+            {conversation.direct && status && (
+              <span className="text-xs text-muted-foreground">{presenceText}</span>
+            )}
+          </div>
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground truncate">
+              {getLastMessageText(conversation)}
+            </p>
+            {conversation.lastMessage?.createdAt && (
+              <span className="ml-3 shrink-0 text-xs text-muted-foreground">
+                {formatTimeAgo(conversation.lastMessage.createdAt)}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 function extractId(raw) {
   if (!raw) return null
@@ -28,7 +77,7 @@ export function ChatSidebar({
   const [loading, setLoading] = useState(true)
   const [searchList, setSearchList] = useState([])
   const [conversationList, setConversationList] = useState([])
-  const [pagination, setPage] = useState({ page: 1, limit: 10 })
+  const [pagination] = useState({ page: 1, limit: 10 })
 
   const navigate = useNavigate()
   const { conversationId: activeIdFromURL } = useParams()
@@ -69,7 +118,7 @@ export function ChatSidebar({
       }
     })()
     return () => { mounted = false }
-  }, [pagination])
+  }, [pagination, dispatch])
 
   // Search user (debounce)
   useEffect(() => {
@@ -97,7 +146,7 @@ export function ChatSidebar({
     }
   }, [searchQuery, onViewChange])
 
-  const getStatusDotClass = (isOnline) => (isOnline ? 'bg-status-online' : 'bg-status-offline')
+  // moved status dot util into ConversationListItem
 
   // Click user trong search → lấy/khởi tạo conversation rồi ROUTE
   const handleClickUser = async (userId) => {
@@ -219,54 +268,14 @@ export function ChatSidebar({
                 const id = extractId(conversation)
                 const isActive = activeIdFromURL === id
                 return (
-                  <div
+                  <ConversationListItem
                     key={id}
+                    conversation={conversation}
+                    usersById={usersById}
+                    isActive={isActive}
+                    getLastMessageText={getLastMessageText}
                     onClick={() => handleClickConversation(conversation)}
-                    className={`p-3 rounded-lg cursor-pointer transition-colors hover:bg-card-hover
-                      ${isActive ? 'bg-primary/10 border border-primary/20' : ''}`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="relative">
-                        <Avatar className="w-12 h-12">
-                          <AvatarImage src={conversation.conversationAvatarUrl} />
-                          <AvatarFallback>{conversation.displayName?.[0]}</AvatarFallback>
-                        </Avatar>
-                        {conversation.direct && (() => {
-                          const { isOnline } = pickPeerStatus(conversation, usersById)
-                          return (
-                            <div
-                              className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${getStatusDotClass(isOnline)}`}
-                            />
-                          )
-                        }
-                        )()}
-                      </div>
-
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between mb-1">
-                          <h3 className="font-medium truncate">{conversation.displayName}</h3>
-                          {conversation.direct && (() => {
-                            const { isOnline, lastActiveAt } = pickPeerStatus(conversation, usersById)
-                            return (
-                              <span className="text-xs text-muted-foreground">
-                                {renderPresenceText(isOnline, lastActiveAt)}
-                              </span>
-                            )
-                          })()}
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <p className="text-sm text-muted-foreground truncate">
-                            {getLastMessageText(conversation)}
-                          </p>
-                          {conversation.lastMessage?.createdAt && (
-                            <span className="ml-3 shrink-0 text-xs text-muted-foreground">
-                              {formatTimeAgo(conversation.lastMessage.createdAt)}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                  />
                 )
               })
             )}
