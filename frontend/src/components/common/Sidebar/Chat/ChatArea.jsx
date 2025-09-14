@@ -12,8 +12,9 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { Switch } from "@/components/ui/switch"
 // Optional
 import { MessageBubble } from './MessageBubble'
-import { formatChip, groupByDay } from '@/utils/helper'
-import { useCloudChat } from '@/hooks/useCloudChat'
+import { formatChip, groupByDay, pickPeerStatus } from '@/utils/helper'
+import { usePresenceText } from '@/hooks/use-relative-time'
+import { useSelector } from 'react-redux'
 
 export function ChatArea({
   mode = 'direct',
@@ -21,7 +22,6 @@ export function ChatArea({
   messages = [],
   onSendMessage,
   onSendFriendRequest, // <-- thêm callback nếu cần
-  loading,
   sending,
   onStartTyping,
   onStopTyping,
@@ -72,6 +72,11 @@ export function ChatArea({
 
   const togglePanel = () => setIsOpen(!isOpen)
 
+  // Live presence from Redux store
+  const usersById = useSelector(state => state.user.usersById || {})
+  const { isOnline, lastActiveAt } = pickPeerStatus(conversation, usersById)
+  const presenceText = usePresenceText({ isOnline, lastActiveAt })
+
   const handleSendMessage = () => {
     const value = messageText.trim()
     if (!value || sending) return
@@ -104,15 +109,10 @@ export function ChatArea({
                 <AvatarFallback>{initialChar}</AvatarFallback>
               </Avatar>
 
-              {/* Chấm online: chỉ hiện với direct, KHÔNG hiện với cloud */}
               {isDirect && !isCloud && (
                 <div
                   className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-background"
-                  style={{
-                    backgroundColor: conversation?.direct?.otherUser?.status?.isOnline
-                      ? 'var(--status-online)'
-                      : 'var(--status-offline)'
-                  }}
+                  style={{ backgroundColor: isOnline ? 'var(--status-online)' : 'var(--status-offline)' }}
                 />
               )}
             </div>
@@ -124,9 +124,7 @@ export function ChatArea({
 
               {/* Trạng thái: ẩn với cloud */}
               {!isCloud && (
-                <p className={`text-sm ${getStatusColor(conversation?.direct?.otherUser?.status?.isOnline)}`}>
-                  {conversation?.direct?.otherUser?.status?.isOnline ? 'Đang hoạt động' : 'Ngoại tuyến'}
-                </p>
+                <p className={`text-sm ${getStatusColor(isOnline)}`}>{presenceText}</p>
               )}
             </div>
           </div>

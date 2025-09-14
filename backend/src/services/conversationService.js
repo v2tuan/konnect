@@ -261,9 +261,9 @@ export const fetchConversationDetail = async (userId, conversationId, limit = 30
       type: convo.type,
       direct: enrichedDirect,
       group: convo.group || null,
-      cloud: convo.cloud || null,                    // ✅ sửa nhầm group -> cloud
-      displayName,                                   // ✅ thêm
-      conversationAvatarUrl,                         // ✅ thêm
+      cloud: convo.cloud || null,                    
+      displayName,                                   
+      conversationAvatarUrl,                         
       lastMessage: convo.lastMessage || null,
       createdAt: convo.createdAt,
       updatedAt: convo.updatedAt
