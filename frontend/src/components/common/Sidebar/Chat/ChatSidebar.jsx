@@ -1,15 +1,15 @@
 /* eslint-disable no-empty */
-import { Search, MessageCircle, Users, Phone, Video } from 'lucide-react'
-import { useState, useEffect, useMemo } from 'react'
-import { Input } from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
-import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
-import { SkeletonConversation } from '../Skeleton/SkeletonConversation'
 import { getConversationByUserId, getConversations, searchUserByUsername } from '@/apis'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { selectCurrentUser, upsertUsers } from '@/redux/user/userSlice'
+import { formatTimeAgo, pickPeerStatus, renderPresenceText } from '@/utils/helper'
+import { MessageCircle, Phone, Search, Users, Video } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate, useParams } from 'react-router-dom'
-import { useSelector } from 'react-redux'
-import { selectCurrentUser } from '@/redux/user/userSlice'
-import { formatTimeAgo } from '@/utils/helper'
+import { SkeletonConversation } from '../Skeleton/SkeletonConversation'
 
 function extractId(raw) {
   if (!raw) return null
@@ -34,6 +34,8 @@ export function ChatSidebar({
   const { conversationId: activeIdFromURL } = useParams()
 
   const currentUser = useSelector(selectCurrentUser)
+  const dispatch = useDispatch()
+  const usersById = useSelector((state) => state.user.usersById || {} )
 
   const getLastMessageText = (conv) => {
     const lm = conv.lastMessage
@@ -56,6 +58,10 @@ export function ChatSidebar({
         const conversations = await getConversations(page, limit)
         if (!mounted) return
         setConversationList(conversations?.data || [])
+        const peers = (conversations?.data || [])
+          .map(c => c?.direct?.otherUser)
+          .filter(Boolean)
+        if (peers.length) dispatch(upsertUsers(peers))
       } catch {
         setConversationList([])
       } finally {
@@ -91,7 +97,6 @@ export function ChatSidebar({
     }
   }, [searchQuery, onViewChange])
 
-  const formatTime = (ts) => ts || ''
   const getStatusDotClass = (isOnline) => (isOnline ? 'bg-status-online' : 'bg-status-offline')
 
   // Click user trong search → lấy/khởi tạo conversation rồi ROUTE
@@ -226,11 +231,15 @@ export function ChatSidebar({
                           <AvatarImage src={conversation.conversationAvatarUrl} />
                           <AvatarFallback>{conversation.displayName?.[0]}</AvatarFallback>
                         </Avatar>
-                        {conversation.direct && (
-                          <div
-                            className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${getStatusDotClass(conversation?.direct?.otherUser?.status?.isOnline)}`}
-                          />
-                        )}
+                        {conversation.direct && (() => {
+                          const { isOnline } = pickPeerStatus(conversation, usersById)
+                          return (
+                            <div
+                              className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${getStatusDotClass(isOnline)}`}
+                            />
+                          )
+                        }
+                        )()}
                       </div>
 
                       <div className="flex-1 min-w-0">
@@ -246,6 +255,14 @@ export function ChatSidebar({
                           <p className="text-sm text-muted-foreground truncate">
                             {getLastMessageText(conversation)}
                           </p>
+                          {conversation.direct && (() => {
+                            const { isOnline, lastActiveAt } = pickPeerStatus(conversation, usersById)
+                            return (
+                              <span className="ml-3 shrink-0 text-xs text-muted-foreground">
+                                {renderPresenceText(isOnline, lastActiveAt)}
+                              </span>
+                            )
+                          })()}
                         </div>
                       </div>
                     </div>

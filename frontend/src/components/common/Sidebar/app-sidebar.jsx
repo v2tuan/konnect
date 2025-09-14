@@ -44,12 +44,15 @@ const data = {
   ]
 }
 
-export function AppSidebar({
-  chatState,
-  contactTab,
-  onContactTabChange,
-  ...props
-}) {
+export function AppSidebar(props) {
+  // Remove custom props so they aren't forwarded to DOM (avoid unused variable warnings)
+  const { chatState, contactTab, onContactTabChange, ...rest } = (() => {
+    // Create a shallow copy and delete unwanted keys
+    const clone = { ...props }
+    delete clone.cloudTab
+    delete clone.onCloudTabChange
+    return clone
+  })()
   const { open, setOpen } = useSidebar()
   const location = useLocation()
 
@@ -59,13 +62,13 @@ export function AppSidebar({
   useEffect(() => {
     const shouldOpen = isMessage || isContact
     if (open !== shouldOpen) setOpen(shouldOpen)
-  }, [isMessage, isContact, setOpen])
+  }, [isMessage, isContact, open, setOpen])
 
   return (
     <Sidebar
       collapsible="icon"
       className="overflow-hidden [&>[data-sidebar=sidebar]]:flex-row"
-      {...props}
+      {...rest}
     >
       {/* Left rail - Luôn chỉ hiện icon, không expand */}
       <Sidebar

@@ -58,3 +58,21 @@ export function formatTimeAgo(dateString) {
   // khác năm -> hiện đầy đủ ngày/tháng/năm
   return format(date, "dd/MM/yyyy")
 }
+
+export const pickPeerStatus = (conversation, usersMap) => {
+  const peer = conversation?.direct?.otherUser
+  const peerId = extractId(peer)
+  const fromStore = peerId ? usersMap[peerId]?.status : null
+  const fallback = peer?.status
+
+  const isOnline = (fromStore?.isOnline ?? fallback?.isOnline) || false
+  const lastActiveAt = fromStore?.lastActiveAt ?? fallback?.lastActiveAt ?? null
+
+  return { isOnline, lastActiveAt }
+}
+
+export const renderPresenceText = (isOnline, lastActiveAt) => {
+  if (isOnline) return 'Online'
+  if (lastActiveAt) return `Online ${formatTimeAgo(lastActiveAt)}`
+  return 'Offline'
+}
