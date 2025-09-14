@@ -7,6 +7,7 @@ import { env } from './config/environment.js';
 import connectDB from './lib/connectDB.js';
 import { APIs_V1 } from './routes/index.js';
 import { Server } from 'socket.io'
+import jwt from 'jsonwebtoken'
 
 const app = express();
 
@@ -18,9 +19,22 @@ const PORT =env.LOCAL_DEV_APP_PORT || 3000;
 const io = new Server(server, {
     cors: {origin: env.WEBSITE_DOMAIN_DEVELOPMENT, credentials: true}
 })
+
+//lay token tu cookie
 io.use(async (socket, next) => {
   try {
     //
+    const cookieHeader = socket.handshake.headers.cookie || ''
+    const token = cookieHeader
+      .split(';')
+      .map(s => s.trim)
+      .find(s => s.startsWith('token='))?.split('=')[1]
+
+    if (!token) return next(new Error('Unthorized'))
+    const decoded = jwt.verify(token, env.JWT_SECRET)
+
+    //gan user cho phien socket
+    socket.user = {id: decoded.userId}
     return next();
   } catch (err) {
     return next(err);
