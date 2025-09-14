@@ -65,15 +65,17 @@ authorizeAxiosInstance.interceptors.response.use(
     const status = error.response?.status
     const reqUrl = error.config?.url || ''
 
-    // 401 ngoài auth endpoints: clear local auth
+    // 401 ngoài auth endpoints: clear local auth (không toast)
     if (status === 401 && !isAuthEndpoint(reqUrl)) {
       if (!hasClearedAuth && axiosReduxStore) {
         try { axiosReduxStore.dispatch(clearCurrentUser()) } catch (e) { void e }
         hasClearedAuth = true
       }
+      // Không toast ở đây, chỉ reject để caller xử lý nếu cần
+      return Promise.reject(error)
     }
 
-    // Lấy message từ backend (ưu tiên)
+    // Các lỗi khác vẫn xử lý và toast bình thường
     const data = error.response?.data
     let errorMessage = 'An error occurred'
     if (typeof data === 'string') errorMessage = data
@@ -88,7 +90,7 @@ authorizeAxiosInstance.interceptors.response.use(
       errorMessage = `Request failed with status ${status}`
     }
 
-    // Luôn toast lỗi (đơn giản, không ngoại lệ)
+    // Chỉ toast cho lỗi khác 401
     toast.error(errorMessage)
 
     console.error('API Error Details:', {
@@ -100,11 +102,10 @@ authorizeAxiosInstance.interceptors.response.use(
       finalMessage: errorMessage
     })
 
-    // Gắn thêm message đã chuẩn hoá để phía gọi dùng (nếu cần)
     error.normalizedMessage = errorMessage
     return Promise.reject(error)
   }
 )
-// ...existing code...
+
 
 export default authorizeAxiosInstance
