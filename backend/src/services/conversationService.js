@@ -4,6 +4,7 @@ import User from "~/models/user";
 import FriendShip from "~/models/friendships";
 import mongoose from "mongoose";
 import { messageService } from "./messageService";
+import { toOid } from "~/utils/formatter";
 
 const createConversation = async (conversationData, userId) => {
     const { type, memberIds } = conversationData
@@ -114,8 +115,6 @@ const createConversation = async (conversationData, userId) => {
 }
 
 // Get Conversation
-const toOid = (v) => (v instanceof mongoose.Types.ObjectId ? v : new mongoose.Types.ObjectId(v))
-
 const getConversation = async (page, limit, userId) => {
   const uid = toOid(userId)
 
@@ -157,12 +156,11 @@ const getConversation = async (page, limit, userId) => {
         const otherUserId = otherMember?.userId
         const otherUser = otherUserId ? await User.findById(otherUserId).lean() : null
 
-        // Lưu ý: field tên là 'profileAccept' (bạn viết nhầm 'profileAcept' ở một nhánh)
         const friendship = otherUserId
           ? await FriendShip.findOne({
               $or: [
-                { profileRequest: otherUserId, profileAccept: uid },
-                { profileRequest: uid,        profileAccept: otherUserId }
+                { profileRequest: otherUserId, profileReceive: uid },
+                { profileRequest: uid,        profileReceive: otherUserId }
               ]
             }).lean()
           : null

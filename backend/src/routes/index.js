@@ -4,7 +4,8 @@ import { authRoutes } from './authRoute'
 import { cloudRoutes } from './cloudRoute'
 import { messageRoutes } from './messageRoute'
 import { userRoute } from './userRoute'
-import { conversationRoute } from './conversationRoute'
+import { conversationRoutes } from './conversationRoute'
+import { contactRoutes } from './contactRoute'
 
 const Router = express.Router()
 
@@ -19,6 +20,8 @@ Router.use('/cloud', cloudRoutes)
 
 Router.use('/messages', messageRoutes)
 
-Router.use('/conversation', conversationRoute)
+Router.use('/conversation', conversationRoutes)
+
+Router.use('/contacts', contactRoutes)
 
 export const APIs_V1 = Router
