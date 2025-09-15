@@ -77,6 +77,23 @@ export function ChatArea({
   const { isOnline, lastActiveAt } = pickPeerStatus(conversation, usersById)
   const presenceText = usePresenceText({ isOnline, lastActiveAt })
 
+  const tone =
+  (presenceText || '').toLowerCase() === 'away'
+    ? 'away'
+    : (isOnline ? 'online' : 'offline')
+
+  const presenceTextClass =
+    tone === 'online' ? 'text-emerald-500'
+    : tone === 'away' ? 'text-amber-500'
+    : 'text-muted-foreground'
+
+  const dotStyle = {
+    backgroundColor:
+      tone === 'online' ? 'var(--status-online)'
+      : tone === 'away' ? 'var(--status-away)'
+      : 'var(--status-offline)'
+  }
+
   const handleSendMessage = () => {
     const value = messageText.trim()
     if (!value || sending) return
@@ -112,7 +129,7 @@ export function ChatArea({
               {isDirect && !isCloud && (
                 <div
                   className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-background"
-                  style={{ backgroundColor: isOnline ? 'var(--status-online)' : 'var(--status-offline)' }}
+                  style={dotStyle}
                 />
               )}
             </div>
@@ -124,7 +141,7 @@ export function ChatArea({
 
               {/* Trạng thái: ẩn với cloud */}
               {!isCloud && (
-                <p className={`text-sm ${getStatusColor(isOnline)}`}>{presenceText}</p>
+                <p className={`text-sm ${presenceTextClass}`}>{presenceText}</p>
               )}
             </div>
           </div>
@@ -181,7 +198,7 @@ export function ChatArea({
           {groupByDay(messages).map((group, gi) => {
             const count = group.items.length
             const first = group.items[0]
-            // Chip giữa (ngày hoặc giờ          ngày nếu chỉ 1 tin)
+            // Chip giữa (ngày hoặc giờ nếu chỉ 1 tin)
             return (
               <div key={group.key}>
                 <div className="flex justify-center my-3">

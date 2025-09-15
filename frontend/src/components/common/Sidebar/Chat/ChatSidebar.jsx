@@ -16,11 +16,34 @@ import { extractId } from '@/utils/helper'
 // Separate item component so we can safely use hooks
 function ConversationListItem({ conversation, usersById, isActive, onClick, getLastMessageText }) {
   const id = extractId(conversation)
-  const status = conversation.direct ? pickPeerStatus(conversation, usersById) : { isOnline: false, lastActiveAt: null }
-  // Always call hook (even if not direct) to keep consistent call order
-  const presenceTextRaw = usePresenceText({ isOnline: status.isOnline, lastActiveAt: status.lastActiveAt })
+  const status = conversation.direct
+    ? pickPeerStatus(conversation, usersById)
+    : { isOnline: false, lastActiveAt: null }
+
+  // Luôn gọi hook để giữ thứ tự hook ổn định
+  const presenceTextRaw = usePresenceText({
+    isOnline: status.isOnline,
+    lastActiveAt: status.lastActiveAt
+  })
   const presenceText = conversation.direct ? presenceTextRaw : null
-  const getStatusDotClass = (isOnline) => (isOnline ? 'bg-status-online' : 'bg-status-offline')
+
+  // ---- NEW: tone + class cho text & dot (Away = cam) ----
+  const tone = presenceTextRaw?.toLowerCase() === 'away'
+    ? 'away'
+    : (status.isOnline ? 'online' : 'offline')
+
+  const presenceTextClass =
+    tone === 'online' ? 'text-emerald-500'
+      : tone === 'away' ? 'text-amber-500'
+      : 'text-muted-foreground'
+
+  // Ưu tiên class tùy biến nếu bạn đã định nghĩa (bg-status-*)
+  // kèm fallback tailwind để chạy ngay cả khi chưa có custom class
+  const presenceDotClass =
+    tone === 'online' ? 'bg-status-online bg-emerald-500'
+      : tone === 'away' ? 'bg-status-away bg-amber-400'
+      : 'bg-status-offline bg-zinc-400'
+  // -------------------------------------------------------
 
   return (
     <div
@@ -34,17 +57,24 @@ function ConversationListItem({ conversation, usersById, isActive, onClick, getL
             <AvatarImage src={conversation.conversationAvatarUrl} />
             <AvatarFallback>{conversation.displayName?.[0]}</AvatarFallback>
           </Avatar>
-          {conversation.direct && status && (
-            <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${getStatusDotClass(status.isOnline)}`} />
+
+          {conversation.direct && (
+            <div
+              className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${presenceDotClass}`}
+            />
           )}
         </div>
+
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between mb-1">
             <h3 className="font-medium truncate">{conversation.displayName}</h3>
-            {conversation.direct && status && (
-              <span className="text-xs text-muted-foreground">{presenceText}</span>
+            {conversation.direct && (
+              <span className={`text-xs ${presenceTextClass}`}>
+                {presenceText}
+              </span>
             )}
           </div>
+
           <div className="flex items-center justify-between">
             <p className="text-sm text-muted-foreground truncate">
               {getLastMessageText(conversation)}
@@ -60,6 +90,7 @@ function ConversationListItem({ conversation, usersById, isActive, onClick, getL
     </div>
   )
 }
+
 
 export function ChatSidebar({
   currentView,
@@ -84,7 +115,7 @@ export function ChatSidebar({
     if (!lm.textPreview) return "Chưa có tin nhắn"
 
     // nếu senderId = currentUser._id thì thêm prefix
-    if (lm.senderId && String(lm.senderId.id) === String(currentUser._id)) {
+    if (lm.senderId && String(lm.senderId._id) === String(currentUser._id)) {
       return `You: ${lm.textPreview}`
     }
     return lm.textPreview
