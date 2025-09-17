@@ -1,6 +1,6 @@
 import { ChatArea } from "@/components/common/Sidebar/Chat/ChatArea"
 import WelcomeScreen from "@/components/common/WelcomeScreen"
-import { useCloudChat } from "@/hooks/useCloudChat"
+import { useCloudChat } from "@/hooks/use-chat"
 import { selectCurrentUser } from "@/redux/user/userSlice"
 import { useSelector } from "react-redux"
 import { useParams } from "react-router-dom"

@@ -11,4 +11,4 @@ route.get('/:userId', authMiddleware, userController.selectedUser)
 
 route.route('/chats/:conversationId')
   .get(authMiddleware, conversationController.fetchConversationDetail)
-export const conversationRoute = route
+export const conversationRoutes = route

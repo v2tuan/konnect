@@ -34,8 +34,8 @@ const findById = async (userId, currentUserId) => {
 
         const friendship = await FriendShip.findOne({
             $or: [
-                {profileRequest: userId, profileAccept: currentUserId},
-                {profileRequest: currentUserId, profileAcept: userId}
+                {profileRequest: userId, profileReceive: currentUserId},
+                {profileRequest: currentUserId, profileReceive: userId}
             ]
         })
 

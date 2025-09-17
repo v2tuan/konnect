@@ -6,21 +6,46 @@ import { Input } from '@/components/ui/input'
 import { selectCurrentUser, upsertUsers } from '@/redux/user/userSlice'
 import { formatTimeAgo, pickPeerStatus } from '@/utils/helper'
 import { MessageCircle, Phone, Search, Users, Video } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate, useParams } from 'react-router-dom'
 import { SkeletonConversation } from '../Skeleton/SkeletonConversation'
 import { usePresenceText } from '@/hooks/use-relative-time'
 import { extractId } from '@/utils/helper'
+import { API_ROOT } from '@/utils/constant'
+import { io } from 'socket.io-client'
 
 // Separate item component so we can safely use hooks
 function ConversationListItem({ conversation, usersById, isActive, onClick, getLastMessageText }) {
   const id = extractId(conversation)
-  const status = conversation.direct ? pickPeerStatus(conversation, usersById) : { isOnline: false, lastActiveAt: null }
-  // Always call hook (even if not direct) to keep consistent call order
-  const presenceTextRaw = usePresenceText({ isOnline: status.isOnline, lastActiveAt: status.lastActiveAt })
+  const status = conversation.direct
+    ? pickPeerStatus(conversation, usersById)
+    : { isOnline: false, lastActiveAt: null }
+
+  // Luôn gọi hook để giữ thứ tự hook ổn định
+  const presenceTextRaw = usePresenceText({
+    isOnline: status.isOnline,
+    lastActiveAt: status.lastActiveAt
+  })
   const presenceText = conversation.direct ? presenceTextRaw : null
-  const getStatusDotClass = (isOnline) => (isOnline ? 'bg-status-online' : 'bg-status-offline')
+
+  // ---- NEW: tone  class cho text & dot (Away = cam) ----
+  const tone = presenceTextRaw?.toLowerCase() === 'away'
+    ? 'away'
+    : (status.isOnline ? 'online' : 'offline')
+
+  const presenceTextClass =
+    tone === 'online' ? 'text-emerald-500'
+      : tone === 'away' ? 'text-amber-500'
+        : 'text-muted-foreground'
+
+  // Ưu tiên class tùy biến nếu bạn đã định nghĩa (bg-status-*)
+  // kèm fallback tailwind để chạy ngay cả khi chưa có custom class
+  const presenceDotClass =
+    tone === 'online' ? 'bg-status-online bg-emerald-500'
+      : tone === 'away' ? 'bg-status-away bg-amber-400'
+        : 'bg-status-offline bg-zinc-400'
+  // -------------------------------------------------------
 
   return (
     <div
@@ -34,17 +59,24 @@ function ConversationListItem({ conversation, usersById, isActive, onClick, getL
             <AvatarImage src={conversation.conversationAvatarUrl} />
             <AvatarFallback>{conversation.displayName?.[0]}</AvatarFallback>
           </Avatar>
-          {conversation.direct && status && (
-            <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${getStatusDotClass(status.isOnline)}`} />
+
+          {conversation.direct && (
+            <div
+              className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${presenceDotClass}`}
+            />
           )}
         </div>
+
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between mb-1">
             <h3 className="font-medium truncate">{conversation.displayName}</h3>
-            {conversation.direct && status && (
-              <span className="text-xs text-muted-foreground">{presenceText}</span>
+            {conversation.direct && (
+              <span className={`text-xs ${presenceTextClass}`}>
+                {presenceText}
+              </span>
             )}
           </div>
+
           <div className="flex items-center justify-between">
             <p className="text-sm text-muted-foreground truncate">
               {getLastMessageText(conversation)}
@@ -60,6 +92,7 @@ function ConversationListItem({ conversation, usersById, isActive, onClick, getL
     </div>
   )
 }
+
 
 export function ChatSidebar({
   currentView,
@@ -78,13 +111,17 @@ export function ChatSidebar({
   const dispatch = useDispatch()
   const usersById = useSelector((state) => state.user.usersById || {} )
 
+  const socketRef = useRef(null)
+  const joinedRef = useRef(new Set())
+
   const getLastMessageText = (conv) => {
     const lm = conv.lastMessage
     if (!lm) return "Chưa có tin nhắn"
     if (!lm.textPreview) return "Chưa có tin nhắn"
 
     // nếu senderId = currentUser._id thì thêm prefix
-    if (lm.senderId && String(lm.senderId.id) === String(currentUser._id)) {
+    const sid = typeof lm.senderId === 'object' ? lm.senderId?._id : lm.senderId
+    if (sid && String(sid) === String(currentUser._id)) {
       return `You: ${lm.textPreview}`
     }
     return lm.textPreview
@@ -92,8 +129,8 @@ export function ChatSidebar({
 
   // Load conversations
   useEffect(() => {
-    let mounted = true
-    ;(async () => {
+    let mounted = true;
+    ( async () => {
       try {
         const { page, limit } = pagination
         const conversations = await getConversations(page, limit)
@@ -138,7 +175,76 @@ export function ChatSidebar({
     }
   }, [searchQuery, onViewChange])
 
-  // moved status dot util into ConversationListItem
+
+  //socket: message:new
+  useEffect(() => {
+    if (loading || socketRef.current) return
+    const s = io(API_ROOT, { withCredentials: true })
+    socketRef.current = s
+
+    // Khi connect, join tất cả room có sẵn
+    s.on('connect', () => {
+      try {
+        (conversationList || []).forEach(c => {
+          const id = extractId(c)
+          if (id && !joinedRef.current.has(id)) {
+            s.emit('conversation:join', { conversationId: id })
+            joinedRef.current.add(id)
+          }
+        })
+      } catch {}
+    })
+
+    const onNewMessage = (payload) => {
+      const convId = extractId(
+        payload?.conversationId || payload?.conversation?._id || payload?.conversation
+      )
+      if (!convId) return
+      const msg = payload?.message || payload
+
+      setConversationList(prev => {
+        const idx = prev.findIndex(c => extractId(c) === convId)
+        if (idx === -1) {
+          // (tuỳ bạn) có thể fetch lại 1 lần nếu chưa có conv
+          return prev
+        }
+        const old = prev[idx]
+        const updated = {
+          ...old,
+          lastMessage: {
+            _id: msg._id || msg.id,
+            textPreview: msg.body?.text ?? msg.text ?? '',
+            senderId: msg.senderId,
+            createdAt: msg.createdAt || Date.now()
+          }
+        }
+        const next = [...prev]
+        next.splice(idx, 1)
+        return [updated, ...next]
+      })
+    }
+
+    s.on('message:new', onNewMessage)
+    return () => {
+      s.off('message:new', onNewMessage)
+      s.disconnect()
+      socketRef.current = null
+      joinedRef.current.clear()
+    }
+  }, [ loading ])
+
+  useEffect(() => {
+    if (!socketRef.current) return
+    try {
+      (conversationList || []).forEach(c => {
+        const id = extractId(c)
+        if (id && !joinedRef.current.has(id)) {
+          socketRef.current.emit('conversation:join', { conversationId: id })
+          joinedRef.current.add(id)
+        }
+      })
+    } catch {}
+  }, [conversationList])
 
   // Click user trong search → lấy/khởi tạo conversation rồi ROUTE
   const handleClickUser = async (userId) => {
