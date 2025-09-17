@@ -63,7 +63,7 @@ export function useWebRTCGroup({ roomId, currentUserId, initialMode = 'video' })
   }
 
   useEffect(() => {
-    const socket = getSocket()
+    const socket = getSocket('/webrtc')
     socketRef.current = socket
 
     const join = async () => {
