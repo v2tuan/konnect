@@ -2,6 +2,7 @@ import { io } from "socket.io-client"
 import { API_ROOT } from "@/utils/constant"
 
 let socket = null
+let webrtcSocket = null
 
 export const getSocket = () => socket
 
@@ -30,4 +31,11 @@ export const disconnectSocket = () => {
   } finally {
     socket = null
   }
+}
+
+export function getWebRTCSocket() {
+  if (!webrtcSocket) {
+    webrtcSocket = io(`${API_ROOT}/webrtc`, { withCredentials: true })
+  }
+  return webrtcSocket
 }
