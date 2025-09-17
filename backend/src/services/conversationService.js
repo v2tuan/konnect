@@ -114,95 +114,140 @@ const createConversation = async (conversationData, userId) => {
     return newConversation
 }
 
-// Get Conversation
-const getConversation = async (page, limit, userId) => {
+export const getConversation = async (page = 1, limit = 20, userId) => {
+  const p = Math.max(1, Math.floor(Number(page) || 1))
+  const l = Math.max(1, Math.min(100, Math.floor(Number(limit) || 20))) // chặn 1..100
+
+  const skipVal = (p - 1) * l
+
   const uid = toOid(userId)
-
-  const memberRecords = await ConversationMember.find({ userId: uid })
-    .populate({
-      path: 'conversation',
-      populate: [
-        {
-          path: 'lastMessage.senderId',
-          // NOTE: trong User model là 'username' chứ không phải 'userName'
-          select: 'fullName username avatarUrl'
-        }
-      ]
-    })
-    .sort({ 'conversation.updatedAt': -1 }) // hợp lý hơn createdAt
-    .limit(limit)
-    .skip((page - 1) * limit)
-    .lean() // hiệu năng
-  // console.log(memberRecords)
-
-  const conversations = await Promise.all(
-    memberRecords.map(async (member) => {
-      const conversation = member.conversation
-      let conversationData = {
-        id: conversation._id,
-        type: conversation.type,
-        lastMessage: conversation.lastMessage,
-        messageSeq: conversation.messageSeq,
-        updatedAt: conversation.updatedAt
+  const pipeline = [
+    { $match: { userId: uid } },
+    {
+      $lookup: {
+        from: 'conversations',
+        localField: 'conversation',
+        foreignField: '_id',
+        as: 'conversation'
       }
+    },
+    { $unwind: '$conversation' },
 
-      if (conversation.type === 'direct') {
-        // Lấy member còn lại bằng $ne
-        const otherMember = await ConversationMember
-          .findOne({ conversation: conversation._id, userId: { $ne: uid } })
-          .select('userId')
-          .lean()
+    // Lấy user của lastMessage.senderId
+    {
+      $lookup: {
+        from: 'users',
+        localField: 'conversation.lastMessage.senderId',
+        foreignField: '_id',
+        as: 'lastSender'
+      }
+    },
+    { $unwind: { path: '$lastSender', preserveNullAndEmptyArrays: true } },
 
-        const otherUserId = otherMember?.userId
-        const otherUser = otherUserId ? await User.findById(otherUserId).lean() : null
+    // Nếu là direct: tìm other member
+    {
+      $lookup: {
+        from: 'conversationmembers',
+        let: { convId: '$conversation._id', me: '$userId' },
+        pipeline: [
+          { $match: { $expr: { $and: [ { $eq: ['$conversation', '$$convId'] }, { $ne: ['$userId', '$$me'] } ] } } },
+          { $project: { userId: 1 } }
+        ],
+        as: 'otherMember'
+      }
+    },
+    { $unwind: { path: '$otherMember', preserveNullAndEmptyArrays: true } },
 
-        const friendship = otherUserId
-          ? await FriendShip.findOne({
-              $or: [
-                { profileRequest: otherUserId, profileReceive: uid },
-                { profileRequest: uid,        profileReceive: otherUserId }
-              ]
-            }).lean()
-          : null
+    // Lấy thông tin other user (cho direct)
+    {
+      $lookup: {
+        from: 'users',
+        localField: 'otherMember.userId',
+        foreignField: '_id',
+        as: 'otherUser'
+      }
+    },
+    { $unwind: { path: '$otherUser', preserveNullAndEmptyArrays: true } },
 
-        if (otherUser) {
-          conversationData.direct = {
-            otherUser: {
-              id: otherUser._id,
-              fullName: otherUser.fullName,
-              userName: otherUser.username,
-              avatarUrl: otherUser.avatarUrl,
-              status: otherUser.status,
-              friendship: !!friendship
-            }
+    // Coalesce key sort: ưu tiên lastMessage.createdAt, fallback updatedAt
+    {
+      $addFields: {
+        sortKey: {
+          $ifNull: ['$conversation.lastMessage.createdAt', '$conversation.updatedAt']
+        }
+      }
+    },
+
+    { $sort: { sortKey: -1 } },
+
+    // Phân trang ở DB
+    { $skip: skipVal },
+    { $limit: l },
+
+    // Dựng payload trả về (tối ưu kích thước)
+    {
+      $project: {
+        _id: 0,
+        id: '$conversation._id',
+        type: '$conversation.type',
+        lastMessage: {
+          _id: '$conversation.lastMessage._id',
+          content: '$conversation.lastMessage.content',
+          createdAt: '$conversation.lastMessage.createdAt',
+          senderId: '$conversation.lastMessage.senderId',
+          sender: {
+            id: '$lastSender._id',
+            fullName: '$lastSender.fullName',
+            username: '$lastSender.username',
+            avatarUrl: '$lastSender.avatarUrl'
           }
-          conversationData.displayName = otherUser.fullName
-          conversationData.conversationAvatarUrl = otherUser.avatarUrl
-        } else {
-          conversationData.direct = { otherUser: null }
-          conversationData.displayName = 'Unknown'
-          conversationData.conversationAvatarUrl = ''
+        },
+        messageSeq: '$conversation.messageSeq',
+        updatedAt: '$conversation.updatedAt',
+
+        // build sẵn hiển thị theo type
+        displayName: {
+          $switch: {
+            branches: [
+              { case: { $eq: ['$conversation.type', 'direct'] }, then: { $ifNull: ['$otherUser.fullName', 'Unknown'] } },
+              { case: { $eq: ['$conversation.type', 'group'] },  then: { $ifNull: ['$conversation.group.name', 'Group'] } },
+              { case: { $eq: ['$conversation.type', 'cloud'] },  then: 'Your Cloud' }
+            ],
+            default: 'Unknown'
+          }
+        },
+        conversationAvatarUrl: {
+          $switch: {
+            branches: [
+              { case: { $eq: ['$conversation.type', 'direct'] }, then: { $ifNull: ['$otherUser.avatarUrl', ''] } },
+              { case: { $eq: ['$conversation.type', 'group'] },  then: { $ifNull: ['$conversation.group.avatarUrl', ''] } },
+              { case: { $eq: ['$conversation.type', 'cloud'] },  then: 'https://cdn-icons-png.flaticon.com/512/8038/8038388.png' }
+            ],
+            default: ''
+          }
+        },
+        direct: {
+          otherUser: {
+            id: '$otherUser._id',
+            fullName: '$otherUser.fullName',
+            userName: '$otherUser.username',
+            avatarUrl: '$otherUser.avatarUrl',
+            status: '$otherUser.status'
+            // Có thể $lookup thêm FriendShip nếu cần cờ friendship
+          }
+        },
+        group: {
+          name: '$conversation.group.name',
+          avatarUrl: '$conversation.group.avatarUrl'
         }
       }
-      else if (conversation.type === 'group') {
-        conversationData.group = {
-          name: conversation.group?.name || '',
-          avatarUrl: conversation.group?.avatarUrl || ''
-        }
-        conversationData.displayName = conversation.group?.name || 'Group'
-        conversationData.conversationAvatarUrl = conversation.group?.avatarUrl || ''
-      }
-      else if (conversation.type === 'cloud') {
-        conversationData.displayName = 'Your Cloud'
-        conversationData.conversationAvatarUrl = 'https://cdn-icons-png.flaticon.com/512/8038/8038388.png'
-      }
+    }
+  ]
 
-      return conversationData
-    })
-  )
-
-  return conversations
+  const rows = await ConversationMember.aggregate(pipeline).allowDiskUse(true)
+  return rows
 }
+
 
 
 export const fetchConversationDetail = async (userId, conversationId, limit = 30, beforeSeq) => {
