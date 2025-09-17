@@ -1,6 +1,6 @@
 import { ChatArea } from '@/components/common/Sidebar/Chat/ChatArea'
 import { Loader2 } from 'lucide-react'
-import { useCloudChat } from '@/hooks/useCloudChat'
+import { useCloudChat } from '@/hooks/use-chat'
 import { useSelector } from 'react-redux'
 import { selectCurrentUser } from '@/redux/user/userSlice'
 
