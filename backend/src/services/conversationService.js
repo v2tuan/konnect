@@ -192,7 +192,7 @@ export const getConversation = async (page = 1, limit = 20, userId) => {
         type: '$conversation.type',
         lastMessage: {
           _id: '$conversation.lastMessage._id',
-          content: '$conversation.lastMessage.content',
+          textPreview: '$conversation.lastMessage.textPreview',
           createdAt: '$conversation.lastMessage.createdAt',
           senderId: '$conversation.lastMessage.senderId',
           sender: {
@@ -247,8 +247,6 @@ export const getConversation = async (page = 1, limit = 20, userId) => {
   const rows = await ConversationMember.aggregate(pipeline).allowDiskUse(true)
   return rows
 }
-
-
 
 export const fetchConversationDetail = async (userId, conversationId, limit = 30, beforeSeq) => {
   if (!mongoose.isValidObjectId(conversationId)) {
