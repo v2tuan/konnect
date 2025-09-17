@@ -14,6 +14,7 @@ import { formatChip, groupByDay, pickPeerStatus } from '@/utils/helper'
 import { usePresenceText } from '@/hooks/use-relative-time'
 import { useSelector } from 'react-redux'
 import { selectCurrentUser } from '@/redux/user/userSlice'
+import CallModal from '../../Modal/CallModal'
 
 export function ChatArea({
   mode = 'direct',
@@ -35,21 +36,14 @@ export function ChatArea({
 
   const isCloud = mode === 'cloud' || conversation?.type === 'cloud'
   const isDirect = mode === 'direct' || !!conversation?.direct
-  const isGroup = conversation?.type === 'group' || !!conversation?.group
+  // const isGroup = conversation?.type === 'group' || !!conversation?.group
 
   const currentUser = useSelector(selectCurrentUser)
 
   const safeName = conversation?.displayName ?? (isCloud ? 'Cloud Chat' : 'Conversation')
   const initialChar = safeName?.charAt(0)?.toUpperCase?.() || 'C'
-  const directOther = conversation?.direct?.otherUser
+  const [call, setCall] = useState(null) // { mode: 'audio' | 'video' } | null
 
-  const getContactForMessage = (m) => {
-    if (!m) return null
-    if (!m.senderId) return directOther || null
-    if (isGroup) return usersById[m.senderId] || null
-    // direct
-    return (m.senderId === currentUser._id) ? currentUser : directOther
-  }
 
   const mediaItems = [
     { id: 1, url: 'http://localhost:5173/381.jpg' },
@@ -160,14 +154,15 @@ export function ChatArea({
             {/* Call/Video: ẩn với cloud */}
             {!isCloud && (
               <>
-                <Button variant="ghost" size="sm">
+                <Button variant="ghost" size="sm" onClick={() => setCall({ mode: 'audio' })}>
                   <Phone className="w-5 h-5" />
                 </Button>
-                <Button variant="ghost" size="sm">
+                <Button variant="ghost" size="sm" onClick={() => setCall({ mode: 'video' })}>
                   <Video className="w-5 h-5" />
                 </Button>
               </>
             )}
+
 
             <Button variant="ghost" size="sm" onClick={togglePanel}>
               <MoreHorizontal className="w-5 h-5" />
@@ -492,6 +487,17 @@ export function ChatArea({
           </div>
         </div>
       </div>
+
+      {/* modal call */}
+      {call && (
+        <CallModal
+          open={!!call}
+          onOpenChange={(o) => setCall(o ? call : null)}
+          conversationId={conversation?._id}
+          currentUserId={currentUser?._id}
+          initialMode={call.mode} // 'audio' hoặc 'video'
+        />
+      )}
     </div>
   )
 }
