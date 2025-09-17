@@ -31,7 +31,7 @@ export function ContactsList({ contacts, onContactSelect }) {
 
   const getStatusText = (contact) => {
     switch (contact.status) {
-    case 'online': return 'Đang hoạt động'
+    case 'online': return 'Online'
     case 'away': return `Hoạt động ${contact.lastSeen} trước`
     case 'offline': return `Hoạt động ${contact.lastSeen} trước`
     default: return 'Không xác định'
@@ -48,7 +48,7 @@ export function ContactsList({ contacts, onContactSelect }) {
           <div>
             <h1 className="text-2xl font-bold text-foreground">Bạn bè</h1>
             <p className="text-sm text-muted-foreground">
-              {onlineCount} bạn đang hoạt động • {contacts.length} tổng số bạn bè
+              {onlineCount} bạn Online • {contacts.length} tổng số bạn bè
             </p>
           </div>
           <Button>
@@ -102,7 +102,7 @@ export function ContactsList({ contacts, onContactSelect }) {
         <div className="p-4 border-b border-border">
           <h3 className="text-sm font-semibold text-success mb-3 flex items-center gap-2">
             <div className="w-2 h-2 bg-success rounded-full"></div>
-            Đang hoạt động ({onlineCount})
+            Online ({onlineCount})
           </h3>
           <div className="grid grid-cols-4 gap-3">
             {contacts.filter(c => c.status === 'online').slice(0, 8).map(contact => (

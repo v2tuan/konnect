@@ -16,6 +16,14 @@ const searchByUsername = async (username) => {
     }
 }
 
+const markUserStatus = async (userId, update) => {
+  try {
+    await User.findByIdAndUpdate(userId, { $set: { 'status.isOnline': update.isOnline, 'status.lastActiveAt': update.lastActiveAt } })
+  } catch (e) {
+    console.error('[presence] DB update failed', e.message)
+  }
+}
+
 const findById = async (userId, currentUserId) => {
     try {
         // Lấy user theo id
@@ -26,8 +34,8 @@ const findById = async (userId, currentUserId) => {
 
         const friendship = await FriendShip.findOne({
             $or: [
-                {profileRequest: userId, profileAccept: currentUserId},
-                {profileRequest: currentUserId, profileAcept: userId}
+                {profileRequest: userId, profileReceive: currentUserId},
+                {profileRequest: currentUserId, profileReceive: userId}
             ]
         })
 
@@ -48,5 +56,6 @@ const findById = async (userId, currentUserId) => {
 
 export const userService = {
     searchByUsername,
-    findById
+    findById,
+    markUserStatus
 }

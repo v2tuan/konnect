@@ -25,7 +25,7 @@ let userSchema = new mongoose.Schema({
     },
     username: {
         type: String, 
-        require: true
+        required: true
     },
     dateOfBirth: {
         type: Date

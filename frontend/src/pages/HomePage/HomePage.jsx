@@ -1,9 +1,8 @@
 "use client"
 
-import * as React from "react"
-import NavBar from "@/components/common/NavBar"
 import { AppSidebar } from "@/components/common/Sidebar/app-sidebar"
 import { SidebarProvider } from "@/components/ui/sidebar"
+import * as React from "react"
 import { Outlet } from "react-router-dom"
 
 export default function MainLayout() {

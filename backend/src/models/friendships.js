@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 
-let frinendshipSchema = new mongoose.Schema({
-    profileAcept: {
+let friendshipSchema = new mongoose.Schema({
+    profileReceive: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
         required: true
@@ -26,11 +26,11 @@ let frinendshipSchema = new mongoose.Schema({
     }
 });
 
-frinendshipSchema.pre('save', function(next) {
+friendshipSchema.pre('save', function(next) {
     this.updatedAt = Date.now();
     next();
 });
 
-let FriendShip = mongoose.model('Friendship', frinendshipSchema);
+let FriendShip = mongoose.model('Friendship', friendshipSchema);
 
 export default FriendShip;

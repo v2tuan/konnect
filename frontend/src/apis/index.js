@@ -96,6 +96,14 @@ export const getConversations = async (page, limit) => {
   return response.data
 }
 
+/**
+ * Lấy conversation từ userId
+ */
+export const getConversationByUserId = async (userId) => {
+  const response = await authorizeAxiosInstance.get(`${API_ROOT}/api/conversation/${userId}`)
+  return response.data
+}
+
 /* ======================== MESSAGE APIs ======================== */
 
 /**
@@ -106,5 +114,10 @@ export const sendMessage = async (conversationId, text) => {
     conversationId,
     text
   })
+  return response.data
+}
+
+export const fetchConversationDetail = async (conversationId, params = {}) => {
+  const response = await authorizeAxiosInstance.get(`${API_ROOT}/api/conversation/chats/${conversationId}`, {params})
   return response.data
 }

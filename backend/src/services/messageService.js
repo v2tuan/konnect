@@ -128,5 +128,6 @@ async function listMessages({ userId, conversationId, limit = 30, beforeSeq }) {
 
 export const messageService = {
   sendMessage,
-  listMessages
+  listMessages,
+  assertCanAccessConversation
 }
