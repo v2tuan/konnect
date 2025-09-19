@@ -73,9 +73,9 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
           className={`
             relative p-3 rounded-lg
             ${isOwn
-              ? 'bg-blue-500 text-white rounded-br-sm'
-              : 'bg-gray-100 text-gray-900 rounded-bl-sm'
-            }
+      ? 'bg-blue-500 text-white rounded-br-sm'
+      : 'bg-secondary text-secondary-foreground rounded-bl-sm'
+    }
           `}
         >
           {message.isPinned && (
