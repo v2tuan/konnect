@@ -15,6 +15,7 @@ import { usePresenceText } from '@/hooks/use-relative-time'
 import { useSelector } from 'react-redux'
 import { selectCurrentUser } from '@/redux/user/userSlice'
 import CallModal from '../../Modal/CallModal'
+import CreateGroupDialog from '../../Modal/CreateGroupModel'
 
 export function ChatArea({
   mode = 'direct',
@@ -367,10 +368,7 @@ export function ChatArea({
                 <Pin size={24} className="mb-1" />
                 <span className="text-xs">Pin conversation</span>
               </button>
-              <button className="flex flex-col items-center p-3 rounded-lg transition-colors cursor-pointer">
-                <Users size={24} className="mb-1" />
-                <span className="text-xs">Create a chat group</span>
-              </button>
+              <CreateGroupDialog/>
             </div>
           </div>
 
