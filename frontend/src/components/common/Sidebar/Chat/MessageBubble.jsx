@@ -1,5 +1,3 @@
-"use client"
-
 import { useState } from 'react'
 import {
   Pin, Reply, MoreHorizontal, Heart, Clock,
@@ -9,7 +7,7 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 
-export function MessageBubble({ message, showAvatar, contact, showMeta = true }) {
+export function MessageBubble({ message, showAvatar, contact, showMeta = true, conversation }) {
   const [hovered, setHovered] = useState(false)
 
   const formatTime = (ts) => {
@@ -41,7 +39,7 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true })
       {/* Avatar bên trái cho message của người khác (tuỳ nhóm direct) */}
       {!isOwn && showAvatar && (
         <Avatar className="w-8 h-8">
-          <AvatarImage src={contact?.avatar} />
+          <AvatarImage src={conversation.direct.otherUser?.avatarUrl} />
           <AvatarFallback>{contact?.name?.charAt(0)}</AvatarFallback>
         </Avatar>
       )}
@@ -75,9 +73,9 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true })
           className={`
             relative p-3 rounded-lg
             ${isOwn
-              ? 'bg-blue-500 text-white rounded-br-sm'
-              : 'bg-gray-100 text-gray-900 rounded-bl-sm'
-            }
+      ? 'bg-blue-500 text-white rounded-br-sm'
+      : 'bg-secondary text-secondary-foreground rounded-bl-sm'
+    }
           `}
         >
           {message.isPinned && (

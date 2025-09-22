@@ -1,4 +1,3 @@
-// ChatArea.jsx
 import { useState, useRef, useEffect } from 'react'
 import {
   Phone, Video, MoreHorizontal, Search as SearchIcon, UserPlus,
@@ -10,18 +9,20 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { Switch } from "@/components/ui/switch"
-// Optional
 import { MessageBubble } from './MessageBubble'
 import { formatChip, groupByDay, pickPeerStatus } from '@/utils/helper'
 import { usePresenceText } from '@/hooks/use-relative-time'
 import { useSelector } from 'react-redux'
+import { selectCurrentUser } from '@/redux/user/userSlice'
+import CallModal from '../../Modal/CallModal'
+import CreateGroupDialog from '../../Modal/CreateGroupModel'
 
 export function ChatArea({
   mode = 'direct',
   conversation = {},
   messages = [],
   onSendMessage,
-  onSendFriendRequest, // <-- thêm callback nếu cần
+  onSendFriendRequest,
   sending,
   onStartTyping,
   onStopTyping,
@@ -36,9 +37,14 @@ export function ChatArea({
 
   const isCloud = mode === 'cloud' || conversation?.type === 'cloud'
   const isDirect = mode === 'direct' || !!conversation?.direct
+  // const isGroup = conversation?.type === 'group' || !!conversation?.group
+
+  const currentUser = useSelector(selectCurrentUser)
 
   const safeName = conversation?.displayName ?? (isCloud ? 'Cloud Chat' : 'Conversation')
   const initialChar = safeName?.charAt(0)?.toUpperCase?.() || 'C'
+  const [call, setCall] = useState(null) // { mode: 'audio' | 'video' } | null
+
 
   const mediaItems = [
     { id: 1, url: 'http://localhost:5173/381.jpg' },
@@ -66,32 +72,27 @@ export function ChatArea({
       date: '26/08'
     }
   ]
-
-  const getStatusColor = (online) =>
-    online ? 'text-emerald-500' : 'text-muted-foreground'
-
   const togglePanel = () => setIsOpen(!isOpen)
 
-  // Live presence from Redux store
   const usersById = useSelector(state => state.user.usersById || {})
   const { isOnline, lastActiveAt } = pickPeerStatus(conversation, usersById)
   const presenceText = usePresenceText({ isOnline, lastActiveAt })
 
   const tone =
-  (presenceText || '').toLowerCase() === 'away'
-    ? 'away'
-    : (isOnline ? 'online' : 'offline')
+    (presenceText || '').toLowerCase() === 'away'
+      ? 'away'
+      : (isOnline ? 'online' : 'offline')
 
   const presenceTextClass =
     tone === 'online' ? 'text-emerald-500'
-    : tone === 'away' ? 'text-amber-500'
-    : 'text-muted-foreground'
+      : tone === 'away' ? 'text-amber-500'
+        : 'text-muted-foreground'
 
   const dotStyle = {
     backgroundColor:
       tone === 'online' ? 'var(--status-online)'
-      : tone === 'away' ? 'var(--status-away)'
-      : 'var(--status-offline)'
+        : tone === 'away' ? 'var(--status-away)'
+          : 'var(--status-offline)'
   }
 
   const handleSendMessage = () => {
@@ -154,101 +155,122 @@ export function ChatArea({
             {/* Call/Video: ẩn với cloud */}
             {!isCloud && (
               <>
-                <Button variant="ghost" size="sm">
+                <Button variant="ghost" size="sm" onClick={() => setCall({ mode: 'audio' })}>
                   <Phone className="w-5 h-5" />
                 </Button>
-                <Button variant="ghost" size="sm">
+                <Button variant="ghost" size="sm" onClick={() => setCall({ mode: 'video' })}>
                   <Video className="w-5 h-5" />
                 </Button>
               </>
             )}
+
 
             <Button variant="ghost" size="sm" onClick={togglePanel}>
               <MoreHorizontal className="w-5 h-5" />
             </Button>
           </div>
         </div>
-
         {/* Messages Area */}
-        <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
-          {/* “Gửi yêu cầu kết bạn”: hiện với direct khi CHƯA friend, ẩn với cloud */}
+        <div className="flex-1 min-h-0 overflow-y-auto relative py-4">
+          {/* === STICKY BANNER TRÊN CÙNG === */}
           {isDirect && !isCloud && !conversation?.friendShip && (
-            <div className="flex items-center justify-between w-full p-3 border rounded-lg shadow-sm bg-card">
-              <div className="flex items-center text-sm">
-                <UserPlus className="w-4 h-4 mr-2" />
-                <span>Gửi yêu cầu kết bạn tới người này</span>
-              </div>
-
-              <Button
-                className="px-3 py-1 text-sm font-medium"
-                onClick={() => onSendFriendRequest?.(conversation?.direct?.otherUser?._id)}
-              >
-                Gửi kết bạn
-              </Button>
-            </div>
-          )}
-
-          {/* Danh sách tin nhắn */}
-          {messages.length === 0 && (
-            <div className="text-center text-xs opacity-60 mt-10">
-              {isCloud ? 'Chưa có ghi chú nào.' : 'Chưa có tin nhắn.'}
-            </div>
-          )}
-
-          {groupByDay(messages).map((group, gi) => {
-            const count = group.items.length
-            const first = group.items[0]
-            // Chip giữa (ngày hoặc giờ nếu chỉ 1 tin)
-            return (
-              <div key={group.key}>
-                <div className="flex justify-center my-3">
-                  <span className="px-3 py-1 rounded-full text-xs bg-muted text-muted-foreground">
-                    {formatChip(first.createdAt || first.timestamp, count)}
-                  </span>
+            <div className="sticky top-0 z-20 border-b">
+              {/* nền mờ phía dưới để tách nội dung khi cuộn */}
+              <div className="pointer-events-none absolute -bottom-6 left-0 right-0 h-6 from-card to-transparent" />
+              <div className="flex items-center justify-between w-full p-3 bg-card">
+                <div className="flex items-center text-sm">
+                  <UserPlus className="w-4 h-4 mr-2" />
+                  <span>Gửi yêu cầu kết bạn tới người này</span>
                 </div>
+                <Button
+                  className="px-3 py-1 text-sm font-medium"
+                  onClick={() => onSendFriendRequest?.(conversation?.direct?.otherUser?._id)}
+                >
+                  Gửi kết bạn
+                </Button>
+              </div>
+            </div>
+          )}
 
-                {group.items.map((m, mi) => {
-                  const showAvatar = false
-                  // chỉ bubble cuối ngày mới hiện meta (nếu >1 tin)
-                  const showMeta = count > 1 && mi === count - 1
+          {/* danh sách tin nhắn */}
+          <div className="space-y-3 pt-2 px-4">
+            {messages.length === 0 && (
+              <div className="text-center text-xs opacity-60 mt-10">
+                {isCloud ? 'Chưa có ghi chú nào.' : 'Chưa có tin nhắn.'}
+              </div>
+            )}
 
-                  if (MessageBubble) {
-                    return (
+            {groupByDay(messages).map((group, gi) => {
+              const count = group.items.length
+              const first = group.items[0]
+              return (
+                <div key={group.key}>
+                  <div className="flex justify-center my-3">
+                    <span className="px-3 py-1 rounded-full text-xs bg-muted text-muted-foreground">
+                      {formatChip(first.createdAt || first.timestamp, count)}
+                    </span>
+                  </div>
+
+                  {group.items.map((m, mi) => {
+                    const showAvatar = true
+                    const showMeta = count > 1 && mi === count - 1
+                    return MessageBubble ? (
                       <MessageBubble
                         key={m.id || m._id || `${gi}-${mi}`}
                         message={{ ...m }}
                         showAvatar={showAvatar}
                         showMeta={showMeta}
+                        conversation={conversation}
                       />
+                    ) : (
+                      <div
+                        key={m.id || m._id || `${gi}-${mi}`}
+                        className={`max-w-[75%] rounded-md border p-3 text-sm ${m.isOwn ? 'ml-auto bg-primary/10' : 'mr-auto bg-card'}`}
+                      >
+                        <div className="whitespace-pre-wrap">{m.text ?? m.body?.text}</div>
+                        {showMeta && (
+                          <div className="mt-1 text-[10px] opacity-60">
+                            {new Date(m.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </div>
+                        )}
+                      </div>
                     )
-                  }
+                  })}
+                </div>
+              )
+            })}
+            <div ref={messagesEndRef} />
+            {othersTyping && (
+              <div className='flex items-end space-x-2 py-2 px-1 animate-fadeIn'>
+                <Avatar className="w-8 h-8">
+                  <AvatarImage src={conversation.direct.otherUser?.avatarUrl} />
+                  {/* <AvatarFallback>{contact?.name?.charAt(0)}</AvatarFallback> */}
+                </Avatar>
 
-                  // fallback bubble đơn giản
-                  return (
-                    <div
-                      key={m.id || m._id || `${gi}-${mi}`}
-                      className={`max-w-[75%] rounded-md border p-3 text-sm ${m.isOwn ? 'ml-auto bg-primary/10' : 'mr-auto bg-card'}`}
-                    >
-                      <div className="whitespace-pre-wrap">{m.text ?? m.body?.text}</div>
-                      {showMeta && (
-                        <div className="mt-1 text-[10px] opacity-60">
-                          {new Date(m.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </div>
-                      )}
+                {/* Typing Bubble */}
+                <div className="relative p-3 rounded-lg bg-secondary text-gray-900 rounded-bl-sm">
+                  <div className="flex items-center space-x-2">
+                    {/* Typing Animation */}
+                    <div className="flex space-x-1">
+                      {[0, 1, 2].map((i) => (
+                        <div
+                          key={i}
+                          className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse"
+                          style={{
+                            animationDelay: `${i * 200}ms`,
+                            animationDuration: '1.4s',
+                            animationTimingFunction: 'ease-in-out',
+                            animationIterationCount: 'infinite'
+                          }}
+                        />
+                      ))}
                     </div>
-                  )
-                })}
-              </div>
-            )
-          })}
-          <div ref={messagesEndRef} />
-        </div>
-
-        {othersTyping && (
-          <div className="py-4 w-full text-md text-muted-foreground text-semibold flex justify-center">
-            {conversation?.direct?.otherUser?.fullName} đang nhập...
+                  </div>
+                </div>
+              </ div>
+            )}
           </div>
-        )}
+        </div>
 
         {/* Input */}
         <div className="p-4 bg-card/80 backdrop-blur-sm border-t border-border shrink-0">
@@ -312,7 +334,7 @@ export function ChatArea({
       {/* Slide Panel - trượt từ phải vào */}
       <div
         className={`fixed flex flex-col top-0 right-0 h-full w-80 shadow-lg transform transition-transform duration-300 ease-in-out border-l ${isOpen ? 'translate-x-0' : 'translate-x-full'
-        }`}
+          }`}
       >
         {/* Panel Header */}
         <div className="flex items-center justify-center p-4 border-b h-18">
@@ -346,10 +368,7 @@ export function ChatArea({
                 <Pin size={24} className="mb-1" />
                 <span className="text-xs">Pin conversation</span>
               </button>
-              <button className="flex flex-col items-center p-3 rounded-lg transition-colors cursor-pointer">
-                <Users size={24} className="mb-1" />
-                <span className="text-xs">Create a chat group</span>
-              </button>
+              <CreateGroupDialog/>
             </div>
           </div>
 
@@ -365,7 +384,7 @@ export function ChatArea({
             </div>
           </div> */}
 
-          <Accordion type="multiple" className="w-full" defaultValue = {["a", "b", "c", "d"]}>
+          <Accordion type="multiple" className="w-full" defaultValue={["a", "b", "c", "d"]}>
 
             {/* Media Section */}
             <AccordionItem value="a">
@@ -488,6 +507,17 @@ export function ChatArea({
           </div>
         </div>
       </div>
+
+      {/* modal call */}
+      {call && (
+        <CallModal
+          open={!!call}
+          onOpenChange={(o) => setCall(o ? call : null)}
+          conversationId={conversation?._id}
+          currentUserId={currentUser?._id}
+          initialMode={call.mode} // 'audio' hoặc 'video'
+        />
+      )}
     </div>
   )
 }
