@@ -114,13 +114,14 @@ const createConversation = async (conversationData, userId) => {
 
 export const getConversation = async (page = 1, limit = 20, userId) => {
   const p = Math.max(1, Math.floor(Number(page) || 1))
-  const l = Math.max(1, Math.min(100, Math.floor(Number(limit) || 20))) // chặn 1..100
-
+  const l = Math.max(1, Math.min(100, Math.floor(Number(limit) || 20)))
   const skipVal = (p - 1) * l
 
   const uid = toOid(userId)
   const pipeline = [
     { $match: { userId: uid } },
+
+    // Join sang conversation
     {
       $lookup: {
         from: 'conversations',
@@ -142,47 +143,72 @@ export const getConversation = async (page = 1, limit = 20, userId) => {
     },
     { $unwind: { path: '$lastSender', preserveNullAndEmptyArrays: true } },
 
-    // Nếu là direct: tìm other member
+    // Lấy TẤT CẢ other members (không unwind) = những người khác mình
     {
       $lookup: {
         from: 'conversationmembers',
         let: { convId: '$conversation._id', me: '$userId' },
         pipeline: [
-          { $match: { $expr: { $and: [ { $eq: ['$conversation', '$$convId'] }, { $ne: ['$userId', '$$me'] } ] } } },
-          { $project: { userId: 1 } }
+          {
+            $match: {
+              $expr: {
+                $and: [
+                  { $eq: ['$conversation', '$$convId'] },
+                  { $ne: ['$userId', '$$me'] }
+                ]
+              }
+            }
+          },
+          { $project: { _id: 0, userId: 1 } }
         ],
-        as: 'otherMember'
+        as: 'otherMembers' // [{ userId }]
       }
     },
-    { $unwind: { path: '$otherMember', preserveNullAndEmptyArrays: true } },
 
-    // Lấy thông tin other user (cho direct)
+    // Join ONE-SHOT sang users cho toàn bộ otherMembers
     {
       $lookup: {
         from: 'users',
-        localField: 'otherMember.userId',
-        foreignField: '_id',
-        as: 'otherUser'
+        let: { ids: '$otherMembers.userId' },
+        pipeline: [
+          { $match: { $expr: { $in: ['$_id', '$$ids'] } } },
+          {
+            $project: {
+              fullName: 1,
+              username: 1,
+              avatarUrl: 1,
+              status: 1
+            }
+          }
+        ],
+        as: 'otherUsers' // [{ _id, fullName, ... }]
       }
     },
-    { $unwind: { path: '$otherUser', preserveNullAndEmptyArrays: true } },
+    {
+      $lookup: {
+        from: 'users',
+        localField: 'userId',        // chính là uid đã $match ở đầu
+        foreignField: '_id',
+        pipeline: [
+          { $project: { fullName: 1, username: 1, avatarUrl: 1 } }
+        ],
+        as: 'meUser'
+      }
+    },
+    { $unwind: { path: '$meUser', preserveNullAndEmptyArrays: false } },
 
-    // Coalesce key sort: ưu tiên lastMessage.createdAt, fallback updatedAt
+    // Coalesce key sort
     {
       $addFields: {
-        sortKey: {
-          $ifNull: ['$conversation.lastMessage.createdAt', '$conversation.updatedAt']
-        }
+        sortKey: { $ifNull: ['$conversation.lastMessage.createdAt', '$conversation.updatedAt'] }
       }
     },
 
     { $sort: { sortKey: -1 } },
-
-    // Phân trang ở DB
     { $skip: skipVal },
     { $limit: l },
 
-    // Dựng payload trả về (tối ưu kích thước)
+    // Build payload
     {
       $project: {
         _id: 0,
@@ -203,11 +229,11 @@ export const getConversation = async (page = 1, limit = 20, userId) => {
         messageSeq: '$conversation.messageSeq',
         updatedAt: '$conversation.updatedAt',
 
-        // build sẵn hiển thị theo type
+        // Hiển thị theo type
         displayName: {
           $switch: {
             branches: [
-              { case: { $eq: ['$conversation.type', 'direct'] }, then: { $ifNull: ['$otherUser.fullName', 'Unknown'] } },
+              { case: { $eq: ['$conversation.type', 'direct'] }, then: { $ifNull: [{ $ifNull: [{ $arrayElemAt: ['$otherUsers.fullName', 0] }, null] }, 'Unknown'] } },
               { case: { $eq: ['$conversation.type', 'group'] },  then: { $ifNull: ['$conversation.group.name', 'Group'] } },
               { case: { $eq: ['$conversation.type', 'cloud'] },  then: 'Your Cloud' }
             ],
@@ -217,26 +243,52 @@ export const getConversation = async (page = 1, limit = 20, userId) => {
         conversationAvatarUrl: {
           $switch: {
             branches: [
-              { case: { $eq: ['$conversation.type', 'direct'] }, then: { $ifNull: ['$otherUser.avatarUrl', ''] } },
-              { case: { $eq: ['$conversation.type', 'group'] },  then: { $ifNull: ['$conversation.group.avatarUrl', ''] } },
+              { case: { $eq: ['$conversation.type', 'direct'] }, then: { $ifNull: [{ $arrayElemAt: ['$otherUsers.avatarUrl', 0] }, '' ] } },
+              { case: { $eq: ['$conversation.type', 'group'] },  then: { $ifNull: ['$conversation.group.avatarUrl', '' ] } },
               { case: { $eq: ['$conversation.type', 'cloud'] },  then: 'https://cdn-icons-png.flaticon.com/512/8038/8038388.png' }
             ],
             default: ''
           }
         },
+
+        // Với direct: build otherUser = phần tử đầu tiên (không còn duplicate)
         direct: {
           otherUser: {
-            id: '$otherUser._id',
-            fullName: '$otherUser.fullName',
-            userName: '$otherUser.username',
-            avatarUrl: '$otherUser.avatarUrl',
-            status: '$otherUser.status'
-            // Có thể $lookup thêm FriendShip nếu cần cờ friendship
+            $cond: [
+              { $eq: ['$conversation.type', 'direct'] },
+              {
+                id:        { $arrayElemAt: [ { $map: { input: '$otherUsers', as: 'u', in: '$$u._id' } }, 0 ] },
+                fullName:  { $arrayElemAt: [ '$otherUsers.fullName', 0 ] },
+                userName:  { $arrayElemAt: [ '$otherUsers.username', 0 ] },
+                avatarUrl: { $arrayElemAt: [ '$otherUsers.avatarUrl', 0 ] },
+                status:    { $arrayElemAt: [ '$otherUsers.status', 0 ] }
+              },
+              {} // không phải direct thì trả rỗng
+            ]
           }
         },
+
         group: {
           name: '$conversation.group.name',
-          avatarUrl: '$conversation.group.avatarUrl'
+          avatarUrl: '$conversation.group.avatarUrl',
+          members: {
+            $cond: [
+              { $eq: ['$conversation.type', 'group'] },
+              {
+                $map: {
+                  input: { $concatArrays: [ [ '$meUser' ], '$otherUsers' ] }, // [meUser, ...otherUsers]
+                  as: 'm',
+                  in: {
+                    id:        '$$m._id',
+                    fullName:  '$$m.fullName',
+                    username:  '$$m.username',
+                    avatarUrl: '$$m.avatarUrl'
+                  }
+                }
+              },
+              [] // không phải group thì rỗng
+            ]
+          }
         }
       }
     }
@@ -289,7 +341,6 @@ export const fetchConversationDetail = async (userId, conversationId, limit = 30
         }
       }
     } else {
-      // fallback
       displayName = "Conversation"
     }
   }
@@ -303,16 +354,101 @@ export const fetchConversationDetail = async (userId, conversationId, limit = 30
     displayName = "Cloud Chat"
   }
 
-  // Lấy messages (đã đảo ngược sang oldest->newest trong service của bạn)
+  // Lấy messages (service trả oldest->newest)
   const messages = await messageService.listMessages({userId, conversationId, limit, beforeSeq})
   const nextBeforeSeq = messages.length > 0 ? messages[0].seq : null
+
+  // ======= GROUP MEMBERS (mới) =======
+  let groupMembers = []
+  let memberIds = []
+  if (convo.type === 'group') {
+    // Lấy toàn bộ members của cuộc trò chuyện
+    const cms = await ConversationMember.find(
+      { conversation: convo._id },
+      { userId: 1 } // nếu có role, thêm { role: 1 }
+    ).lean()
+
+    memberIds = (cms || [])
+      .map(cm => cm?.userId)
+      .filter(Boolean)
+      .map(id => String(id))
+  }
+
+  // ======= HỢP NHẤT ID cần load user (senders + members) =======
+  const senderIds = [
+    ...new Set(
+      messages
+        .map(m => m?.senderId)
+        .filter(Boolean)
+        .map(id => String(id))
+    )
+  ]
+
+  const combinedIds = [...new Set([ ...senderIds, ...memberIds ])]
+
+  // Query 1 lần toàn bộ users liên quan
+  let usersById = new Map()
+  if (combinedIds.length) {
+    const users = await User.find(
+      { _id: { $in: combinedIds.map(id => new mongoose.Types.ObjectId(id)) } },
+      { fullName: 1, username: 1, avatarUrl: 1, status: 1 }
+    ).lean()
+    usersById = new Map(users.map(u => [String(u._id), u]))
+  }
+
+  // Build group.members nếu là group
+  if (convo.type === 'group') {
+    groupMembers = memberIds.map(uid => {
+      const u = usersById.get(String(uid))
+      return u ? {
+        id: u._id,
+        fullName: u.fullName || null,
+        username: u.username || null,
+        avatarUrl: u.avatarUrl || null,
+        status: u.status || null
+        // nếu ConversationMember có role: thêm role tương ứng ở đây
+      } : {
+        id: uid,
+        fullName: null,
+        username: null,
+        avatarUrl: null,
+        status: null
+      }
+    })
+  }
+
+  // Enrich messages.sender (áp dụng cho group; muốn áp dụng cho tất cả thì bỏ điều kiện)
+  const messagesWithSender =
+    convo.type === 'group'
+      ? messages.map(m => {
+          const key = m?.senderId ? String(m.senderId) : null
+          const u = key ? usersById.get(key) : null
+          return {
+            ...m,
+            sender: u
+              ? {
+                  id: u._id,
+                  fullName: u.fullName || null,
+                  username: u.username || null,
+                  avatarUrl: u.avatarUrl || null,
+                  status: u.status || null
+                }
+              : null
+          }
+        })
+      : messages
 
   return {
     conversation: {
       _id: convo._id,
       type: convo.type,
       direct: enrichedDirect,
-      group: convo.group || null,
+      group: convo.type === 'group'
+        ? {
+            ...(convo.group || {}),
+            members: groupMembers
+          }
+        : (convo.group || null),
       cloud: convo.cloud || null,
       displayName,
       conversationAvatarUrl,
@@ -320,7 +456,7 @@ export const fetchConversationDetail = async (userId, conversationId, limit = 30
       createdAt: convo.createdAt,
       updatedAt: convo.updatedAt
     },
-    messages,
+    messages: messagesWithSender,
     pageInfo: {limit, beforeSeq, nextBeforeSeq}
   }
 }
@@ -329,8 +465,6 @@ const getUnreadSummary = async (userId) => {
   const members = await ConversationMember.find({userId})
   .select("conversation lastReadMessageSeq")
   .lean()
-
-  if (!members.length) return {items: [], totalConversations: 0, totalMessages: 0}
 
   // Lấy messageSeq của các conversation liên quan
   const convoIds = members.map(m => m.conversation)
