@@ -37,6 +37,7 @@ export function ChatArea({
 
   const isCloud = mode === 'cloud' || conversation?.type === 'cloud'
   const isDirect = mode === 'direct' || !!conversation?.direct
+  const isGroup = mode === 'group' || !!conversation?.group
   // const isGroup = conversation?.type === 'group' || !!conversation?.group
 
   const currentUser = useSelector(selectCurrentUser)
@@ -201,7 +202,7 @@ export function ChatArea({
         {/* Messages Area */}
         <div className="flex-1 min-h-0 overflow-y-auto relative py-4">
           {/* === STICKY BANNER TRÊN CÙNG === */}
-          {isDirect && !isCloud && !conversation?.friendShip && (
+          {isDirect && !isCloud && !isGroup && !conversation?.friendShip && (
             <div className="sticky top-0 z-20 border-b">
               {/* nền mờ phía dưới để tách nội dung khi cuộn */}
               <div className="pointer-events-none absolute -bottom-6 left-0 right-0 h-6 from-card to-transparent" />
