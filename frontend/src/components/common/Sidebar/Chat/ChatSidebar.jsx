@@ -29,7 +29,6 @@ function ConversationListItem({ conversation, usersById, isActive, onClick, getL
   })
   const presenceText = conversation.direct ? presenceTextRaw : null
 
-  // ---- NEW: tone  class cho text & dot (Away = cam) ----
   const tone = presenceTextRaw?.toLowerCase() === 'away'
     ? 'away'
     : (status.isOnline ? 'online' : 'offline')
@@ -39,13 +38,10 @@ function ConversationListItem({ conversation, usersById, isActive, onClick, getL
       : tone === 'away' ? 'text-amber-500'
         : 'text-muted-foreground'
 
-  // Ưu tiên class tùy biến nếu bạn đã định nghĩa (bg-status-*)
-  // kèm fallback tailwind để chạy ngay cả khi chưa có custom class
   const presenceDotClass =
     tone === 'online' ? 'bg-status-online bg-emerald-500'
       : tone === 'away' ? 'bg-status-away bg-amber-400'
         : 'bg-status-offline bg-zinc-400'
-  // -------------------------------------------------------
 
   return (
     <div

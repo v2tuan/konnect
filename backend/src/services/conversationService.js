@@ -116,13 +116,14 @@ const createConversation = async (conversationData, userId) => {
 
 export const getConversation = async (page = 1, limit = 20, userId) => {
   const p = Math.max(1, Math.floor(Number(page) || 1))
-  const l = Math.max(1, Math.min(100, Math.floor(Number(limit) || 20))) // chặn 1..100
-
+  const l = Math.max(1, Math.min(100, Math.floor(Number(limit) || 20)))
   const skipVal = (p - 1) * l
 
   const uid = toOid(userId)
   const pipeline = [
     { $match: { userId: uid } },
+
+    // Join sang conversation
     {
       $lookup: {
         from: 'conversations',
@@ -144,47 +145,60 @@ export const getConversation = async (page = 1, limit = 20, userId) => {
     },
     { $unwind: { path: '$lastSender', preserveNullAndEmptyArrays: true } },
 
-    // Nếu là direct: tìm other member
+    // Lấy TẤT CẢ other members (không unwind) = những người khác mình
     {
       $lookup: {
         from: 'conversationmembers',
         let: { convId: '$conversation._id', me: '$userId' },
         pipeline: [
-          { $match: { $expr: { $and: [ { $eq: ['$conversation', '$$convId'] }, { $ne: ['$userId', '$$me'] } ] } } },
-          { $project: { userId: 1 } }
+          {
+            $match: {
+              $expr: {
+                $and: [
+                  { $eq: ['$conversation', '$$convId'] },
+                  { $ne: ['$userId', '$$me'] }
+                ]
+              }
+            }
+          },
+          { $project: { _id: 0, userId: 1 } }
         ],
-        as: 'otherMember'
+        as: 'otherMembers' // [{ userId }]
       }
     },
-    { $unwind: { path: '$otherMember', preserveNullAndEmptyArrays: true } },
 
-    // Lấy thông tin other user (cho direct)
+    // Join ONE-SHOT sang users cho toàn bộ otherMembers
     {
       $lookup: {
         from: 'users',
-        localField: 'otherMember.userId',
-        foreignField: '_id',
-        as: 'otherUser'
+        let: { ids: '$otherMembers.userId' },
+        pipeline: [
+          { $match: { $expr: { $in: ['$_id', '$$ids'] } } },
+          {
+            $project: {
+              fullName: 1,
+              username: 1,
+              avatarUrl: 1,
+              status: 1
+            }
+          }
+        ],
+        as: 'otherUsers' // [{ _id, fullName, ... }]
       }
     },
-    { $unwind: { path: '$otherUser', preserveNullAndEmptyArrays: true } },
 
-    // Coalesce key sort: ưu tiên lastMessage.createdAt, fallback updatedAt
+    // Coalesce key sort
     {
       $addFields: {
-        sortKey: {
-          $ifNull: ['$conversation.lastMessage.createdAt', '$conversation.updatedAt']
-        }
+        sortKey: { $ifNull: ['$conversation.lastMessage.createdAt', '$conversation.updatedAt'] }
       }
     },
 
     { $sort: { sortKey: -1 } },
-
-    // Phân trang ở DB
     { $skip: skipVal },
     { $limit: l },
 
-    // Dựng payload trả về (tối ưu kích thước)
+    // Build payload
     {
       $project: {
         _id: 0,
@@ -205,11 +219,11 @@ export const getConversation = async (page = 1, limit = 20, userId) => {
         messageSeq: '$conversation.messageSeq',
         updatedAt: '$conversation.updatedAt',
 
-        // build sẵn hiển thị theo type
+        // Hiển thị theo type
         displayName: {
           $switch: {
             branches: [
-              { case: { $eq: ['$conversation.type', 'direct'] }, then: { $ifNull: ['$otherUser.fullName', 'Unknown'] } },
+              { case: { $eq: ['$conversation.type', 'direct'] }, then: { $ifNull: [{ $ifNull: [{ $arrayElemAt: ['$otherUsers.fullName', 0] }, null] }, 'Unknown'] } },
               { case: { $eq: ['$conversation.type', 'group'] },  then: { $ifNull: ['$conversation.group.name', 'Group'] } },
               { case: { $eq: ['$conversation.type', 'cloud'] },  then: 'Your Cloud' }
             ],
@@ -219,26 +233,49 @@ export const getConversation = async (page = 1, limit = 20, userId) => {
         conversationAvatarUrl: {
           $switch: {
             branches: [
-              { case: { $eq: ['$conversation.type', 'direct'] }, then: { $ifNull: ['$otherUser.avatarUrl', ''] } },
-              { case: { $eq: ['$conversation.type', 'group'] },  then: { $ifNull: ['$conversation.group.avatarUrl', ''] } },
+              { case: { $eq: ['$conversation.type', 'direct'] }, then: { $ifNull: [{ $arrayElemAt: ['$otherUsers.avatarUrl', 0] }, '' ] } },
+              { case: { $eq: ['$conversation.type', 'group'] },  then: { $ifNull: ['$conversation.group.avatarUrl', '' ] } },
               { case: { $eq: ['$conversation.type', 'cloud'] },  then: 'https://cdn-icons-png.flaticon.com/512/8038/8038388.png' }
             ],
             default: ''
           }
         },
+
+        // Với direct: build otherUser = phần tử đầu tiên (không còn duplicate)
         direct: {
           otherUser: {
-            id: '$otherUser._id',
-            fullName: '$otherUser.fullName',
-            userName: '$otherUser.username',
-            avatarUrl: '$otherUser.avatarUrl',
-            status: '$otherUser.status'
-            // Có thể $lookup thêm FriendShip nếu cần cờ friendship
+            $cond: [
+              { $eq: ['$conversation.type', 'direct'] },
+              {
+                id:        { $arrayElemAt: [ { $map: { input: '$otherUsers', as: 'u', in: '$$u._id' } }, 0 ] },
+                fullName:  { $arrayElemAt: [ '$otherUsers.fullName', 0 ] },
+                userName:  { $arrayElemAt: [ '$otherUsers.username', 0 ] },
+                avatarUrl: { $arrayElemAt: [ '$otherUsers.avatarUrl', 0 ] },
+                status:    { $arrayElemAt: [ '$otherUsers.status', 0 ] }
+              },
+              {} // không phải direct thì trả rỗng
+            ]
           }
         },
+
+        // Với group: giữ nguyên metadata; nếu muốn có members, có thể trả thêm mảng otherUsers
         group: {
           name: '$conversation.group.name',
           avatarUrl: '$conversation.group.avatarUrl'
+          // Nếu cần:
+          // members: {
+          //   $cond: [
+          //     { $eq: ['$conversation.type', 'group'] },
+          //     {
+          //       $map: {
+          //         input: '$otherUsers',
+          //         as: 'm',
+          //         in: { id: '$$m._id', fullName: '$$m.fullName', userName: '$$m.username', avatarUrl: '$$m.avatarUrl', status: '$$m.status' }
+          //       }
+          //     },
+          //     []
+          //   ]
+          // }
         }
       }
     }
