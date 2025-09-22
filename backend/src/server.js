@@ -3,23 +3,22 @@ import cookieParser from 'cookie-parser';
 import http from 'http'
 import cors from 'cors';
 import express from 'express';
-import { env } from './config/environment.js';
+import {env} from './config/environment.js';
 import connectDB from './lib/connectDB.js';
-import { APIs_V1 } from './routes/index.js';
-import { Server } from 'socket.io'
+import {APIs_V1} from './routes/index.js';
+import {Server} from 'socket.io'
 import jwt from 'jsonwebtoken'
-import User from './models/user.js'
-import { userService } from './services/userService.js';
+import {userService} from './services/userService.js';
 
 const app = express();
 
 const server = http.createServer(app)
 
-const PORT =env.LOCAL_DEV_APP_PORT || 3000;
+const PORT = env.LOCAL_DEV_APP_PORT || 3000;
 
 //socket + http server
 const io = new Server(server, {
-    cors: {origin: env.WEBSITE_DOMAIN_DEVELOPMENT, credentials: true}
+  cors: {origin: env.WEBSITE_DOMAIN_DEVELOPMENT, credentials: true}
 })
 
 const presenceMap = new Map()
@@ -31,7 +30,7 @@ io.use(async (socket, next) => {
     const token = tokenPair ? tokenPair.split('=')[1] : null
     if (!token) return next(new Error('Unauthorized'))
     const decoded = jwt.verify(token, env.JWT_SECRET)
-    socket.user = { id: decoded.userId }
+    socket.user = {id: decoded.userId}
     return next()
   } catch (err) {
     return next(err)
@@ -41,13 +40,14 @@ io.use(async (socket, next) => {
 io.on('connection', (socket) => {
   const userId = socket.user?.id
   if (userId) {
+    socket.join(`user:${userId}`)
     let entry = presenceMap.get(userId)
     if (!entry) {
-      entry = { sockets: new Set(), lastActiveAt: new Date() }
+      entry = {sockets: new Set(), lastActiveAt: new Date()}
       presenceMap.set(userId, entry)
       // First connection -> mark online
-      userService.markUserStatus(userId, { isOnline: true, lastActiveAt: new Date() })
-      io.emit('presence:update', { userId, isOnline: true, lastActiveAt: new Date().toISOString() })
+      userService.markUserStatus(userId, {isOnline: true, lastActiveAt: new Date()})
+      io.emit('presence:update', {userId, isOnline: true, lastActiveAt: new Date().toISOString()})
     }
     entry.sockets.add(socket.id)
   }
@@ -75,19 +75,19 @@ io.on('connection', (socket) => {
   })
 
   // Conversation join/typing events (kept from previous version)
-  socket.on('conversation:join', ({ conversationId }) => {
+  socket.on('conversation:join', ({conversationId}) => {
     if (!conversationId) return
     socket.join(`conversation:${conversationId}`)
   })
 
-  socket.on('typing:start', ({ conversationId }) => {
+  socket.on('typing:start', ({conversationId}) => {
     if (!conversationId) return
-    socket.to(`conversation:${conversationId}`).emit('typing:start', { conversationId, userId })
+    socket.to(`conversation:${conversationId}`).emit('typing:start', {conversationId, userId})
   })
 
-  socket.on('typing:stop', ({ conversationId }) => {
+  socket.on('typing:stop', ({conversationId}) => {
     if (!conversationId) return
-    socket.to(`conversation:${conversationId}`).emit('typing:stop', { conversationId, userId })
+    socket.to(`conversation:${conversationId}`).emit('typing:stop', {conversationId, userId})
   })
 
   socket.on('disconnect', () => {
@@ -99,14 +99,14 @@ io.on('connection', (socket) => {
       // Mark offline now & broadcast
       presenceMap.delete(userId)
       const lastActiveAt = new Date()
-      userService.markUserStatus(userId, { isOnline: false, lastActiveAt })
-      io.emit('presence:update', { userId, isOnline: false, lastActiveAt: lastActiveAt.toISOString() })
+      userService.markUserStatus(userId, {isOnline: false, lastActiveAt})
+      io.emit('presence:update', {userId, isOnline: false, lastActiveAt: lastActiveAt.toISOString()})
     }
   })
 })
-app.use((req, _res, next) => { 
-    req.io = io
-    next() 
+app.use((req, _res, next) => {
+  req.io = io
+  next()
 })
 
 
@@ -115,21 +115,21 @@ app.use((req, _res, next) => {
 app.use(bodyParser.json());
 // Dùng để parse request body dạng x-www-form-urlencoded sang javaScript object
 // Extended true cho phép sử dụng các kiểu dữ liệu phức tạp hơn như object lồng nhau, mảng, v.v.
-app.use(bodyParser.urlencoded({ extended: true }));
+app.use(bodyParser.urlencoded({extended: true}));
 app.use(cookieParser()); // Middleware to parse cookies
 
 //CORS
 app.use(cors(
-    {
-        origin: env.WEBSITE_DOMAIN_DEVELOPMENT,
-        credentials: true
-    }
+  {
+    origin: env.WEBSITE_DOMAIN_DEVELOPMENT,
+    credentials: true
+  }
 ));
 
 app.use('/api', APIs_V1);
 server.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
-    console.log(`http://${env.LOCAL_DEV_APP_HOST}:${PORT}`);
-    connectDB();
-    // seedUsers(); // Call the seed function to populate the database
+  console.log(`Server is running on port ${PORT}`);
+  console.log(`http://${env.LOCAL_DEV_APP_HOST}:${PORT}`);
+  connectDB();
+  // seedUsers(); // Call the seed function to populate the database
 });

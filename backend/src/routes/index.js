@@ -1,16 +1,17 @@
 import express from 'express'
-import { StatusCodes } from 'http-status-codes'  
-import { authRoutes } from './authRoute'
-import { cloudRoutes } from './cloudRoute'
-import { messageRoutes } from './messageRoute'
-import { userRoute } from './userRoute'
-import { conversationRoutes } from './conversationRoute'
-import { contactRoutes } from './contactRoute'
+import {StatusCodes} from 'http-status-codes'
+import {authRoutes} from './authRoute'
+import {cloudRoutes} from './cloudRoute'
+import {messageRoutes} from './messageRoute'
+import {userRoute} from './userRoute'
+import {conversationRoutes} from './conversationRoute'
+import {contactRoutes} from './contactRoute'
+import notificationRoute from "~/routes/notificationRoute";
 
 const Router = express.Router()
 
 Router.get('/status', (req, res) => {
-  res.status(StatusCodes.OK).json({message: 'APIs V1 are ready to use, ', code: StatusCodes.OK })
+  res.status(StatusCodes.OK).json({message: 'APIs V1 are ready to use, ', code: StatusCodes.OK})
 })
 
 Router.use('/auth', authRoutes)
@@ -23,5 +24,7 @@ Router.use('/messages', messageRoutes)
 Router.use('/conversation', conversationRoutes)
 
 Router.use('/contacts', contactRoutes)
+Router.use('/notification/', notificationRoute)
+
 
 export const APIs_V1 = Router
