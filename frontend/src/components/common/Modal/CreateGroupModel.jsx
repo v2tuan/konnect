@@ -2,14 +2,16 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@radix-ui/react-label"
-import { Camera, Search, Users, X } from "lucide-react"
-import { useState } from "react"
+import { Camera, Image, Search, Users, X } from "lucide-react"
+import { useRef, useState } from "react"
 
 export default function CreateGroupDialog() {
   const [selectedMembers, setSelectedMembers] = useState(['Nguyễn Văn A'])
   const [groupName, setGroupName] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [activeTab, setActiveTab] = useState('Tất cả')
+  const [groupImage, setGroupImage] = useState(null)
+  const fileInputRef = useRef(null)
 
   const tabs = ['Tất cả', 'Khách hàng', 'Gia đình', 'Công việc', 'Bạn bè', 'Trả lời sau']
 
@@ -39,6 +41,47 @@ export default function CreateGroupDialog() {
 
   const removeMember = (memberName) => {
     setSelectedMembers(prev => prev.filter(name => name !== memberName))
+  }
+
+  // Đọc ảnh bằng FileReader chuyển thành base64 để hiển thị lại
+  // Wrapper để đọc file trả về Promise cho dễ await
+  function readFileAsDataURL(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      // Đăng ký callback: khi việc đọc file hoàn tất thành công, onload sẽ được gọi
+      reader.onload = () => resolve(reader.result)
+      reader.onerror = (e) => reject(e)
+      // Bắt đầu đọc file dưới dạng Data URL (base64). Đây là thao tác bất đồng bộ:
+      // readAsDataURL trả về ngay, nhưng quá trình đọc file sẽ chạy trong nền.
+      // Khi đọc xong, reader.onload mới được gọi.
+      reader.readAsDataURL(file)
+    })
+  }
+
+  // Handler async
+  const handleImageSelect = async (event) => {
+    const file = event.target.files[0]
+    if (!file || !file.type.startsWith('image/')) return
+
+    try {
+      // await chờ cho file được đọc xong rồi mới tiếp tục
+      const dataUrl = await readFileAsDataURL(file)
+      setGroupImage(dataUrl)
+    } catch (err) {
+      console.error('Lỗi khi đọc file:', err)
+    }
+  }
+
+
+  const handleImageClick = () => {
+    fileInputRef.current?.click()
+  }
+
+  const removeImage = () => {
+    setGroupImage(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
   }
 
   const ContactItem = ({ contact, section = 'recent' }) => (
@@ -86,8 +129,37 @@ export default function CreateGroupDialog() {
               {/* Group Name Input */}
               <div className="p-4 border-b">
                 <div className="flex items-center space-x-3">
-                  <div className="w-12 h-12 bg-secondary rounded-full flex items-center justify-center">
-                    <Camera size={20} className="text-gray-400" />
+                  <div
+                    className="relative w-12 h-12 bg-secondary rounded-full flex items-center justify-center cursor-pointer hover:bg-secondary/80 group"
+                    onClick={handleImageClick}
+                  >
+                    {groupImage ? (
+                      <>
+                        <img
+                          src={groupImage}
+                          alt="Group"
+                          className="w-12 h-12 rounded-full object-cover"
+                        />
+                        <div className="absolute inset-0 bg-black/50 rounded-full opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                          <Camera size={16} className="text-white" />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            removeImage()
+                          }}
+                          className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600"
+                        >
+                          <X size={10} />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <Camera size={20} className="text-gray-400 group-hover:text-gray-600" />
+                        <div className="absolute inset-0 rounded-full border-2 border-dashed border-transparent group-hover:border-primary/50"></div>
+                      </>
+                    )}
                   </div>
                   <input
                     type="text"
@@ -96,7 +168,20 @@ export default function CreateGroupDialog() {
                     onChange={(e) => setGroupName(e.target.value)}
                     className="flex-1 border-b border-blue-400 outline-none text-muted-foreground"
                   />
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageSelect}
+                    className="hidden"
+                  />
                 </div>
+                {groupImage && (
+                  <div className="mt-2 text-xs text-muted-foreground flex items-center">
+                    <Image size={12} className="mr-1" />
+                    Ảnh đại diện nhóm đã được chọn
+                  </div>
+                )}
               </div>
 
               {/* Search */}
