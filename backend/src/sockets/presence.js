@@ -5,6 +5,7 @@ export function registerPresence(io, { userService }) {
   io.on('connection', (socket) => {
     const userId = socket.user?.id
     if (userId) {
+      socket.join(`user:${userId}`)
       let entry = presenceMap.get(userId)
       if (!entry) {
         entry = { sockets: new Set(), lastActiveAt: new Date() }

@@ -1,14 +1,6 @@
 "use client"
 
-import {
-  Bell,
-  BookUser,
-  Brain,
-  Cloud,
-  GalleryVerticalEnd,
-  Inbox,
-  Trash2
-} from "lucide-react"
+import { Bell, BookUser, Brain, Cloud, GalleryVerticalEnd, Inbox, Trash2 } from "lucide-react"
 
 import { ChatSidebar } from "@/components/common/Sidebar/Chat/ChatSidebar"
 import { NavUser } from "@/components/common/Sidebar/nav-user"
@@ -28,6 +20,8 @@ import { useEffect } from "react"
 import { NavLink, useLocation } from "react-router-dom"
 import ModeToggle from "../NavBar/ThemeToggle"
 import ContactSidebar from "./Contact/ContactSidebar"
+import { useUnreadStore } from '../../../store/useUnreadStore.js'
+import { useUnreadBoot } from '../../../hooks/useUnreadBoot.js'
 
 const data = {
   user: {
@@ -47,7 +41,6 @@ const data = {
 export function AppSidebar(props) {
   // Remove custom props so they aren't forwarded to DOM (avoid unused variable warnings)
   const { chatState, contactTab, onContactTabChange, ...rest } = (() => {
-    // Create a shallow copy and delete unwanted keys
     const clone = { ...props }
     delete clone.cloudTab
     delete clone.onCloudTabChange
@@ -58,6 +51,10 @@ export function AppSidebar(props) {
 
   const isMessage = location.pathname.startsWith("/chats")
   const isContact = location.pathname.startsWith("/contacts")
+
+  /** ⭐ NEW: boot unread + lấy tổng số phòng có unread để hiển thị badge */
+  useUnreadBoot()
+  const totalConversations = useUnreadStore(s => s.totalConversations)
 
   useEffect(() => {
     const shouldOpen = isMessage || isContact
@@ -80,14 +77,12 @@ export function AppSidebar(props) {
             <SidebarMenuItem>
               <SidebarMenuButton
                 size="lg"
-                tooltip={{
-                  children: "Konnect",
-                  hidden: false
-                }}
+                tooltip={{ children: "Konnect", hidden: false }}
                 className="w-full justify-center px-0"
               >
-                <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                  <GalleryVerticalEnd className="size-4" />
+                <div
+                  className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+                  <GalleryVerticalEnd className="size-4"/>
                 </div>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -100,20 +95,27 @@ export function AppSidebar(props) {
               <SidebarMenu>
                 {data.navMain.map((item) => {
                   const active = location.pathname.startsWith(item.url)
+                  const isMessageItem = item.url === "/chats"
                   return (
-                    <SidebarMenuItem key={item.title}>
+                    <SidebarMenuItem key={item.title} className="relative">
                       <SidebarMenuButton
                         asChild
                         isActive={active}
                         className="w-full justify-center px-0"
-                        tooltip={{
-                          children: item.title,
-                          hidden: false
-                        }}
+                        tooltip={{ children: item.title, hidden: false }}
                         onClick={() => setOpen(true)} // mở submenu
                       >
-                        <NavLink to={item.url} className="flex items-center justify-center">
-                          <item.icon />
+                        {/* bọc navlink để đặt badge absolute */}
+                        <NavLink to={item.url} className="relative flex items-center justify-center">
+                          <item.icon/>
+                          {/* ⭐ NEW: Badge tổng số cuộc trò chuyện có unread */}
+                          {isMessageItem && totalConversations > 0 && (
+                            <span
+                              className="absolute -right-1 -top-1 min-w-5 h-5 rounded-full bg-red-500 text-white text-[10px] px-1 leading-none flex items-center justify-center"
+                              aria-label={`${totalConversations} conversations have new messages`}>
+                              {totalConversations > 99 ? "99+" : totalConversations}
+                            </span>
+                          )}
                         </NavLink>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
@@ -127,7 +129,7 @@ export function AppSidebar(props) {
         <SidebarFooter className="flex items-center justify-center gap-3">
           <Bell/>
           <ModeToggle/>
-          <NavUser />
+          <NavUser/>
         </SidebarFooter>
       </Sidebar>
 
@@ -150,7 +152,8 @@ export function AppSidebar(props) {
         <Sidebar collapsible="none" className="w-[450px] border-r bg-background">
           <ContactSidebar
             value={contactTab || "home"}
-            onValueChange={onContactTabChange || (() => {})}
+            onValueChange={onContactTabChange || (() => {
+            })}
           />
         </Sidebar>
       )}
