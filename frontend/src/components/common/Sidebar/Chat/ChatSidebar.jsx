@@ -15,7 +15,6 @@ import { extractId } from '@/utils/helper'
 import { API_ROOT } from '@/utils/constant'
 import { io } from 'socket.io-client'
 
-// Separate item component so we can safely use hooks
 function ConversationListItem({ conversation, usersById, isActive, onClick, getLastMessageText }) {
   const id = extractId(conversation)
   const status = conversation.direct
@@ -29,7 +28,6 @@ function ConversationListItem({ conversation, usersById, isActive, onClick, getL
   })
   const presenceText = conversation.direct ? presenceTextRaw : null
 
-  // ---- NEW: tone  class cho text & dot (Away = cam) ----
   const tone = presenceTextRaw?.toLowerCase() === 'away'
     ? 'away'
     : (status.isOnline ? 'online' : 'offline')
@@ -39,13 +37,10 @@ function ConversationListItem({ conversation, usersById, isActive, onClick, getL
       : tone === 'away' ? 'text-amber-500'
         : 'text-muted-foreground'
 
-  // Ưu tiên class tùy biến nếu bạn đã định nghĩa (bg-status-*)
-  // kèm fallback tailwind để chạy ngay cả khi chưa có custom class
   const presenceDotClass =
     tone === 'online' ? 'bg-status-online bg-emerald-500'
       : tone === 'away' ? 'bg-status-away bg-amber-400'
         : 'bg-status-offline bg-zinc-400'
-  // -------------------------------------------------------
 
   return (
     <div
@@ -60,7 +55,7 @@ function ConversationListItem({ conversation, usersById, isActive, onClick, getL
             <AvatarFallback>{conversation.displayName?.[0]}</AvatarFallback>
           </Avatar>
 
-          {conversation.direct && (
+          {conversation.type=== 'direct' && (
             <div
               className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${presenceDotClass}`}
             />
@@ -70,11 +65,11 @@ function ConversationListItem({ conversation, usersById, isActive, onClick, getL
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between mb-1">
             <h3 className="font-medium truncate">{conversation.displayName}</h3>
-            {conversation.direct && (
+            {/* {conversation.direct && (
               <span className={`text-xs ${presenceTextClass}`}>
                 {presenceText}
               </span>
-            )}
+            )} */}
           </div>
 
           <div className="flex items-center justify-between">
@@ -123,6 +118,19 @@ export function ChatSidebar({
     const sid = typeof lm.senderId === 'object' ? lm.senderId?._id : lm.senderId
     if (sid && String(sid) === String(currentUser._id)) {
       return `You: ${lm.textPreview}`
+    }
+    if (conv.type === 'group') {
+      let senderName = lm.sender?.fullName || lm.sender?.username
+
+      // fallback nếu API chưa enrich sender
+      if (!senderName && Array.isArray(conv.group?.members)) {
+        const m = conv.group.members.find(u => String(u.id || u._id) === String(sid))
+        senderName = m?.fullName || m?.username
+      }
+
+      if (senderName) {
+        return `${senderName}: ${lm.textPreview}`
+      }
     }
     return lm.textPreview
   }

@@ -1,14 +1,66 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
-  Pin, Reply, MoreHorizontal, Heart, Clock,
-  Check, CheckCheck
+  Pin, Reply, MoreHorizontal, Heart, Clock, Check, CheckCheck
 } from 'lucide-react'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 
+function pickSender(conversation, message, contact) {
+  if (message?.sender) {
+    const s = message.sender
+    return {
+      id: s.id || s._id || message.senderId || null,
+      fullName: s.fullName || s.username || contact?.name || 'User',
+      username: s.username || null,
+      avatarUrl: s.avatarUrl || null
+    }
+  }
+
+  // 2) Tìm trong group members
+  const sid = message?.senderId
+  const mems = conversation?.group?.members
+  if (sid && Array.isArray(mems) && mems.length) {
+    const m = mems.find(u => String(u.id || u._id) === String(sid))
+    if (m) {
+      return {
+        id: m.id || m._id,
+        fullName: m.fullName || m.username || contact?.name || 'User',
+        username: m.username || null,
+        avatarUrl: m.avatarUrl || null
+      }
+    }
+  }
+
+  // 3) Direct fallback (otherUser)
+  const other = conversation?.direct?.otherUser
+  if (other && String(other.id || other._id) === String(sid)) {
+    return {
+      id: other.id || other._id,
+      fullName: other.fullName || other.username || contact?.name || 'User',
+      username: other.username || null,
+      avatarUrl: other.avatarUrl || null
+    }
+  }
+
+  // 4) Cuối cùng dùng contact
+  return {
+    id: sid || null,
+    fullName: contact?.name || 'User',
+    username: contact?.username || null,
+    avatarUrl: contact?.avatarUrl || null
+  }
+}
+
 export function MessageBubble({ message, showAvatar, contact, showMeta = true, conversation }) {
   const [hovered, setHovered] = useState(false)
+  const isOwn = !!message?.isOwn
+  const isGroup = conversation?.type === 'group'
+
+  const sender = useMemo(
+    () => pickSender(conversation, message, contact),
+    [conversation, message, contact]
+  )
 
   const formatTime = (ts) => {
     if (!ts) return ''
@@ -18,15 +70,11 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
     } catch { return '' }
   }
 
-  const isOwn = !!message?.isOwn
-
-  // Icon trạng thái gửi cho tin nhắn của mình
   const StatusIcon = () => {
     if (!isOwn) return null
-    const s = message.status || message.deliveryStatus // tuỳ server
+    const s = message.status || message.deliveryStatus
     if (s === 'sending') return <Clock className="w-3 h-3 opacity-70" />
     if (s === 'read') return <CheckCheck className="w-3.5 h-3.5 opacity-70" />
-    // 'sent' | 'delivered' | default
     return <Check className="w-3.5 h-3.5 opacity-70" />
   }
 
@@ -36,16 +84,24 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {/* Avatar bên trái cho message của người khác (tuỳ nhóm direct) */}
+      {/* Avatar bên trái cho tin nhắn của người khác */}
       {!isOwn && showAvatar && (
         <Avatar className="w-8 h-8">
-          <AvatarImage src={conversation.direct.otherUser?.avatarUrl} />
-          <AvatarFallback>{contact?.name?.charAt(0)}</AvatarFallback>
+          <AvatarImage src={isGroup ? sender?.avatarUrl : conversation?.direct?.otherUser?.avatarUrl} />
+          <AvatarFallback>
+            {(isGroup ? sender?.fullName : contact?.name)?.charAt?.(0) ?? 'U'}
+          </AvatarFallback>
         </Avatar>
       )}
 
-      {/* Wrapper để định vị action bar mà không ảnh hưởng layout */}
       <div className={`relative max-w-[70%] ${isOwn ? 'order-first' : ''}`}>
+        {/* Tên người gửi (chỉ group + không phải của mình) */}
+        {isGroup && !isOwn && (
+          <div className="mb-1 ml-1 text-[11px] font-medium text-gray-500">
+            {sender?.fullName || sender?.username || 'User'}
+          </div>
+        )}
+
         {/* Action bar nổi hai bên bubble */}
         <div
           className={`
@@ -56,7 +112,6 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
             flex items-center gap-1
           `}
         >
-
           <Button size="sm" variant="ghost" className="h-6 w-6 p-0">
             <Reply className="w-3 h-3" />
           </Button>
@@ -97,7 +152,7 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
           )}
         </div>
 
-        {/* Time + status (không còn action bar dưới nữa) */}
+        {/* Time + status */}
         {showMeta && (
           <div className={`flex items-center gap-1 mt-1 text-xs text-gray-500 ${isOwn ? 'justify-end' : 'justify-start'}`}>
             <span>{formatTime(message.createdAt || message.timestamp)}</span>

@@ -15,6 +15,7 @@ import { usePresenceText } from '@/hooks/use-relative-time'
 import { useSelector } from 'react-redux'
 import { selectCurrentUser } from '@/redux/user/userSlice'
 import CallModal from '../../Modal/CallModal'
+import { useCallInvite } from '@/components/common/Modal/CallInvite'
 import CreateGroupDialog from '../../Modal/CreateGroupModel'
 
 export function ChatArea({
@@ -37,6 +38,7 @@ export function ChatArea({
 
   const isCloud = mode === 'cloud' || conversation?.type === 'cloud'
   const isDirect = mode === 'direct' || !!conversation?.direct
+  const isGroup = mode === 'group' || !!conversation?.group
   // const isGroup = conversation?.type === 'group' || !!conversation?.group
 
   const currentUser = useSelector(selectCurrentUser)
@@ -45,6 +47,35 @@ export function ChatArea({
   const initialChar = safeName?.charAt(0)?.toUpperCase?.() || 'C'
   const [call, setCall] = useState(null) // { mode: 'audio' | 'video' } | null
 
+
+  const { ringing, startCall, cancelCaller, setOnOpenCall } = useCallInvite(currentUser?._id)
+
+  // ai Accept thì mở modal call & truyền mốc acceptedAt (nếu cần hiển thị timer trong modal)
+  useEffect(() => {
+    setOnOpenCall((mode, acceptedAt) => setCall({ mode, acceptedAt }))
+  }, [setOnOpenCall])
+
+  // danh sách người nhận chuông: direct -> otherUser; group -> memberIds trừ mình
+  const toUserIds =
+    (isDirect
+      ? [conversation?.direct?.otherUser?._id].filter(Boolean)
+      : (conversation?.group?.memberIds || []).filter(id => id !== currentUser?._id)
+    ) || []
+
+  // handler bấm gọi (tận dụng conversation/currentUser/safeName đã có)
+  const handleStartCall = (mode) => {
+    if (!conversation?._id || toUserIds.length === 0) return
+    startCall({
+      conversationId: conversation._id,
+      mode, // 'audio' | 'video'
+      toUserIds,
+      me:   { id: currentUser?._id, name: currentUser?.fullName, avatarUrl: currentUser?.avatarUrl },
+      peer: isDirect
+        ? { id: conversation?.direct?.otherUser?._id, name: conversation?.direct?.otherUser?.fullName, avatarUrl: conversation?.direct?.otherUser?.avatarUrl }
+        : { id: 'group', name: safeName, avatarUrl: conversation?.conversationAvatarUrl },
+      onOpenCall: (m, acceptedAt) => setCall({ mode: m, acceptedAt })
+    })
+  }
 
   const mediaItems = [
     { id: 1, url: 'http://localhost:5173/381.jpg' },
@@ -155,15 +186,14 @@ export function ChatArea({
             {/* Call/Video: ẩn với cloud */}
             {!isCloud && (
               <>
-                <Button variant="ghost" size="sm" onClick={() => setCall({ mode: 'audio' })}>
+                <Button variant="ghost" size="sm" onClick={() => handleStartCall('audio')}>
                   <Phone className="w-5 h-5" />
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => setCall({ mode: 'video' })}>
+                <Button variant="ghost" size="sm" onClick={() => handleStartCall('video')}>
                   <Video className="w-5 h-5" />
                 </Button>
               </>
             )}
-
 
             <Button variant="ghost" size="sm" onClick={togglePanel}>
               <MoreHorizontal className="w-5 h-5" />
@@ -173,7 +203,7 @@ export function ChatArea({
         {/* Messages Area */}
         <div className="flex-1 min-h-0 overflow-y-auto relative py-4">
           {/* === STICKY BANNER TRÊN CÙNG === */}
-          {isDirect && !isCloud && !conversation?.friendShip && (
+          {isDirect && !isCloud && !isGroup && !conversation?.friendShip && (
             <div className="sticky top-0 z-20 border-b">
               {/* nền mờ phía dưới để tách nội dung khi cuộn */}
               <div className="pointer-events-none absolute -bottom-6 left-0 right-0 h-6 from-card to-transparent" />
@@ -508,6 +538,26 @@ export function ChatArea({
         </div>
       </div>
 
+      {ringing && (
+        <div className="fixed left-1/2 -translate-x-1/2 bottom-4 z-50 bg-card border rounded-xl shadow-lg px-4 py-3 flex items-center gap-3">
+          <img
+            src={ringing.peer?.avatarUrl}
+            alt=""
+            className="w-10 h-10 rounded-full object-cover"
+          />
+          <div className="mr-4">
+            <div className="text-sm font-semibold">{ringing.peer?.name}</div>
+            <div className="text-xs text-muted-foreground">
+             Đang gọi… còn {Math.ceil((ringing.leftMs || 0) / 1000)}s
+            </div>
+          </div>
+          <Button size="sm" variant="destructive" onClick={() => cancelCaller(toUserIds)}>
+           Hủy
+          </Button>
+        </div>
+      )}
+
+
       {/* modal call */}
       {call && (
         <CallModal
@@ -516,6 +566,7 @@ export function ChatArea({
           conversationId={conversation?._id}
           currentUserId={currentUser?._id}
           initialMode={call.mode} // 'audio' hoặc 'video'
+          callStartedAt={call.acceptedAt}
         />
       )}
     </div>
