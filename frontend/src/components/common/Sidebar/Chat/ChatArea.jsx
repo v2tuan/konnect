@@ -16,6 +16,7 @@ import { useSelector } from 'react-redux'
 import { selectCurrentUser } from '@/redux/user/userSlice'
 import CallModal from '../../Modal/CallModal'
 import { useCallInvite } from '@/components/common/Modal/CallInvite'
+import CreateGroupDialog from '../../Modal/CreateGroupModel'
 
 export function ChatArea({
   mode = 'direct',
@@ -109,9 +110,9 @@ export function ChatArea({
   const presenceText = usePresenceText({ isOnline, lastActiveAt })
 
   const tone =
-  (presenceText || '').toLowerCase() === 'away'
-    ? 'away'
-    : (isOnline ? 'online' : 'offline')
+    (presenceText || '').toLowerCase() === 'away'
+      ? 'away'
+      : (isOnline ? 'online' : 'offline')
 
   const presenceTextClass =
     tone === 'online' ? 'text-emerald-500'
@@ -269,15 +270,37 @@ export function ChatArea({
               )
             })}
             <div ref={messagesEndRef} />
+            {othersTyping && (
+              <div className='flex items-end space-x-2 py-2 px-1 animate-fadeIn'>
+                <Avatar className="w-8 h-8">
+                  <AvatarImage src={conversation.direct.otherUser?.avatarUrl} />
+                  {/* <AvatarFallback>{contact?.name?.charAt(0)}</AvatarFallback> */}
+                </Avatar>
+
+                {/* Typing Bubble */}
+                <div className="relative p-3 rounded-lg bg-secondary text-gray-900 rounded-bl-sm">
+                  <div className="flex items-center space-x-2">
+                    {/* Typing Animation */}
+                    <div className="flex space-x-1">
+                      {[0, 1, 2].map((i) => (
+                        <div
+                          key={i}
+                          className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse"
+                          style={{
+                            animationDelay: `${i * 200}ms`,
+                            animationDuration: '1.4s',
+                            animationTimingFunction: 'ease-in-out',
+                            animationIterationCount: 'infinite'
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </ div>
+            )}
           </div>
         </div>
-
-
-        {othersTyping && (
-          <div className="py-4 w-full text-md text-muted-foreground text-semibold flex justify-center">
-            {conversation?.direct?.otherUser?.fullName} đang nhập...
-          </div>
-        )}
 
         {/* Input */}
         <div className="p-4 bg-card/80 backdrop-blur-sm border-t border-border shrink-0">
@@ -341,7 +364,7 @@ export function ChatArea({
       {/* Slide Panel - trượt từ phải vào */}
       <div
         className={`fixed flex flex-col top-0 right-0 h-full w-80 shadow-lg transform transition-transform duration-300 ease-in-out border-l ${isOpen ? 'translate-x-0' : 'translate-x-full'
-        }`}
+          }`}
       >
         {/* Panel Header */}
         <div className="flex items-center justify-center p-4 border-b h-18">
@@ -375,10 +398,7 @@ export function ChatArea({
                 <Pin size={24} className="mb-1" />
                 <span className="text-xs">Pin conversation</span>
               </button>
-              <button className="flex flex-col items-center p-3 rounded-lg transition-colors cursor-pointer">
-                <Users size={24} className="mb-1" />
-                <span className="text-xs">Create a chat group</span>
-              </button>
+              <CreateGroupDialog/>
             </div>
           </div>
 
@@ -394,7 +414,7 @@ export function ChatArea({
             </div>
           </div> */}
 
-          <Accordion type="multiple" className="w-full" defaultValue = {["a", "b", "c", "d"]}>
+          <Accordion type="multiple" className="w-full" defaultValue={["a", "b", "c", "d"]}>
 
             {/* Media Section */}
             <AccordionItem value="a">
