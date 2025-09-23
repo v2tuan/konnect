@@ -2,9 +2,9 @@
 import mongoose from 'mongoose'
 import Conversation from '~/models/conversations'
 import Message from '~/models/messages'
+import ConversationMember from '~/models/conversation_members'
 import {MAX_LIMIT_MESSAGE} from '~/utils/constant'
 import {notificationService} from '~/services/notificationService'
-import ConversationMember from "~/models/conversation_members";
 
 function toPublicMessage(m) {
   return {
@@ -20,7 +20,6 @@ function toPublicMessage(m) {
 
 async function assertCanAccessConversation(userId, convo) {
   if (!convo) throw Object.assign(new Error('Conversation not found'), {status: 404})
-
   if (convo.type === 'cloud') {
     if (String(convo.cloud?.ownerId) !== String(userId)) {
       const err = new Error('Forbidden')
@@ -34,18 +33,13 @@ async function sendMessage({userId, conversationId, type, text, io}) {
   const convo = await Conversation.findById(conversationId).lean()
   await assertCanAccessConversation(userId, convo)
 
-  // Tăng messageSeq atomically để tránh race condition
+  // tăng messageSeq atomically
   const updated = await Conversation.findOneAndUpdate(
     {_id: conversationId},
     {$inc: {messageSeq: 1}},
     {new: true, lean: true}
   )
-
-  if (!updated) {
-    const err = new Error(`Conversation not found when incrementing: ${conversationId}`)
-    err.status = 404
-    throw err
-  }
+  if (!updated) throw Object.assign(new Error(`Conversation not found when incrementing: ${conversationId}`), {status: 404})
   const seq = updated.messageSeq
 
   const now = new Date()
@@ -77,12 +71,10 @@ async function sendMessage({userId, conversationId, type, text, io}) {
 
   const payload = {conversationId, message: toPublicMessage(msg)}
 
-  // 1) Emit tin nhắn mới vào room hội thoại (đã có sẵn)
-  if (io) {
-    io.to(`conversation:${conversationId}`).emit('message:new', payload)
-  }
-  // 2) Emit badge cập nhật cho các thành viên khác
+  // 1) Emit tin nhắn mới vào room hội thoại
+  io?.to(`conversation:${conversationId}`).emit('message:new', payload)
 
+  // 2) Emit badge:update cho các thành viên khác
   if (io) {
     const members = await ConversationMember.find({
       conversation: conversationId,
@@ -91,21 +83,19 @@ async function sendMessage({userId, conversationId, type, text, io}) {
 
     members.forEach(m => {
       const unread = Math.max(0, seq - (m.lastReadMessageSeq || 0))
-      io.to(`user:${m.userId}`).emit('badge:update', {
-        conversationId,
-        unread
-      })
+      io.to(`user:${m.userId}`).emit('badge:update', {conversationId, unread})
     })
   }
 
-  // 3) Tạo notification "message" + emit notification:new (bạn đã làm)
+  // 3) Tạo notification "message" (service sẽ tự skip nếu người nhận đang xem)
   try {
     const notifs = await notificationService.notifyMessage({
       conversationId,
       message: msg.toJSON ? msg.toJSON() : msg,
-      senderId: userId,
+      senderId: userId
     })
 
+    // emit notification:new cho người nhận
     if (io && Array.isArray(notifs)) {
       notifs.forEach(n => {
         if (!n) return
@@ -120,48 +110,36 @@ async function sendMessage({userId, conversationId, type, text, io}) {
 }
 
 async function listMessages({userId, conversationId, limit = 30, beforeSeq}) {
-  try {
-    if (!mongoose.isValidObjectId(conversationId)) {
-      throw new Error("Invalid conversationId")
-    }
-
-    const convo = await Conversation.findById(conversationId).lean()
-    if (!convo) {
-      throw new Error('Conversation not found')
-    }
-    await assertCanAccessConversation(userId, convo)
-
-    const q = {conversationId: new mongoose.Types.ObjectId(conversationId)}
-    if (beforeSeq != null) {
-      const n = Number(beforeSeq)
-      if (Number.isFinite(n)) q.seq = {$lt: n}
-    }
-
-    const _limit = Math.min(Number(limit) || 30, MAX_LIMIT_MESSAGE)
-
-    // đảo ngược tin nhắn, mới nhất xếp trước
-    const docs = await Message
-    .find(q)
-    .sort({seq: -1})
-    .limit(_limit)
-    .lean()
-
-    const items = docs.reverse()
-
-    return items.map(m => ({
-      _id: m._id,
-      conversationId: m.conversationId,
-      seq: m.seq,
-      senderId: m.senderId,
-      type: m.type,
-      body: m.body,
-      media: m.media,
-      recalled: m.recalled,
-      createdAt: m.createdAt
-    }))
-  } catch (error) {
-    throw new Error(error)
+  if (!mongoose.isValidObjectId(conversationId)) {
+    throw new Error("Invalid conversationId")
   }
+
+  const convo = await Conversation.findById(conversationId).lean()
+  if (!convo) throw new Error('Conversation not found')
+  await assertCanAccessConversation(userId, convo)
+
+  const q = {conversationId: new mongoose.Types.ObjectId(conversationId)}
+  if (beforeSeq != null) {
+    const n = Number(beforeSeq)
+    if (Number.isFinite(n)) q.seq = {$lt: n}
+  }
+
+  const _limit = Math.min(Number(limit) || 30, MAX_LIMIT_MESSAGE)
+
+  const docs = await Message.find(q).sort({seq: -1}).limit(_limit).lean()
+  const items = docs.reverse()
+
+  return items.map(m => ({
+    _id: m._id,
+    conversationId: m.conversationId,
+    seq: m.seq,
+    senderId: m.senderId,
+    type: m.type,
+    body: m.body,
+    media: m.media,
+    recalled: m.recalled,
+    createdAt: m.createdAt
+  }))
 }
 
 export const messageService = {

@@ -9,7 +9,7 @@ import { useSelector } from "react-redux"
 import { useParams } from "react-router-dom"
 
 // ⭐ import hook mark read
-import { useMarkConversationRead } from "@/hooks/use-conversation.js"
+import { useConversationFocus, useMarkConversationRead } from "@/hooks/use-conversation.js"
 
 export default function MessagePage() {
   const { conversationId } = useParams()
@@ -17,6 +17,7 @@ export default function MessagePage() {
 
   // ⭐ Gọi hook: đánh dấu đã đọc + clear notification của phòng
   useMarkConversationRead(conversationId)
+  useConversationFocus(conversationId)
 
   const {
     loading, sending, messages, send,

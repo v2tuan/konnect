@@ -44,3 +44,12 @@ export function useMarkConversationRead(conversationId) {
     })()
   }, [conversationId, setUnread])
 }
+
+export function useConversationFocus(conversationId) {
+  useEffect(() => {
+    const sock = getSocket()
+    if (!sock || !conversationId) return
+    sock.emit("conversation:focus", { conversationId })
+    return () => sock.emit("conversation:blur", { conversationId })
+  }, [conversationId])
+}

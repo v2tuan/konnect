@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Mic, MicOff, Video as VideoIcon, VideoOff, MonitorUp, PhoneOff } from 'lucide-react'
 import { useWebRTCGroup } from '@/hooks/use-call'
 
-export default function CallModal({ open, onOpenChange, conversationId, currentUserId, initialMode = 'audio' }) {
+export default function CallModal({ open, onOpenChange, conversationId, currentUserId, initialMode = 'audio', callStartedAt }) {
   const {
     mode, peerIds,
     getLocalStream, getRemoteStream,
@@ -41,7 +41,7 @@ export default function CallModal({ open, onOpenChange, conversationId, currentU
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-white/70">
-            {isLocal ? 'You (audio)' : `Peer ${id.slice(0,5)}… (audio)`}
+            {isLocal ? 'You (audio)' : `Peer ${id.slice(0, 5)}… (audio)`}
           </div>
         )}
         {!isLocal && <audio autoPlay ref={(el) => { if (el && stream) el.srcObject = stream }} />}
@@ -50,6 +50,35 @@ export default function CallModal({ open, onOpenChange, conversationId, currentU
     )
   }
 
+
+  const [elapsed, setElapsed] = useState('00:00')
+
+  useEffect(() => {
+    if (!open || !callStartedAt) return
+    const start = typeof callStartedAt === 'string'
+      ? new Date(callStartedAt).getTime()
+      : (callStartedAt?.getTime?.() || Date.now())
+
+    const fmt = (s) => {
+      const h = Math.floor(s / 3600)
+      const m = Math.floor((s % 3600) / 60)
+      const sec = s % 60
+      const mm = String(m).padStart(2, '0')
+      const ss = String(sec).padStart(2, '0')
+      return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`
+    }
+
+    const id = setInterval(() => {
+      const diff = Math.max(0, Math.floor((Date.now() - start) / 1000))
+      setElapsed(fmt(diff))
+    }, 1000)
+    // tick ngay lần đầu
+    const first = Math.max(0, Math.floor((Date.now() - start) / 1000))
+    setElapsed(fmt(first))
+
+    return () => clearInterval(id)
+  }, [open, callStartedAt])
+
   const [micOn, setMicOn] = useState(true)
   const [camOn, setCamOn] = useState(initialMode === 'video')
 
@@ -57,7 +86,12 @@ export default function CallModal({ open, onOpenChange, conversationId, currentU
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="min-w-5xl">
         <DialogHeader>
-          <DialogTitle>{mode === 'video' ? 'Video' : 'Audio'} Call</DialogTitle>
+          <DialogTitle>
+            {mode === 'video' ? 'Video' : 'Audio'} Call
+            {callStartedAt && (
+              <span className="ml-2 text-sm text-muted-foreground">• {elapsed}</span>
+            )}
+          </DialogTitle>
         </DialogHeader>
 
         <div className={`grid gap-2 ${tiles.length <= 2 ? 'grid-cols-2' : 'grid-cols-2 md:grid-cols-2'} h-[60vh]`}>
@@ -67,11 +101,11 @@ export default function CallModal({ open, onOpenChange, conversationId, currentU
         <div className="flex items-center justify-center gap-2 mt-4">
           {mode === 'audio' ? (
             <Button onClick={async () => { await switchToVideo(); setCamOn(true) }}>
-              <VideoIcon className="w-4 h-4 mr-2" /> Chuyển Video
+              <VideoIcon className="w-4 h-4 mr-2" /> Swith to Video
             </Button>
           ) : (
             <Button variant="secondary" onClick={async () => { await switchToAudio(); setCamOn(false) }}>
-              <Mic className="w-4 h-4 mr-2" /> Chuyển Audio
+              <Mic className="w-4 h-4 mr-2" /> Swith to Audio
             </Button>
           )}
 
@@ -90,12 +124,12 @@ export default function CallModal({ open, onOpenChange, conversationId, currentU
           </Button>
 
           <Button variant="destructive" onClick={() => onOpenChange(false)}>
-            <PhoneOff className="w-4 h-4 mr-2" /> Kết thúc
+            <PhoneOff className="w-4 h-4 mr-2" /> End
           </Button>
         </div>
 
         <div className="text-center text-xs text-muted-foreground mt-2">
-          Chế độ: <b>{mode.toUpperCase()}</b> • Người trong phòng: <b>{tiles.length}</b>
+          MODE: <b>{mode.toUpperCase()}</b> • member in room: <b>{tiles.length}</b>
         </div>
       </DialogContent>
     </Dialog>
