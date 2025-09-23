@@ -119,6 +119,213 @@ const getFriendRequests = async ({ receiveUserId, page, limit }) => {
   }
 }
 
+const submitRequest = async ({ requesterUserId, receiveUserId }) => {
+  try {
+    const from = toOid(requesterUserId)
+    const to = toOid(receiveUserId)
+
+    if (!from || !to) throw new Error("Invalid user id")
+    if (String(from) === String(to)) throw new Error("Cannot send request to yourself")
+
+    // Kiểm tra tồn tại user
+    const [uFrom, uTo] = await Promise.all([
+      User.findById(from).lean(),
+      User.findById(to).lean()
+    ])
+    if (!uFrom || !uTo || uFrom._destroy || uTo._destroy) {
+      throw new Error("User not found or deactivated")
+    }
+
+    // Đã là bạn bè?
+    const existingAccepted = await FriendShip.findOne({
+      status: "accepted",
+      $or: [
+        { profileRequest: from, profileReceive: to },
+        { profileRequest: to, profileReceive: from }
+      ]
+    }).lean()
+
+    if (existingAccepted) {
+      return { ok: true, message: "Already friends" }
+    }
+
+    // Đã có pending theo 2 chiều?
+    const existingPending = await FriendShip.findOne({
+      status: "pending",
+      $or: [
+        { profileRequest: from, profileReceive: to },
+        { profileRequest: to, profileReceive: from }
+      ]
+    }).lean()
+
+    if (existingPending) {
+      return { ok: true, message: "Request already exists", requestId: String(existingPending._id) }
+    }
+
+    // Tạo mới
+    const doc = await FriendShip.create({
+      profileRequest: from,
+      profileReceive: to,
+      status: "pending"
+    })
+
+    return {
+      ok: true,
+      message: "Friend request sent",
+      requestId: String(doc._id)
+    }
+  } catch (error) {
+    throw new Error(error)
+  }
+}
+
+// Cập nhật trạng thái lời mời: accept | delete
+const updateStatusRequest = async ({ requestId, action, actingUserId }) => {
+  try {
+    if (!requestId || !action) throw new Error("Missing requestId or action")
+    const rid = toOid(requestId)
+    const uid = toOid(actingUserId)
+
+    const reqDoc = await FriendShip.findById(rid)
+    if (!reqDoc) throw new Error("Request not found")
+
+    // Chỉ receiver mới được accept; delete có thể là receiver (từ chối) hoặc requester (huỷ)
+    const isReceiver = String(reqDoc.profileReceive) === String(uid)
+    const isRequester = String(reqDoc.profileRequest) === String(uid)
+
+    if (action === "accept") {
+      if (!isReceiver) throw new Error("Only receiver can accept this request")
+      if (reqDoc.status !== "pending") throw new Error("Request is not pending")
+
+      reqDoc.status = "accepted"
+      reqDoc.updatedAt = new Date()
+      await reqDoc.save()
+
+      return { ok: true, message: "Friend request accepted", requestId: String(reqDoc._id) }
+    }
+
+    if (action === "delete") {
+      // delete: nếu pending -> xóa; nếu rejected cũng có thể xóa "dọn rác"
+      if (!(isReceiver || isRequester)) throw new Error("Not allowed to delete this request")
+      await FriendShip.deleteOne({ _id: rid })
+      return { ok: true, message: "Request deleted" }
+    }
+
+    throw new Error("Unsupported action")
+  } catch (error) {
+    throw new Error(error)
+  }
+}
+
+// Hỗ trợ tìm kiếm theo q (fullName/username), phân trang
+const getAllFriends = async ({ userId, page = 1, limit = 20, q = "" }) => {
+  try {
+    const uid = toOid(userId)
+    const userCollection = User.collection.name
+
+    // match accepted và có tham gia
+    const matchStage = {
+      $match: {
+        status: "accepted",
+        $or: [{ profileRequest: uid }, { profileReceive: uid }]
+      }
+    }
+
+    const addFriendIdStage = {
+      $addFields: {
+        friendId: {
+          $cond: [
+            { $eq: ["$profileRequest", uid] },
+            "$profileReceive",
+            "$profileRequest"
+          ]
+        }
+      }
+    }
+
+    const lookupStage = {
+      $lookup: {
+        from: userCollection,
+        localField: "friendId",
+        foreignField: "_id",
+        as: "friend",
+        pipeline: [
+          {
+            $project: {
+              _id: 1,
+              fullName: 1,
+              username: 1,
+              avatarUrl: 1,
+              status: 1,
+              _destroy: 1
+            }
+          },
+          { $match: { _destroy: { $ne: true } } },
+          ...(q
+            ? [{
+                $match: {
+                  $or: [
+                    { fullName: { $regex: q, $options: "i" } },
+                    { username: { $regex: q, $options: "i" } }
+                  ]
+                }
+              }]
+            : [])
+        ]
+      }
+    }
+
+    const pipeline = [
+      matchStage,
+      { $sort: { updatedAt: -1, createdAt: -1 } },
+      addFriendIdStage,
+      lookupStage,
+      { $unwind: "$friend" },
+      {
+        $project: {
+          _id: 1,
+          createdAt: 1,
+          updatedAt: 1,
+          "friend._id": 1,
+          "friend.fullName": 1,
+          "friend.username": 1,
+          "friend.avatarUrl": 1,
+          "friend.status": 1
+        }
+      },
+      { $skip: (page - 1) * limit },
+      { $limit: limit }
+    ]
+
+    const rows = await FriendShip.aggregate(pipeline).allowDiskUse(true).exec()
+
+    const data = rows.map(doc => ({
+      id: String(doc._id),
+      createdAt: doc.createdAt,
+      updatedAt: doc.updatedAt,
+      friend: {
+        id: String(doc.friend._id),
+        fullName: doc.friend.fullName,
+        username: doc.friend.username,
+        avatarUrl: doc.friend.avatarUrl,
+        status: doc.friend.status
+      }
+    }))
+
+    return {
+      data,
+      page,
+      limit,
+      hasNext: data.length === limit
+    }
+  } catch (error) {
+    throw new Error(error)
+  }
+}
+
 export const contactService = {
-  getFriendRequests
+  getFriendRequests,
+  submitRequest,
+  updateStatusRequest,
+  getAllFriends
 }
