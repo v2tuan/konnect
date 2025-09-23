@@ -121,3 +121,32 @@ export const fetchConversationDetail = async (conversationId, params = {}) => {
   const response = await authorizeAxiosInstance.get(`${API_ROOT}/api/conversation/chats/${conversationId}`, {params})
   return response.data
 }
+
+export const getFriendRequestsAPI = async ({params = {}}) => {
+  const response = await authorizeAxiosInstance.get(`${API_ROOT}/api/friends/requests`, {params})
+  return response.data
+}
+
+export const submitFriendRequestAPI = async (toUserId) => {
+  const response = await authorizeAxiosInstance.post(
+    `${API_ROOT}/api/friends/requests`,
+    { toUserId }
+  )
+  return response.data
+}
+
+export const updateFriendRequestStatusAPI = async ({ requestId, action }) => {
+  const response = await authorizeAxiosInstance.put(
+    `${API_ROOT}/api/friends/requests`,
+    { requestId, action }
+  )
+  return response.data
+}
+
+export const getFriendsAPI = async (params = {}) => {
+  const response = await authorizeAxiosInstance.get(
+    `${API_ROOT}/api/friends`,
+    { params }
+  )
+  return response.data
+}
