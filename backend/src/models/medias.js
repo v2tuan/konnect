@@ -13,17 +13,19 @@ let mediaSchema = new mongoose.Schema({
     },
     type: {
         type: String,
-        enum: ['image', 'file'],
-        required: true
+        // enum: ['image', 'file'],
+        // required: true
     },
-    mimeType: {
+    url: {
         type: String,
         required: true
     },
-    createdAt: {
-        type: Date,
-        default: Date.now
-    }
+    metadata: { // Thông tin thêm về file
+        filename: String,
+        size: Number, // Kích thước file tính theo bytes
+        mimetype: String // loại MIME (image/png, application/pdf, ...).
+    },
+    uploadedAt: { type: Date, default: Date.now }
 });
 let Media = mongoose.model('Media', mediaSchema);
 export default Media;

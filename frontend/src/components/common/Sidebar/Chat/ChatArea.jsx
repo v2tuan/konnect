@@ -17,6 +17,7 @@ import { selectCurrentUser } from '@/redux/user/userSlice'
 import CallModal from '../../Modal/CallModal'
 import { useCallInvite } from '@/components/common/Modal/CallInvite'
 import CreateGroupDialog from '../../Modal/CreateGroupModel'
+import { fi } from 'date-fns/locale'
 
 export function ChatArea({
   mode = 'direct',
@@ -35,6 +36,8 @@ export function ChatArea({
   const [isOpen, setIsOpen] = useState(false)
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
+  const fileRef = useRef(null)
+  const imageRef = useRef(null)
 
   const isCloud = mode === 'cloud' || conversation?.type === 'cloud'
   const isDirect = mode === 'direct' || !!conversation?.direct
@@ -69,7 +72,7 @@ export function ChatArea({
       conversationId: conversation._id,
       mode, // 'audio' | 'video'
       toUserIds,
-      me:   { id: currentUser?._id, name: currentUser?.fullName, avatarUrl: currentUser?.avatarUrl },
+      me: { id: currentUser?._id, name: currentUser?.fullName, avatarUrl: currentUser?.avatarUrl },
       peer: isDirect
         ? { id: conversation?.direct?.otherUser?._id, name: conversation?.direct?.otherUser?.fullName, avatarUrl: conversation?.direct?.otherUser?.avatarUrl }
         : { id: 'group', name: safeName, avatarUrl: conversation?.conversationAvatarUrl },
@@ -129,7 +132,7 @@ export function ChatArea({
   const handleSendMessage = () => {
     const value = messageText.trim()
     if (!value || sending) return
-    onSendMessage?.(value)
+    onSendMessage?.({type: 'text', content: value})
     setMessageText('')
     setShowEmojiPicker(false)
   }
@@ -144,6 +147,17 @@ export function ChatArea({
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, sending])
+
+  const handleFileClick = () => fileRef.current?.click()
+  const handleImageClick = () => imageRef.current?.click()
+
+  const handleFileChange = (e) => {
+    const file = e.target.files?.[0]
+  }
+
+  const handleImageChange = (e) => {
+    const file = e.target.files?.[0]
+  }
 
   return (
     <div className="h-full flex">
@@ -222,7 +236,9 @@ export function ChatArea({
             </div>
           )}
 
-          {/* danh sách tin nhắn */}
+          {/* ================================================== */}
+          {/*                  DANH SÁCH TIN NHẮN               */}
+          {/* ================================================== */}
           <div className="space-y-3 pt-2 px-4">
             {messages.length === 0 && (
               <div className="text-center text-xs opacity-60 mt-10">
@@ -305,10 +321,22 @@ export function ChatArea({
         {/* Input */}
         <div className="p-4 bg-card/80 backdrop-blur-sm border-t border-border shrink-0">
           <div className="flex items-end gap-2">
-            <Button variant="ghost" size="sm" className="shrink-0">
+            {/* Input file */}
+            <Input
+              type="file"
+              ref={fileRef}
+              className="hidden"
+            />
+            <Input
+              type="file"
+              ref={imageRef}
+              accept="image/*"
+              className="hidden"
+            />
+            <Button variant="ghost" size="sm" className="shrink-0" onClick={handleFileClick}>
               <Paperclip className="w-5 h-5" />
             </Button>
-            <Button variant="ghost" size="sm" className="shrink-0">
+            <Button variant="ghost" size="sm" className="shrink-0" onClick={handleImageClick}>
               <Image className="w-5 h-5" />
             </Button>
 
@@ -398,7 +426,7 @@ export function ChatArea({
                 <Pin size={24} className="mb-1" />
                 <span className="text-xs">Pin conversation</span>
               </button>
-              <CreateGroupDialog/>
+              <CreateGroupDialog />
             </div>
           </div>
 
@@ -548,11 +576,11 @@ export function ChatArea({
           <div className="mr-4">
             <div className="text-sm font-semibold">{ringing.peer?.name}</div>
             <div className="text-xs text-muted-foreground">
-             Đang gọi… còn {Math.ceil((ringing.leftMs || 0) / 1000)}s
+              Đang gọi… còn {Math.ceil((ringing.leftMs || 0) / 1000)}s
             </div>
           </div>
           <Button size="sm" variant="destructive" onClick={() => cancelCaller(toUserIds)}>
-           Hủy
+            Hủy
           </Button>
         </div>
       )}
