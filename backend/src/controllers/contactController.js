@@ -28,7 +28,7 @@ const updateStatusRequest = async (req, res, next) => {
   try {
     const userId = req.userId
     const { requestId, action } = req.body || {}
-    const result = await contactService.updateStatusRequest({ requestId, action, actingUserId })
+    const result = await contactService.updateStatusRequest({ requestId, action, userId })
     return res.status(StatusCodes.OK).json(result)
   } catch (error) {
     next(error)

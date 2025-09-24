@@ -6,37 +6,38 @@ import { toOid } from "~/utils/formatter";
 import { messageService } from "./messageService";
 import { contactService } from "./contactService";
 
-const markIsFriendOnConversation = async (meId, convoLike) => {
-  const meStr = String(meId)
+const markIsFriendOnConversation = async (meId, convo) => {
   const jobs = []
 
   // DIRECT
-  const other = convoLike?.direct?.otherUser
-  if (convoLike?.type === 'direct' && other?.id) {
-    jobs.push(
-      contactService.isFriend(meId, other.id)
-        .then(res => { other.isFriend = !!(res?.isFriend) })
-        .catch(() => { other.isFriend = false })
-    )
+  if (convo?.type === 'direct') {
+    const other = convo?.direct?.otherUser
+    const otherId = other?._id || other?.id  // ❗️SỬA: ưu tiên _id
+    if (otherId) {
+      jobs.push(
+        contactService.isFriend(meId, otherId)
+          .then(res => { other.isFriend = !!(res && res.isFriend) })
+          .catch(() => { other.isFriend = false })
+      )
+    }
   }
 
   // GROUP
-  if (convoLike?.type === 'group' && Array.isArray(convoLike?.group?.members)) {
-    for (const m of convoLike.group.members) {
-      if (!m?.id) { m.isFriend = false; continue }
-      if (String(m.id) === meStr) { m.isFriend = false; continue } // chính mình
+  if (convo?.type === 'group' && Array.isArray(convo?.group?.members)) {
+    for (const m of convo.group.members) {
+      const uid = m?.id || m?._id  // ❗️SỬA: chấp nhận cả id và _id
+      if (!uid || String(uid) === String(meId)) { m.isFriend = false; continue }
       jobs.push(
-        contactService.isFriend(meId, m.id)
-          .then(res => { m.isFriend = !!(res?.isFriend) })
+        contactService.isFriend(meId, uid)
+          .then(res => { m.isFriend = !!(res && res.isFriend) })
           .catch(() => { m.isFriend = false })
       )
     }
   }
 
   await Promise.all(jobs)
-  return convoLike
+  return convo
 }
-
 const createConversation = async (conversationData, userId) => {
   const {type, memberIds} = conversationData
 
@@ -340,6 +341,7 @@ export const fetchConversationDetail = async (userId, conversationId, limit = 30
     throw err
   }
 
+  // Load conversation
   const convo = await Conversation.findById(conversationId).lean()
   if (!convo) {
     const err = new Error("Conversation not found")
@@ -347,8 +349,10 @@ export const fetchConversationDetail = async (userId, conversationId, limit = 30
     throw err
   }
 
+  // ACL
   await messageService.assertCanAccessConversation(userId, convo)
 
+  // ===== Display header info =====
   let displayName = null
   let conversationAvatarUrl = null
   let enrichedDirect = convo.direct || null
@@ -365,6 +369,8 @@ export const fetchConversationDetail = async (userId, conversationId, limit = 30
     if (other) {
       displayName = other.fullName || other.username || "User"
       conversationAvatarUrl = other.avatarUrl || null
+
+      // other.status là object { isOnline, lastActiveAt } theo schema của bạn
       enrichedDirect = {
         ...convo.direct,
         otherUser: {
@@ -373,6 +379,7 @@ export const fetchConversationDetail = async (userId, conversationId, limit = 30
           username: other.username || null,
           avatarUrl: other.avatarUrl || null,
           status: other.status || null
+          // isFriend sẽ được gắn sau bởi markIsFriendOnConversation
         }
       }
     } else {
@@ -389,18 +396,17 @@ export const fetchConversationDetail = async (userId, conversationId, limit = 30
     displayName = "Cloud Chat"
   }
 
-  // Lấy messages (service trả oldest->newest)
-  const messages = await messageService.listMessages({userId, conversationId, limit, beforeSeq})
+  // ===== Messages (service trả oldest -> newest) =====
+  const messages = await messageService.listMessages({ userId, conversationId, limit, beforeSeq })
   const nextBeforeSeq = messages.length > 0 ? messages[0].seq : null
 
-  // ======= GROUP MEMBERS (mới) =======
+  // ===== Group members =====
   let groupMembers = []
   let memberIds = []
   if (convo.type === 'group') {
-    // Lấy toàn bộ members của cuộc trò chuyện
     const cms = await ConversationMember.find(
       { conversation: convo._id },
-      { userId: 1 } // nếu có role, thêm { role: 1 }
+      { userId: 1 } // nếu có role thì add vào projection
     ).lean()
 
     memberIds = (cms || [])
@@ -409,7 +415,7 @@ export const fetchConversationDetail = async (userId, conversationId, limit = 30
       .map(id => String(id))
   }
 
-  // ======= HỢP NHẤT ID cần load user (senders + members) =======
+  // ===== Gather related users (senders + members) =====
   const senderIds = [
     ...new Set(
       messages
@@ -419,9 +425,8 @@ export const fetchConversationDetail = async (userId, conversationId, limit = 30
     )
   ]
 
-  const combinedIds = [...new Set([ ...senderIds, ...memberIds ])]
+  const combinedIds = [...new Set([...senderIds, ...memberIds])]
 
-  // Query 1 lần toàn bộ users liên quan
   let usersById = new Map()
   if (combinedIds.length) {
     const users = await User.find(
@@ -435,24 +440,26 @@ export const fetchConversationDetail = async (userId, conversationId, limit = 30
   if (convo.type === 'group') {
     groupMembers = memberIds.map(uid => {
       const u = usersById.get(String(uid))
-      return u ? {
-        id: u._id,
-        fullName: u.fullName || null,
-        username: u.username || null,
-        avatarUrl: u.avatarUrl || null,
-        status: u.status || null
-        // nếu ConversationMember có role: thêm role tương ứng ở đây
-      } : {
-        id: uid,
-        fullName: null,
-        username: null,
-        avatarUrl: null,
-        status: null
-      }
+      return u
+        ? {
+            id: u._id,
+            fullName: u.fullName || null,
+            username: u.username || null,
+            avatarUrl: u.avatarUrl || null,
+            status: u.status || null // { isOnline, lastActiveAt }
+            // isFriend sẽ gắn sau
+          }
+        : {
+            id: uid,
+            fullName: null,
+            username: null,
+            avatarUrl: null,
+            status: null
+          }
     })
   }
 
-  // Enrich messages.sender (áp dụng cho group; muốn áp dụng cho tất cả thì bỏ điều kiện)
+  // Enrich messages.sender (giữ logic cũ: chỉ enrich cho group)
   const messagesWithSender =
     convo.type === 'group'
       ? messages.map(m => {
@@ -466,18 +473,20 @@ export const fetchConversationDetail = async (userId, conversationId, limit = 30
                   fullName: u.fullName || null,
                   username: u.username || null,
                   avatarUrl: u.avatarUrl || null,
-                  status: u.status || null
+                  status: u.status || null // { isOnline, lastActiveAt }
                 }
               : null
           }
         })
       : messages
 
+  // ===== Assemble result (giữ nguyên shape như bạn đang trả) =====
   const result = {
     conversation: {
       _id: convo._id,
       type: convo.type,
       direct: enrichedDirect,
+      // Theo payload mẫu của bạn: với direct vẫn có object group (name, avatarUrl) => giữ nguyên
       group: convo.type === 'group'
         ? { ...(convo.group || {}), members: groupMembers }
         : (convo.group || null),
@@ -492,11 +501,12 @@ export const fetchConversationDetail = async (userId, conversationId, limit = 30
     pageInfo: { limit, beforeSeq, nextBeforeSeq }
   }
 
-  // GẮN isFriend cho direct.otherUser và group.members
+  // ===== Gắn isFriend cho direct.otherUser & group.members (tận dụng lại isFriend) =====
   await markIsFriendOnConversation(userId, result.conversation)
 
   return result
 }
+
 const getUnreadSummary = async (userId) => {
   // Lấy membership của user
   const members = await ConversationMember.find({userId})
