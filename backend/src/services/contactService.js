@@ -346,10 +346,35 @@ const isFriend = async (fromId, toId) => {
   }
 }
 
+const getFriendRelation = async (meId, otherId) => {
+  const uid = toOid(meId)
+  const oid = toOid(otherId)
+
+  const fs = await FriendShip.findOne({
+    $or: [
+      { profileRequest: uid, profileReceive: oid },
+      { profileRequest: oid, profileReceive: uid }
+    ]
+  }).lean()
+
+  if (!fs) return { status: 'none' }
+
+  const direction = String(fs.profileRequest) === String(uid) ? 'outgoing' : 'incoming'
+  // status có thể là: 'pending' | 'accepted' | 'blocked' | ...
+  return {
+    status: fs.status,
+    direction,                  // 'outgoing'/'incoming'
+    requestId: fs._id,
+    createdAt: fs.createdAt,
+    updatedAt: fs.updatedAt
+  }
+}
+
 export const contactService = {
   getFriendRequests,
   submitRequest,
   updateStatusRequest,
   getAllFriends,
-  isFriend
+  isFriend,
+  getFriendRelation
 }
