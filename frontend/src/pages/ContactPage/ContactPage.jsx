@@ -1,11 +1,11 @@
 import { CONTACT_TABS } from "@/components/common/Sidebar/Contact/ContactSidebar";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { useOutletContext } from "react-router-dom";
-import { ContactsList } from "@/components/common/Sidebar/Contact/ContactsList";
+import { ListFriend } from "@/components/common/Sidebar/Contact/ListFriend";
 
 export default function ContactPage() {
   // mở rộng context để lấy data cần cho ContactsList
-  const { contactTab, setContactTab, contacts = [], onContactSelect = () => {} } = useOutletContext();
+  const { contactTab, setContactTab } = useOutletContext();
 
   return (
     <div className="h-full w-full p-4">
@@ -13,7 +13,7 @@ export default function ContactPage() {
         {/* Friends list */}
         <TabsContent value="friends" className="h-full m-0">
           <div className="h-[calc(100vh-180px)] border rounded-md overflow-hidden">
-            <ContactsList contacts={contacts} onContactSelect={onContactSelect} />
+            <ListFriend/>
           </div>
         </TabsContent>
 

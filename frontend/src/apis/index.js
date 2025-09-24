@@ -123,13 +123,13 @@ export const fetchConversationDetail = async (conversationId, params = {}) => {
 }
 
 export const getFriendRequestsAPI = async ({params = {}}) => {
-  const response = await authorizeAxiosInstance.get(`${API_ROOT}/api/friends/requests`, {params})
+  const response = await authorizeAxiosInstance.get(`${API_ROOT}/api/contacts/friends/requests`, {params})
   return response.data
 }
 
 export const submitFriendRequestAPI = async (toUserId) => {
   const response = await authorizeAxiosInstance.post(
-    `${API_ROOT}/api/friends/requests`,
+    `${API_ROOT}/api/contacts/friends/requests`,
     { toUserId }
   )
   return response.data
@@ -137,7 +137,7 @@ export const submitFriendRequestAPI = async (toUserId) => {
 
 export const updateFriendRequestStatusAPI = async ({ requestId, action }) => {
   const response = await authorizeAxiosInstance.put(
-    `${API_ROOT}/api/friends/requests`,
+    `${API_ROOT}/api/contacts/friends/requests`,
     { requestId, action }
   )
   return response.data
@@ -145,7 +145,7 @@ export const updateFriendRequestStatusAPI = async ({ requestId, action }) => {
 
 export const getFriendsAPI = async (params = {}) => {
   const response = await authorizeAxiosInstance.get(
-    `${API_ROOT}/api/friends`,
+    `${API_ROOT}/api/contacts/friends`,
     { params }
   )
   return response.data
