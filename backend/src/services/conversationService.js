@@ -1,10 +1,41 @@
-import Conversation from "~/models/conversations";
-import ConversationMember from "~/models/conversation_members";
-import User from "~/models/user";
-import FriendShip from "~/models/friendships";
 import mongoose from "mongoose";
-import {messageService} from "./messageService";
-import {toOid} from "~/utils/formatter";
+import ConversationMember from "~/models/conversation_members";
+import Conversation from "~/models/conversations";
+import User from "~/models/user";
+import { toOid } from "~/utils/formatter";
+import { messageService } from "./messageService";
+import { contactService } from "./contactService";
+
+const markIsFriendOnConversation = async (meId, convoLike) => {
+  const meStr = String(meId)
+  const jobs = []
+
+  // DIRECT
+  const other = convoLike?.direct?.otherUser
+  if (convoLike?.type === 'direct' && other?.id) {
+    jobs.push(
+      contactService.isFriend(meId, other.id)
+        .then(res => { other.isFriend = !!(res?.isFriend) })
+        .catch(() => { other.isFriend = false })
+    )
+  }
+
+  // GROUP
+  if (convoLike?.type === 'group' && Array.isArray(convoLike?.group?.members)) {
+    for (const m of convoLike.group.members) {
+      if (!m?.id) { m.isFriend = false; continue }
+      if (String(m.id) === meStr) { m.isFriend = false; continue } // chính mình
+      jobs.push(
+        contactService.isFriend(meId, m.id)
+          .then(res => { m.isFriend = !!(res?.isFriend) })
+          .catch(() => { m.isFriend = false })
+      )
+    }
+  }
+
+  await Promise.all(jobs)
+  return convoLike
+}
 
 const createConversation = async (conversationData, userId) => {
   const {type, memberIds} = conversationData
@@ -295,6 +326,10 @@ export const getConversation = async (page = 1, limit = 20, userId) => {
   ]
 
   const rows = await ConversationMember.aggregate(pipeline).allowDiskUse(true)
+
+  // GẮN isFriend bằng cách gọi lại function isFriend
+  await Promise.all(rows.map(row => markIsFriendOnConversation(userId, row)))
+
   return rows
 }
 
@@ -438,16 +473,13 @@ export const fetchConversationDetail = async (userId, conversationId, limit = 30
         })
       : messages
 
-  return {
+  const result = {
     conversation: {
       _id: convo._id,
       type: convo.type,
       direct: enrichedDirect,
       group: convo.type === 'group'
-        ? {
-            ...(convo.group || {}),
-            members: groupMembers
-          }
+        ? { ...(convo.group || {}), members: groupMembers }
         : (convo.group || null),
       cloud: convo.cloud || null,
       displayName,
@@ -457,8 +489,13 @@ export const fetchConversationDetail = async (userId, conversationId, limit = 30
       updatedAt: convo.updatedAt
     },
     messages: messagesWithSender,
-    pageInfo: {limit, beforeSeq, nextBeforeSeq}
+    pageInfo: { limit, beforeSeq, nextBeforeSeq }
   }
+
+  // GẮN isFriend cho direct.otherUser và group.members
+  await markIsFriendOnConversation(userId, result.conversation)
+
+  return result
 }
 const getUnreadSummary = async (userId) => {
   // Lấy membership của user

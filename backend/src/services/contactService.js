@@ -323,9 +323,33 @@ const getAllFriends = async ({ userId, page = 1, limit = 20, q = "" }) => {
   }
 }
 
+const isFriend = async (fromId, toId) => {
+  try {
+    if (!fromId || !toId || String(fromId) === String(toId)) {
+      return { isFriend: false }
+    }
+
+    const a = toOid(fromId)
+    const b = toOid(toId)
+
+    const exists = await FriendShip.exists({
+      status: 'accepted',
+      $or: [
+        { profileRequest: a, profileReceive: b },
+        { profileRequest: b, profileReceive: a }
+      ]
+    })
+
+    return { isFriend: !!exists }
+  } catch (error) {
+    throw new Error()
+  }
+}
+
 export const contactService = {
   getFriendRequests,
   submitRequest,
   updateStatusRequest,
-  getAllFriends
+  getAllFriends,
+  isFriend
 }
