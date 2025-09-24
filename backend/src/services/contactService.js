@@ -1,9 +1,13 @@
 import FriendShip from "~/models/friendships"
 import User from "~/models/user"
 import { toOid } from "~/utils/formatter"
+import mongoose from "mongoose"
 
 const getFriendRequests = async ({ receiveUserId, page, limit }) => {
   try {
+    if (!mongoose.isValidObjectId(receiveUserId)) {
+      throw new Error("Invalid receiveUserId")
+    }
     const uid = toOid(receiveUserId)
     console.log(uid)
 
@@ -115,7 +119,8 @@ const getFriendRequests = async ({ receiveUserId, page, limit }) => {
       hasNext: data.length === limit
     }
   } catch (error) {
-    throw new Error(error)
+    console.error("Error in getFriendRequests:", error.message)
+    throw new Error("Failed to fetch friend requests")
   }
 }
 
@@ -183,37 +188,49 @@ const submitRequest = async ({ requesterUserId, receiveUserId }) => {
 const updateStatusRequest = async ({ requestId, action, actingUserId }) => {
   try {
     if (!requestId || !action) throw new Error("Missing requestId or action")
-    const rid = toOid(requestId)
-    const uid = toOid(actingUserId)
-
+    
+    // Validate requestId
+    if (!mongoose.isValidObjectId(requestId)) {
+      throw new Error("Invalid requestId")
+    }
+    const rid = new mongoose.Types.ObjectId(requestId)
+    
+    // Validate actingUserId
+    if (!mongoose.isValidObjectId(actingUserId)) {
+      throw new Error("Invalid actingUserId")
+    }
+    const uid = new mongoose.Types.ObjectId(actingUserId)
+    
     const reqDoc = await FriendShip.findById(rid)
     if (!reqDoc) throw new Error("Request not found")
-
+    
     // Chỉ receiver mới được accept; delete có thể là receiver (từ chối) hoặc requester (huỷ)
     const isReceiver = String(reqDoc.profileReceive) === String(uid)
     const isRequester = String(reqDoc.profileRequest) === String(uid)
-
+    
     if (action === "accept") {
       if (!isReceiver) throw new Error("Only receiver can accept this request")
       if (reqDoc.status !== "pending") throw new Error("Request is not pending")
-
+      
       reqDoc.status = "accepted"
       reqDoc.updatedAt = new Date()
       await reqDoc.save()
-
+      
       return { ok: true, message: "Friend request accepted", requestId: String(reqDoc._id) }
     }
-
+    
     if (action === "delete") {
       // delete: nếu pending -> xóa; nếu rejected cũng có thể xóa "dọn rác"
       if (!(isReceiver || isRequester)) throw new Error("Not allowed to delete this request")
       await FriendShip.deleteOne({ _id: rid })
       return { ok: true, message: "Request deleted" }
     }
-
+    
     throw new Error("Unsupported action")
   } catch (error) {
-    throw new Error(error)
+    // Improved: Log the error for debugging, but don't expose internals
+    console.error("Error in updateStatusRequest:", error.message)
+    throw new Error("Failed to update friend request status")
   }
 }
 

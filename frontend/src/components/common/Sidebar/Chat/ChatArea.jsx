@@ -48,7 +48,7 @@ export function ChatArea({
   const type = conversation?.type || mode
   const isCloud = type === 'cloud'
   const isDirect = type === 'direct'
-  const isGroup  = type === 'group'
+  const isGroup = type === 'group'
 
   // === Lấy otherUser + friendship từ payload API mới ===
   const otherUser = isDirect ? conversation?.direct?.otherUser : null
@@ -58,47 +58,71 @@ export function ChatArea({
   const direction = friendship?.direction || null
   const apiRequestId = friendship?.requestId || null
 
+  const [uiFriendship, setUiFriendship] = useState({
+    status: 'none', // 'none' | 'pending' | 'accepted' | 'rejected'
+    direction: null, // 'outgoing' | 'incoming' | null
+    requestId: null
+  })
+
   // Khởi tạo state friendReq theo dữ liệu API mỗi khi đổi cuộc trò chuyện
   useEffect(() => {
-    const sentFromAPI = status === 'pending' && direction === 'outgoing'
-    setFriendReq({
-      sent: !!sentFromAPI,
-      requestId: apiRequestId || null,
-      loading: false
+    setUiFriendship({
+      status: friendship?.status ?? 'none',
+      direction: friendship?.direction ?? null,
+      requestId: friendship?.requestId ?? null
     })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversation?._id, otherUserId, status, direction, apiRequestId])
+
+    // giữ friendReq cho loading/UX
+    const sentFromAPI = friendship?.status === 'pending' && friendship?.direction === 'outgoing'
+    setFriendReq(s => ({
+      ...s,
+      sent: !!sentFromAPI,
+      requestId: friendship?.requestId ?? null,
+      loading: false
+    }))
+  }, [conversation?._id, otherUserId, friendship?.status, friendship?.direction, friendship?.requestId])
 
   // Hiện banner nếu chưa là bạn (status !== 'accepted') và có otherUserId
-  const shouldShowFriendBanner = isDirect && !isCloud && !!otherUserId && status !== 'accepted'
+  const shouldShowFriendBanner = isDirect && !isCloud && !!otherUserId && uiFriendship.status !== 'accepted'
 
   const handleSendFriendRequest = async () => {
     if (!otherUserId || friendReq.loading) return
     try {
-      setFriendReq((s) => ({ ...s, loading: true }))
+      setFriendReq(s => ({ ...s, loading: true }))
       const res = await submitFriendRequestAPI(otherUserId)
       const requestId =
-        res?.data?.id || res?.data?._id || res?.id || res?._id || res?.data?.requestId || null
+      res?.requestId || res?.data?.requestId || res?.data?._id || res?._id || null
 
-      // Sau khi gửi thành công, coi như pending (outgoing)
+      // cập nhật cả 2: UI + friendReq
+      setUiFriendship({ status: 'pending', direction: 'outgoing', requestId })
       setFriendReq({ sent: true, requestId, loading: false })
-      onSendFriendRequest?.(otherUserId)
     } catch (e) {
-      setFriendReq((s) => ({ ...s, loading: false }))
+      setFriendReq(s => ({ ...s, loading: false }))
     }
   }
+
 
   const handleCancelFriendRequest = async () => {
-    const effectiveRequestId = friendReq.requestId || apiRequestId
-    if (!effectiveRequestId || friendReq.loading) return
+    const rid = uiFriendship.requestId // chỉ lấy từ UI, không dùng apiRequestId nữa
+    if (!rid || friendReq.loading) return
+
     try {
-      setFriendReq((s) => ({ ...s, loading: true }))
-      await updateFriendRequestStatusAPI({ requestId: effectiveRequestId, action: 'delete' })
+      setFriendReq(s => ({ ...s, loading: true }))
+
+      // optimistic UI: chặn double-click ngay lập tức
+      setUiFriendship({ status: 'none', direction: null, requestId: null })
+      setFriendReq(s => ({ ...s, sent: false }))
+
+      await updateFriendRequestStatusAPI({ requestId: rid, action: 'delete' })
+
       setFriendReq({ sent: false, requestId: null, loading: false })
     } catch (e) {
-      setFriendReq((s) => ({ ...s, loading: false }))
+    // rollback nếu BE lỗi (hiếm)
+      setUiFriendship({ status: 'pending', direction: 'outgoing', requestId: rid })
+      setFriendReq(s => ({ ...s, sent: true, loading: false }))
     }
   }
+
 
   const currentUser = useSelector(selectCurrentUser)
 
@@ -116,8 +140,8 @@ export function ChatArea({
   const toUserIds = isDirect
     ? [otherUserId].filter(Boolean)
     : ((conversation?.group?.members || [])
-        .map(m => m?._id || m?.id)
-        .filter(id => id && id !== currentUser?._id))
+      .map(m => m?._id || m?.id)
+      .filter(id => id && id !== currentUser?._id))
 
   const handleStartCall = (mode) => {
     if (!conversation?._id || toUserIds.length === 0) return
@@ -191,7 +215,7 @@ export function ChatArea({
   }, [messages, sending])
 
   // === Derive hiển thị banner (text + buttons) từ friendship/status ===
-  const outgoingSent = friendReq.sent || (status === 'pending' && direction === 'outgoing')
+  const outgoingSent = uiFriendship.status === 'pending' && uiFriendship.direction === 'outgoing'
 
   return (
     <div className="h-full flex">
@@ -263,7 +287,7 @@ export function ChatArea({
                 {outgoingSent ? (
                   <Button
                     variant="outline"
-                    className="px-3 py-1 text-sm font-medium"
+                    className="px-3 py-1 text-sm font-medium cursor-pointer"
                     disabled={friendReq.loading}
                     onClick={handleCancelFriendRequest}
                   >
@@ -271,7 +295,7 @@ export function ChatArea({
                   </Button>
                 ) : (
                   <Button
-                    className="px-3 py-1 text-sm font-medium"
+                    className="px-3 py-1 text-sm font-medium cursor-pointer"
                     disabled={friendReq.loading}
                     onClick={handleSendFriendRequest}
                   >
