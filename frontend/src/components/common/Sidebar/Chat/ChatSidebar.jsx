@@ -15,6 +15,34 @@ import { extractId } from '@/utils/helper'
 import { API_ROOT } from '@/utils/constant'
 import { io } from 'socket.io-client'
 
+const glyphs = (s) => Array.from(String(s ?? ""))
+
+// cắt N ký tự
+const cut = (s, n) => {
+  const g = glyphs(s)
+  return g.length <= n ? s : g.slice(0, n).join("") + "…"
+}
+
+// Lấy N từ đầu, M ký tự/từ, và tối đa K ký tự toàn chuỗi
+const previewWords = (raw = "", wordLimit = 8, maxTokenLen = 10, maxTotalLen = 20) => {
+  const text = String(raw || "").trim()
+  if (!text) return ""
+
+  // 1) Tách theo khoảng trắng; cắt từng token nếu > maxTokenLen
+  const tokens = text.split(/\s+/).map(t => {
+    const g = glyphs(t)
+    return g.length > maxTokenLen ? g.slice(0, maxTokenLen).join("") + "…" : t
+  })
+
+  // 2) Luôn join lại (kể cả khi tokens.length <= wordLimit)
+  let out = tokens.slice(0, wordLimit).join(" ")
+
+  // 3) Giới hạn tổng độ dài
+  out = cut(out, maxTotalLen)
+
+  return out
+}
+
 function ConversationListItem({ conversation, usersById, isActive, onClick, getLastMessageText }) {
   const id = extractId(conversation)
   const status = conversation.direct
@@ -26,16 +54,16 @@ function ConversationListItem({ conversation, usersById, isActive, onClick, getL
     isOnline: status.isOnline,
     lastActiveAt: status.lastActiveAt
   })
-  const presenceText = conversation.direct ? presenceTextRaw : null
+  // const presenceText = conversation.direct ? presenceTextRaw : null
 
   const tone = presenceTextRaw?.toLowerCase() === 'away'
     ? 'away'
     : (status.isOnline ? 'online' : 'offline')
 
-  const presenceTextClass =
-    tone === 'online' ? 'text-emerald-500'
-      : tone === 'away' ? 'text-amber-500'
-        : 'text-muted-foreground'
+  // const presenceTextClass =
+  //   tone === 'online' ? 'text-emerald-500'
+  //     : tone === 'away' ? 'text-amber-500'
+  //       : 'text-muted-foreground'
 
   const presenceDotClass =
     tone === 'online' ? 'bg-status-online bg-emerald-500'
@@ -111,29 +139,29 @@ export function ChatSidebar({
 
   const getLastMessageText = (conv) => {
     const lm = conv.lastMessage
-    if (!lm) return "Chưa có tin nhắn"
-    if (!lm.textPreview) return "Chưa có tin nhắn"
+    if (!lm || !lm.textPreview) return "Chưa có tin nhắn"
+
+    //format lại độ dài tin nhắn
+    const body = previewWords(lm.textPreview, 8, 20, 40)
 
     // nếu senderId = currentUser._id thì thêm prefix
     const sid = typeof lm.senderId === 'object' ? lm.senderId?._id : lm.senderId
     if (sid && String(sid) === String(currentUser._id)) {
-      return `You: ${lm.textPreview}`
+      return `You: ${body}`
     }
+
     if (conv.type === 'group') {
       let senderName = lm.sender?.fullName || lm.sender?.username
-
-      // fallback nếu API chưa enrich sender
       if (!senderName && Array.isArray(conv.group?.members)) {
         const m = conv.group.members.find(u => String(u.id || u._id) === String(sid))
         senderName = m?.fullName || m?.username
       }
-
-      if (senderName) {
-        return `${senderName}: ${lm.textPreview}`
-      }
+      if (senderName) return `${senderName}: ${body}`
     }
-    return lm.textPreview
+
+    return body
   }
+
 
   // Load conversations
   useEffect(() => {
@@ -239,7 +267,7 @@ export function ChatSidebar({
       socketRef.current = null
       joinedRef.current.clear()
     }
-  }, [ loading ])
+  }, [loading])
 
   useEffect(() => {
     if (!socketRef.current) return
