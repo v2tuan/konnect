@@ -37,24 +37,40 @@ export function ChatArea({
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
 
-  // trạng thái yêu cầu kết bạn
+  // trạng thái yêu cầu kết bạn (ưu tiên sync từ API friendship)
   const [friendReq, setFriendReq] = useState({
     sent: false,
     requestId: null,
     loading: false
   })
 
-  // === Loại cuộc trò chuyện: dựa đúng vào conversation.type ===
+  // === Loại cuộc trò chuyện: dùng đúng conversation.type ===
   const type = conversation?.type || mode
   const isCloud = type === 'cloud'
   const isDirect = type === 'direct'
   const isGroup  = type === 'group'
 
-  // === Dùng cho banner request friend (đúng key từ API mẫu) ===
+  // === Lấy otherUser + friendship từ payload API mới ===
   const otherUser = isDirect ? conversation?.direct?.otherUser : null
   const otherUserId = otherUser?._id || otherUser?.id || null
-  // "không quá khắt khe": undefined hoặc false đều coi là chưa phải bạn
-  const shouldShowFriendBanner = isDirect && !isCloud && !!otherUserId && (otherUser?.isFriend !== true)
+  const friendship = (otherUser && otherUser.friendship) || { status: 'none' }
+  const status = friendship?.status || 'none'
+  const direction = friendship?.direction || null
+  const apiRequestId = friendship?.requestId || null
+
+  // Khởi tạo state friendReq theo dữ liệu API mỗi khi đổi cuộc trò chuyện
+  useEffect(() => {
+    const sentFromAPI = status === 'pending' && direction === 'outgoing'
+    setFriendReq({
+      sent: !!sentFromAPI,
+      requestId: apiRequestId || null,
+      loading: false
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversation?._id, otherUserId, status, direction, apiRequestId])
+
+  // Hiện banner nếu chưa là bạn (status !== 'accepted') và có otherUserId
+  const shouldShowFriendBanner = isDirect && !isCloud && !!otherUserId && status !== 'accepted'
 
   const handleSendFriendRequest = async () => {
     if (!otherUserId || friendReq.loading) return
@@ -63,18 +79,21 @@ export function ChatArea({
       const res = await submitFriendRequestAPI(otherUserId)
       const requestId =
         res?.data?.id || res?.data?._id || res?.id || res?._id || res?.data?.requestId || null
+
+      // Sau khi gửi thành công, coi như pending (outgoing)
       setFriendReq({ sent: true, requestId, loading: false })
-      // optional: gọi onSendFriendRequest?.(otherUserId)
+      onSendFriendRequest?.(otherUserId)
     } catch (e) {
       setFriendReq((s) => ({ ...s, loading: false }))
     }
   }
 
   const handleCancelFriendRequest = async () => {
-    if (!friendReq.requestId || friendReq.loading) return
+    const effectiveRequestId = friendReq.requestId || apiRequestId
+    if (!effectiveRequestId || friendReq.loading) return
     try {
       setFriendReq((s) => ({ ...s, loading: true }))
-      await updateFriendRequestStatusAPI({ requestId: friendReq.requestId, action: 'delete' })
+      await updateFriendRequestStatusAPI({ requestId: effectiveRequestId, action: 'delete' })
       setFriendReq({ sent: false, requestId: null, loading: false })
     } catch (e) {
       setFriendReq((s) => ({ ...s, loading: false }))
@@ -85,7 +104,7 @@ export function ChatArea({
 
   const safeName = conversation?.displayName ?? (isCloud ? 'Cloud Chat' : 'Conversation')
   const initialChar = safeName?.charAt(0)?.toUpperCase?.() || 'C'
-  const [call, setCall] = useState(null) // { mode: 'audio' | 'video' } | null
+  const [call, setCall] = useState(null)
 
   const { ringing, startCall, cancelCaller, setOnOpenCall } = useCallInvite(currentUser?._id)
 
@@ -171,6 +190,9 @@ export function ChatArea({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, sending])
 
+  // === Derive hiển thị banner (text + buttons) từ friendship/status ===
+  const outgoingSent = friendReq.sent || (status === 'pending' && direction === 'outgoing')
+
   return (
     <div className="h-full flex">
       {/* Main */}
@@ -194,7 +216,7 @@ export function ChatArea({
 
             <div>
               <h2 className="font-semibold text-foreground">{safeName}</h2>
-              {!isCloud && (
+              {!isCloud && !isGroup && (
                 <p className={`text-sm ${presenceTextClass}`}>{presenceText}</p>
               )}
             </div>
@@ -224,21 +246,21 @@ export function ChatArea({
 
         {/* Messages Area */}
         <div className="flex-1 min-h-0 overflow-y-auto relative py-4">
-          {/* === STICKY BANNER TRÊN CÙNG === */}
+          {/* === STICKY BANNER TRÊN CÙNG (dựa friendship.status) === */}
           {shouldShowFriendBanner && (
             <div className="sticky top-0 z-20 border-b">
               <div className="pointer-events-none absolute -bottom-6 left-0 right-0 h-6 from-card to-transparent" />
               <div className="flex items-center justify-between w-full p-3 bg-card">
                 <div className="flex items-center text-sm">
                   <UserPlus className="w-4 h-4 mr-2" />
-                  {friendReq.sent ? (
+                  {outgoingSent ? (
                     <span>Bạn đã gửi yêu cầu kết bạn đến người này</span>
                   ) : (
                     <span>Gửi yêu cầu kết bạn tới người này</span>
                   )}
                 </div>
 
-                {friendReq.sent ? (
+                {outgoingSent ? (
                   <Button
                     variant="outline"
                     className="px-3 py-1 text-sm font-medium"
@@ -441,7 +463,7 @@ export function ChatArea({
               <AccordionContent>
                 <div className="px-4 pb-4">
                   <div className="grid grid-cols-3 gap-2 mb-3">
-                    {mediaItems.slice(0, 6).map((item) => (
+                    {[...mediaItems].slice(0, 6).map((item) => (
                       <div key={item.id} className="aspect-square rounded-lg overflow-hidden">
                         <img
                           src={item.url}
