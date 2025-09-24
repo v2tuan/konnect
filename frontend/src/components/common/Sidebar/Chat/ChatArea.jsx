@@ -18,6 +18,7 @@ import CallModal from '../../Modal/CallModal'
 import { useCallInvite } from '@/components/common/Modal/CallInvite'
 import CreateGroupDialog from '../../Modal/CreateGroupModel'
 import { fi } from 'date-fns/locale'
+import { submitFriendRequestAPI, updateFriendRequestStatusAPI } from '@/apis'
 
 export function ChatArea({
   mode = 'direct',
@@ -39,33 +40,112 @@ export function ChatArea({
   const fileRef = useRef(null)
   const imageRef = useRef(null)
 
-  const isCloud = mode === 'cloud' || conversation?.type === 'cloud'
-  const isDirect = mode === 'direct' || !!conversation?.direct
-  const isGroup = mode === 'group' || !!conversation?.group
-  // const isGroup = conversation?.type === 'group' || !!conversation?.group
+  // trạng thái yêu cầu kết bạn (ưu tiên sync từ API friendship)
+  const [friendReq, setFriendReq] = useState({
+    sent: false,
+    requestId: null,
+    loading: false
+  })
+
+  // === Loại cuộc trò chuyện: dùng đúng conversation.type ===
+  const type = conversation?.type || mode
+  const isCloud = type === 'cloud'
+  const isDirect = type === 'direct'
+  const isGroup = type === 'group'
+
+  // === Lấy otherUser + friendship từ payload API mới ===
+  const otherUser = isDirect ? conversation?.direct?.otherUser : null
+  const otherUserId = otherUser?._id || otherUser?.id || null
+  const friendship = (otherUser && otherUser.friendship) || { status: 'none' }
+  const status = friendship?.status || 'none'
+  const direction = friendship?.direction || null
+  const apiRequestId = friendship?.requestId || null
+
+  const [uiFriendship, setUiFriendship] = useState({
+    status: 'none', // 'none' | 'pending' | 'accepted' | 'rejected'
+    direction: null, // 'outgoing' | 'incoming' | null
+    requestId: null
+  })
+
+  // Khởi tạo state friendReq theo dữ liệu API mỗi khi đổi cuộc trò chuyện
+  useEffect(() => {
+    setUiFriendship({
+      status: friendship?.status ?? 'none',
+      direction: friendship?.direction ?? null,
+      requestId: friendship?.requestId ?? null
+    })
+
+    // giữ friendReq cho loading/UX
+    const sentFromAPI = friendship?.status === 'pending' && friendship?.direction === 'outgoing'
+    setFriendReq(s => ({
+      ...s,
+      sent: !!sentFromAPI,
+      requestId: friendship?.requestId ?? null,
+      loading: false
+    }))
+  }, [conversation?._id, otherUserId, friendship?.status, friendship?.direction, friendship?.requestId])
+
+  // Hiện banner nếu chưa là bạn (status !== 'accepted') và có otherUserId
+  const shouldShowFriendBanner = isDirect && !isCloud && !!otherUserId && uiFriendship.status !== 'accepted'
+
+  const handleSendFriendRequest = async () => {
+    if (!otherUserId || friendReq.loading) return
+    try {
+      setFriendReq(s => ({ ...s, loading: true }))
+      const res = await submitFriendRequestAPI(otherUserId)
+      const requestId =
+      res?.requestId || res?.data?.requestId || res?.data?._id || res?._id || null
+
+      // cập nhật cả 2: UI + friendReq
+      setUiFriendship({ status: 'pending', direction: 'outgoing', requestId })
+      setFriendReq({ sent: true, requestId, loading: false })
+    } catch (e) {
+      setFriendReq(s => ({ ...s, loading: false }))
+    }
+  }
+
+
+  const handleCancelFriendRequest = async () => {
+    const rid = uiFriendship.requestId // chỉ lấy từ UI, không dùng apiRequestId nữa
+    if (!rid || friendReq.loading) return
+
+    try {
+      setFriendReq(s => ({ ...s, loading: true }))
+
+      // optimistic UI: chặn double-click ngay lập tức
+      setUiFriendship({ status: 'none', direction: null, requestId: null })
+      setFriendReq(s => ({ ...s, sent: false }))
+
+      await updateFriendRequestStatusAPI({ requestId: rid, action: 'delete' })
+
+      setFriendReq({ sent: false, requestId: null, loading: false })
+    } catch (e) {
+    // rollback nếu BE lỗi (hiếm)
+      setUiFriendship({ status: 'pending', direction: 'outgoing', requestId: rid })
+      setFriendReq(s => ({ ...s, sent: true, loading: false }))
+    }
+  }
+
 
   const currentUser = useSelector(selectCurrentUser)
 
   const safeName = conversation?.displayName ?? (isCloud ? 'Cloud Chat' : 'Conversation')
   const initialChar = safeName?.charAt(0)?.toUpperCase?.() || 'C'
-  const [call, setCall] = useState(null) // { mode: 'audio' | 'video' } | null
-
+  const [call, setCall] = useState(null)
 
   const { ringing, startCall, cancelCaller, setOnOpenCall } = useCallInvite(currentUser?._id)
 
-  // ai Accept thì mở modal call & truyền mốc acceptedAt (nếu cần hiển thị timer trong modal)
   useEffect(() => {
     setOnOpenCall((mode, acceptedAt) => setCall({ mode, acceptedAt }))
   }, [setOnOpenCall])
 
-  // danh sách người nhận chuông: direct -> otherUser; group -> memberIds trừ mình
-  const toUserIds =
-    (isDirect
-      ? [conversation?.direct?.otherUser?._id].filter(Boolean)
-      : (conversation?.group?.memberIds || []).filter(id => id !== currentUser?._id)
-    ) || []
+  // Danh sách người nhận chuông
+  const toUserIds = isDirect
+    ? [otherUserId].filter(Boolean)
+    : ((conversation?.group?.members || [])
+      .map(m => m?._id || m?.id)
+      .filter(id => id && id !== currentUser?._id))
 
-  // handler bấm gọi (tận dụng conversation/currentUser/safeName đã có)
   const handleStartCall = (mode) => {
     if (!conversation?._id || toUserIds.length === 0) return
     startCall({
@@ -74,7 +154,7 @@ export function ChatArea({
       toUserIds,
       me: { id: currentUser?._id, name: currentUser?.fullName, avatarUrl: currentUser?.avatarUrl },
       peer: isDirect
-        ? { id: conversation?.direct?.otherUser?._id, name: conversation?.direct?.otherUser?.fullName, avatarUrl: conversation?.direct?.otherUser?.avatarUrl }
+        ? { id: otherUserId, name: otherUser?.fullName, avatarUrl: otherUser?.avatarUrl }
         : { id: 'group', name: safeName, avatarUrl: conversation?.conversationAvatarUrl },
       onOpenCall: (m, acceptedAt) => setCall({ mode: m, acceptedAt })
     })
@@ -90,22 +170,11 @@ export function ChatArea({
   ]
 
   const links = [
-    {
-      title: 'Property Details 01 || Homelenggo - Real...',
-      url: 'homelenggonetjs.vercel.app',
-      date: '29/08'
-    },
-    {
-      title: 'Home || Homelenggo - Real Estate React...',
-      url: 'homelenggonetjs.vercel.app',
-      date: '26/08'
-    },
-    {
-      title: 'Zillow: Real Estate, Apartments, Mortg...',
-      url: 'www.zillow.com',
-      date: '26/08'
-    }
+    { title: 'Property Details 01 || Homelenggo - Real...', url: 'homelenggonetjs.vercel.app', date: '29/08' },
+    { title: 'Home || Homelenggo - Real Estate React...', url: 'homelenggonetjs.vercel.app', date: '26/08' },
+    { title: 'Zillow: Real Estate, Apartments, Mortg...', url: 'www.zillow.com', date: '26/08' }
   ]
+
   const togglePanel = () => setIsOpen(!isOpen)
 
   const usersById = useSelector(state => state.user.usersById || {})
@@ -159,6 +228,9 @@ export function ChatArea({
     const file = e.target.files?.[0]
   }
 
+  // === Derive hiển thị banner (text + buttons) từ friendship/status ===
+  const outgoingSent = uiFriendship.status === 'pending' && uiFriendship.direction === 'outgoing'
+
   return (
     <div className="h-full flex">
       {/* Main */}
@@ -181,12 +253,8 @@ export function ChatArea({
             </div>
 
             <div>
-              <h2 className="font-semibold text-foreground">
-                {safeName}
-              </h2>
-
-              {/* Trạng thái: ẩn với cloud */}
-              {!isCloud && (
+              <h2 className="font-semibold text-foreground">{safeName}</h2>
+              {!isCloud && !isGroup && (
                 <p className={`text-sm ${presenceTextClass}`}>{presenceText}</p>
               )}
             </div>
@@ -197,7 +265,6 @@ export function ChatArea({
               <SearchIcon className="w-5 h-5" />
             </Button>
 
-            {/* Call/Video: ẩn với cloud */}
             {!isCloud && (
               <>
                 <Button variant="ghost" size="sm" onClick={() => handleStartCall('audio')}>
@@ -214,24 +281,41 @@ export function ChatArea({
             </Button>
           </div>
         </div>
+
         {/* Messages Area */}
         <div className="flex-1 min-h-0 overflow-y-auto relative py-4">
-          {/* === STICKY BANNER TRÊN CÙNG === */}
-          {isDirect && !isCloud && !isGroup && !conversation?.friendShip && (
+          {/* === STICKY BANNER TRÊN CÙNG (dựa friendship.status) === */}
+          {shouldShowFriendBanner && (
             <div className="sticky top-0 z-20 border-b">
-              {/* nền mờ phía dưới để tách nội dung khi cuộn */}
               <div className="pointer-events-none absolute -bottom-6 left-0 right-0 h-6 from-card to-transparent" />
               <div className="flex items-center justify-between w-full p-3 bg-card">
                 <div className="flex items-center text-sm">
                   <UserPlus className="w-4 h-4 mr-2" />
-                  <span>Gửi yêu cầu kết bạn tới người này</span>
+                  {outgoingSent ? (
+                    <span>Bạn đã gửi yêu cầu kết bạn đến người này</span>
+                  ) : (
+                    <span>Gửi yêu cầu kết bạn tới người này</span>
+                  )}
                 </div>
-                <Button
-                  className="px-3 py-1 text-sm font-medium"
-                  onClick={() => onSendFriendRequest?.(conversation?.direct?.otherUser?._id)}
-                >
-                  Gửi kết bạn
-                </Button>
+
+                {outgoingSent ? (
+                  <Button
+                    variant="outline"
+                    className="px-3 py-1 text-sm font-medium cursor-pointer"
+                    disabled={friendReq.loading}
+                    onClick={handleCancelFriendRequest}
+                  >
+                    Huỷ
+                  </Button>
+                ) : (
+                  <Button
+                    className="px-3 py-1 text-sm font-medium cursor-pointer"
+                    disabled={friendReq.loading}
+                    onClick={handleSendFriendRequest}
+                  >
+                    Gửi kết bạn
+                  </Button>
+                )}
               </div>
             </div>
           )}
@@ -289,14 +373,11 @@ export function ChatArea({
             {othersTyping && (
               <div className='flex items-end space-x-2 py-2 px-1 animate-fadeIn'>
                 <Avatar className="w-8 h-8">
-                  <AvatarImage src={conversation.direct.otherUser?.avatarUrl} />
-                  {/* <AvatarFallback>{contact?.name?.charAt(0)}</AvatarFallback> */}
+                  <AvatarImage src={conversation?.direct?.otherUser?.avatarUrl} />
                 </Avatar>
 
-                {/* Typing Bubble */}
                 <div className="relative p-3 rounded-lg bg-secondary text-gray-900 rounded-bl-sm">
                   <div className="flex items-center space-x-2">
-                    {/* Typing Animation */}
                     <div className="flex space-x-1">
                       {[0, 1, 2].map((i) => (
                         <div
@@ -389,34 +470,32 @@ export function ChatArea({
         </div>
       </div>
 
-      {/* Slide Panel - trượt từ phải vào */}
+      {/* Slide Panel */}
       <div
         className={`fixed flex flex-col top-0 right-0 h-full w-80 shadow-lg transform transition-transform duration-300 ease-in-out border-l ${isOpen ? 'translate-x-0' : 'translate-x-full'
-          }`}
+        }`}
       >
-        {/* Panel Header */}
         <div className="flex items-center justify-center p-4 border-b h-18">
           <h2 className="text-lg font-semibold">Conversation information</h2>
         </div>
 
-        {/* Panel Content */}
         <div className="flex-1 overflow-y-auto pb-4">
-          {/* User Profile */}
           <div className="p-6 text-center border-b">
             <div className="w-20 h-20 bg-blue-500 rounded-full flex items-center justify-center mx-auto mb-4">
-              {conversation?.conversationAvatarUrl ?
+              {conversation?.conversationAvatarUrl ? (
                 <Avatar className="w-20 h-20">
                   <AvatarImage src={conversation?.conversationAvatarUrl} />
                   <AvatarFallback>{initialChar}</AvatarFallback>
-                </Avatar> : <span className="text-2xl font-bold text-white">{initialChar}</span>
-              }
+                </Avatar>
+              ) : (
+                <span className="text-2xl font-bold text-white">{initialChar}</span>
+              )}
             </div>
             <div className="flex items-center justify-center mb-4">
               <h3 className="text-xl font-semibold">{safeName}</h3>
               <Edit size={16} className="ml-2 cursor-pointer" />
             </div>
 
-            {/* Action buttons */}
             <div className="flex justify-center space-x-8 mb-4">
               <button className="flex flex-col items-center p-3 rounded-lg transition-colors cursor-pointer">
                 <Bell size={24} className="mb-1" />
@@ -430,27 +509,13 @@ export function ChatArea({
             </div>
           </div>
 
-          {/* Schedule reminder */}
-          {/* <div className="p-4 border-b">
-            <div className="flex items-center text-gray-600 mb-2">
-              <Clock size={18} className="mr-3" />
-              <span className="text-sm">Danh sách nhắc hẹn</span>
-            </div>
-            <div className="flex items-center text-gray-600">
-              <Users size={18} className="mr-3" />
-              <span className="text-sm">20 nhóm chung</span>
-            </div>
-          </div> */}
-
           <Accordion type="multiple" className="w-full" defaultValue={["a", "b", "c", "d"]}>
-
-            {/* Media Section */}
             <AccordionItem value="a">
               <AccordionTrigger className="text-base p-4">Ảnh/Video</AccordionTrigger>
               <AccordionContent>
                 <div className="px-4 pb-4">
                   <div className="grid grid-cols-3 gap-2 mb-3">
-                    {mediaItems.slice(0, 6).map((item) => (
+                    {[...mediaItems].slice(0, 6).map((item) => (
                       <div key={item.id} className="aspect-square rounded-lg overflow-hidden">
                         <img
                           src={item.url}
@@ -467,7 +532,6 @@ export function ChatArea({
               </AccordionContent>
             </AccordionItem>
 
-            {/* Files Section */}
             <AccordionItem value="b">
               <AccordionTrigger className="text-base p-4">File</AccordionTrigger>
               <AccordionContent>
@@ -482,7 +546,6 @@ export function ChatArea({
               </AccordionContent>
             </AccordionItem>
 
-            {/* Links Section */}
             <AccordionItem value="c">
               <AccordionTrigger className="text-base p-4">Link</AccordionTrigger>
               <AccordionContent>
@@ -506,7 +569,6 @@ export function ChatArea({
               </AccordionContent>
             </AccordionItem>
 
-            {/* Privacy Settings */}
             <AccordionItem value="d">
               <AccordionTrigger className="text-base p-4">Thiết lập bảo mật</AccordionTrigger>
               <AccordionContent>
@@ -532,21 +594,6 @@ export function ChatArea({
                         data-[state=unchecked]:bg-muted-foreground
                       "
                     />
-                    {/* <div className="relative">
-                      <input
-                        type="checkbox"
-                        className="sr-only"
-                        id="hide-chat"
-                      />
-                      <label
-                        htmlFor="hide-chat"
-                        className="flex items-center cursor-pointer"
-                      >
-                        <div className="w-10 h-6 bg-gray-300 rounded-full p-1 transition-colors duration-200">
-                          <div className="w-4 h-4 bg-white rounded-full shadow transform transition-transform duration-200"></div>
-                        </div>
-                      </label>
-                    </div> */}
                   </div>
                 </div>
               </AccordionContent>
@@ -585,7 +632,6 @@ export function ChatArea({
         </div>
       )}
 
-
       {/* modal call */}
       {call && (
         <CallModal
@@ -593,7 +639,7 @@ export function ChatArea({
           onOpenChange={(o) => setCall(o ? call : null)}
           conversationId={conversation?._id}
           currentUserId={currentUser?._id}
-          initialMode={call.mode} // 'audio' hoặc 'video'
+          initialMode={call.mode}
           callStartedAt={call.acceptedAt}
         />
       )}
