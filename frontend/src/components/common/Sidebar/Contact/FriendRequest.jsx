@@ -7,7 +7,7 @@ import { Separator } from "@/components/ui/separator"
 import { Check, Loader2, RefreshCw, Search, Users, X } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 
-const ACTION_ACCEPT = "acepted"
+const ACTION_ACCEPT = "accept"
 const ACTION_DECLINE = "delete"
 
 function formatTimeAgo(dateStr) {
