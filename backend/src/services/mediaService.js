@@ -8,9 +8,10 @@ const uploadMultiple = async (files, conversationId) => {
     }
 
     const uploadResults = await cloudinaryProvider.uploadMultiple(files, uploadOptions)
+    // console.log('Cloudinary upload results:', uploadResults)
 
     return uploadResults.map((result, index) => ({
-        url: result.url,
+        url: result.secure_url,
         type: result.resource_type,
         metadata: {
           filename: files[index].originalname,

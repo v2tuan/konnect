@@ -70,6 +70,7 @@ async function sendMessage({ userId, conversationId, type, text, file, io }) {
   if (['image', 'file', 'audio'].includes(type) && file) {
     const files = file || []
     const uploadResults = await mediaService.uploadMultiple(files, conversationId)
+    // console.log('Upload results:', uploadResults)
 
     const promises = uploadResults.map((result, index) => {
       const media = {
@@ -77,11 +78,7 @@ async function sendMessage({ userId, conversationId, type, text, file, io }) {
         uploaderId: new mongoose.Types.ObjectId(userId),
         type,
         url: result.url, // URL truy cập file
-        metadata: {
-          filename: files[index].originalname,
-          size: result.bytes,
-          mimetype: files[index].mimetype
-        },
+        metadata: result.metadata, // thông tin thêm về file
         uploadedAt: now
       }
 
@@ -92,6 +89,7 @@ async function sendMessage({ userId, conversationId, type, text, file, io }) {
     // Đợi tất cả media được lưu
     newMediaDocs = await Promise.all(promises)
 
+    // console.log('Uploaded media:', newMediaDocs)
   }
 
   let newMessage = await Message.create({

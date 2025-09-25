@@ -222,7 +222,16 @@ export function ChatArea({
   const handleImageClick = () => imageRef.current?.click()
 
   const handleFileChange = (e) => {
-    const file = e.target.files?.[0]
+    const files = e.target.files
+    if (!files) return
+
+    // Chuyển FileList thành mảng để dễ thao tác
+    const fileArray = Array.from(files)
+
+    onSendMessage?.({
+      type: 'file',
+      content: fileArray
+    })
   }
 
   const handleImageChange = (e) => {
@@ -233,7 +242,7 @@ export function ChatArea({
     const fileArray = Array.from(files)
 
     onSendMessage?.({
-      type: 'image',   // đổi type cho rõ là nhiều file
+      type: 'image',
       content: fileArray
     })
   }
@@ -417,6 +426,7 @@ export function ChatArea({
             <Input
               type="file"
               ref={fileRef}
+              onChange={handleFileChange}
               className="hidden"
             />
             <Input

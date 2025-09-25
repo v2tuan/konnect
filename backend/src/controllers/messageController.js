@@ -34,7 +34,6 @@ const sendMessage = async (req, res, next) => {
   try {
     const userId = req.userId
     const { conversationId, type, body } = req.body
-    console.log(req.files)
 
     if (!conversationId) {
       return res.status(StatusCodes.BAD_REQUEST).json({ message: "conversationId is required" })
