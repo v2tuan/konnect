@@ -321,9 +321,9 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
           // Nếu là text thì render bubble
           <div
             className={`
-      relative p-3 rounded-lg
+      relative p-3 rounded-sm
       ${isOwn
-                ? 'bg-blue-500 text-white rounded-br-sm'
+                ? 'bg-primary/10 border border-primary rounded-br-sm'
                 : 'bg-secondary text-secondary-foreground rounded-bl-sm'
               }
     `}

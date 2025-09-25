@@ -1,9 +1,9 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect } from 'react'
 import {
   Phone, Video, MoreHorizontal, Search as SearchIcon, UserPlus,
   Image, Smile, Mic, Send, Paperclip
 } from 'lucide-react'
-import { Bell, Pin, Users, Edit, ExternalLink, Shield, EyeOff, TriangleAlert, Trash, X } from 'lucide-react'
+import { Bell, Pin, Users, Edit, ExternalLink, Shield, EyeOff, TriangleAlert, Trash, X, LoaderCircle } from 'lucide-react'
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion"
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -34,9 +34,9 @@ export function ChatArea({
   const [messageText, setMessageText] = useState('')
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
-  const [audioUrl, setAudioUrl] = useState(null);    // URL tạm thời để phát file ghi âm
-  const mediaRecorderRef = useRef(null);             // lưu MediaRecorder instance
-  const audioChunksRef = useRef([]);                // lưu các chunks âm thanh khi ghi
+  const [audioUrl, setAudioUrl] = useState(null) // URL tạm thời để phát file ghi âm
+  const mediaRecorderRef = useRef(null) // lưu MediaRecorder instance
+  const audioChunksRef = useRef([]) // lưu các chunks âm thanh khi ghi
   const [isOpen, setIsOpen] = useState(false)
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
@@ -208,7 +208,7 @@ export function ChatArea({
 
   const handleSendAudioMessage = () => {
     if (!audioUrl || sending) return
-    const blob = audioChunksRef.current.length > 0 ? new Blob(audioChunksRef.current, { type: "audio/webm" }) : null;
+    const blob = audioChunksRef.current.length > 0 ? new Blob(audioChunksRef.current, { type: "audio/webm" }) : null
     if (!blob) return
     onSendMessage?.({ type: 'audio', content: blob })
     setAudioUrl(null)
@@ -222,9 +222,15 @@ export function ChatArea({
     }
   }
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, sending])
+  // Dùng useLayoutEffect để scroll sau khi DOM cập nhật
+  useLayoutEffect(() => {
+    // messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+
+    // Scroll sau khi DOM render xong
+    setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }, 0)
+  }, [messages])
 
   const handleFileClick = () => fileRef.current?.click()
   const handleImageClick = () => imageRef.current?.click()
@@ -240,6 +246,8 @@ export function ChatArea({
       type: 'file',
       content: fileArray
     })
+
+    e.target.value = null // reset giá trị để lần sau chọn lại vẫn gọi onChange
   }
 
   const handleImageChange = (e) => {
@@ -253,53 +261,55 @@ export function ChatArea({
       type: 'image',
       content: fileArray
     })
+
+    e.target.value = null // reset giá trị để lần sau chọn lại vẫn gọi onChange
   }
 
   // Hàm bắt đầu ghi âm
   const startRecording = async () => {
     try {
       // Yêu cầu quyền truy cập microphone từ người dùng
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
 
       // Tạo MediaRecorder từ stream âm thanh
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = []; // reset chunks cũ
+      const mediaRecorder = new MediaRecorder(stream)
+      mediaRecorderRef.current = mediaRecorder
+      audioChunksRef.current = [] // reset chunks cũ
 
       // Khi có dữ liệu âm thanh sẵn sàng (chunk)
       mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) audioChunksRef.current.push(e.data); // lưu chunk
-      };
+        if (e.data.size > 0) audioChunksRef.current.push(e.data) // lưu chunk
+      }
 
       // Khi dừng ghi âm
       mediaRecorder.onstop = () => {
         // Ghép tất cả chunks thành một Blob
-        const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+        const blob = new Blob(audioChunksRef.current, { type: "audio/webm" })
 
         // Tạo URL tạm thời để phát hoặc download
-        const url = URL.createObjectURL(blob);
-        setAudioUrl(url);
+        const url = URL.createObjectURL(blob)
+        setAudioUrl(url)
 
         // Nếu có callback onSend, gửi Blob lên server
         // if (onSend) {
         //   onSend(blob);
         // }
-      };
+      }
 
-      mediaRecorder.start(); // bắt đầu ghi âm
-      setIsRecording(true);    // cập nhật trạng thái đang ghi
+      mediaRecorder.start() // bắt đầu ghi âm
+      setIsRecording(true) // cập nhật trạng thái đang ghi
     } catch (err) {
-      console.error("Error accessing microphone", err);
+      console.error("Error accessing microphone", err)
     }
-  };
+  }
 
   // Hàm dừng ghi âm
   const stopRecording = () => {
-    mediaRecorderRef.current?.stop(); // dừng MediaRecorder
+    mediaRecorderRef.current?.stop() // dừng MediaRecorder
     // Dừng tất cả track trong stream
-    mediaRecorderRef.current?.stream.getTracks().forEach(track => track.stop());
-    setIsRecording(false);              // cập nhật trạng thái
-  };
+    mediaRecorderRef.current?.stream.getTracks().forEach(track => track.stop())
+    setIsRecording(false) // cập nhật trạng thái
+  }
 
   // === Derive hiển thị banner (text + buttons) từ friendship/status ===
   const outgoingSent = uiFriendship.status === 'pending' && uiFriendship.direction === 'outgoing'
@@ -520,9 +530,14 @@ export function ChatArea({
               </Button>
             </div>
 
-            {messageText.trim() ? (
+            {(messageText.trim() || sending) ? (
               <Button onClick={handleSendMessage} className="shrink-0" disabled={sending}>
-                <Send className="w-4 h-4" />
+                {sending ? (
+                  <LoaderCircle className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4" />
+
+                )}
               </Button>
             ) : (
               <Button
@@ -550,7 +565,7 @@ export function ChatArea({
               {/* Nút hủy ghi âm */}
               <Button
                 onClick={() => {
-                  setAudioUrl(null); // reset audio
+                  setAudioUrl(null) // reset audio
                 }}
                 className="shrink-0 p-2 bg-red-100 hover:bg-red-200 rounded-full"
               >
@@ -581,7 +596,7 @@ export function ChatArea({
       {/* Slide Panel */}
       <div
         className={`fixed flex flex-col top-0 right-0 h-full w-80 shadow-lg transform transition-transform duration-300 ease-in-out border-l ${isOpen ? 'translate-x-0' : 'translate-x-full'
-          }`}
+        }`}
       >
         <div className="flex items-center justify-center p-4 border-b h-18">
           <h2 className="text-lg font-semibold">Conversation information</h2>
