@@ -25,7 +25,6 @@ export function ChatArea({
   conversation = {},
   messages = [],
   onSendMessage,
-  onSendFriendRequest,
   sending,
   onStartTyping,
   onStopTyping,
@@ -61,9 +60,6 @@ export function ChatArea({
   const otherUser = isDirect ? conversation?.direct?.otherUser : null
   const otherUserId = otherUser?._id || otherUser?.id || null
   const friendship = (otherUser && otherUser.friendship) || { status: 'none' }
-  const status = friendship?.status || 'none'
-  const direction = friendship?.direction || null
-  const apiRequestId = friendship?.requestId || null
 
   const [uiFriendship, setUiFriendship] = useState({
     status: 'none', // 'none' | 'pending' | 'accepted' | 'rejected'
