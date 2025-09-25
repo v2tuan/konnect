@@ -158,7 +158,7 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
         </div>
 
         {/* Bubble */}
-        {message.media || message.body?.media ? (
+        {message.media && message.media.length > 0 ? (
           (
             <>
               <div className="space-y-2">
@@ -166,6 +166,7 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                 {(() => {
                   const images = message.media.filter(m => m.type === 'image')
                   const files = message.media.filter(m => m.type === 'file')
+                  const audios = message.media.filter(m => m.type === 'audio')
 
                   return (
                     <>
@@ -173,10 +174,10 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                       {images.length > 0 && (
                         <div className={`
             ${images.length === 1 ? 'flex justify-center' :
-                          images.length === 2 ? 'grid grid-cols-2 gap-2' :
-                            images.length <= 4 ? 'grid grid-cols-2 gap-2 max-w-md' :
-                              'grid grid-cols-3 gap-2 max-w-lg'
-                        }
+                            images.length === 2 ? 'grid grid-cols-2 gap-2' :
+                              images.length <= 4 ? 'grid grid-cols-2 gap-2 max-w-md' :
+                                'grid grid-cols-3 gap-2 max-w-lg'
+                          }
           `}>
                           {images.map((media, index) => (
                             <div key={`image-${index}`} className="relative">
@@ -189,10 +190,10 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                                 className={`
                     rounded-lg shadow-md object-cover
                     ${images.length === 1 ? 'max-w-sm max-h-96 w-full' :
-                              images.length === 2 ? 'w-full h-32 sm:h-40' :
-                                images.length <= 4 ? 'w-full h-24 sm:h-32' :
-                                  'w-full h-20 sm:h-24'
-                            }
+                                    images.length === 2 ? 'w-full h-32 sm:h-40' :
+                                      images.length <= 4 ? 'w-full h-24 sm:h-32' :
+                                        'w-full h-20 sm:h-24'
+                                  }
                     hover:shadow-lg transition-shadow duration-200 cursor-pointer
                   `}
                                 onClick={() => {
@@ -272,6 +273,33 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                           ))}
                         </div>
                       )}
+
+                      {/* Hiển thị audio */}
+                      {audios.length > 0 && (
+                        <div className="space-y-2">
+                          {audios.map((media, index) => (
+                            <div
+                              key={`audio-${index}`}
+                              className={`flex items-center gap-2 p-2 max-w-xs 
+          ${message.isOwn ? 'ml-auto bg-blue-100 text-black rounded-l-lg rounded-tr-lg'
+                                  : 'mr-auto bg-gray-100 text-black rounded-r-lg rounded-tl-lg'} 
+          shadow-sm`}
+                            >
+                              {/* Audio player mở rộng đúng flex */}
+                              <audio controls className="flex-1 min-w-0">
+                                <source src={media.url} type={media.metadata?.mimetype || 'audio/webm'} />
+                                Your browser does not support the audio element.
+                              </audio>
+
+                              {/* Icon Pin nếu có */}
+                              {message.isPinned && (
+                                <Pin className="w-4 h-4 text-yellow-500 shrink-0" />
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
                     </>
                   )
                 })()}
@@ -295,9 +323,9 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
             className={`
       relative p-3 rounded-lg
       ${isOwn
-            ? 'bg-blue-500 text-white rounded-br-sm'
-            : 'bg-secondary text-secondary-foreground rounded-bl-sm'
-          }
+                ? 'bg-blue-500 text-white rounded-br-sm'
+                : 'bg-secondary text-secondary-foreground rounded-bl-sm'
+              }
     `}
           >
             {message.isPinned && (

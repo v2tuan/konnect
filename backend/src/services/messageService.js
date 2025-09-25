@@ -99,7 +99,7 @@ async function sendMessage({ userId, conversationId, type, text, file, io }) {
     media: Array.isArray(newMediaDocs) ? newMediaDocs.map(m => m._id) : [], // danh sách media
     type,
     body: {
-      text: type === 'text' ? text : '' // chỉ lưu text nếu type = text
+      text: type === 'text' ? text : `Đã gửi/nhận một tin nhắn ${type}` // chỉ lưu text nếu type = text
     },
     createdAt: now
   })

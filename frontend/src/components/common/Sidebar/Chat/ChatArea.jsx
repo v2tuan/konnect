@@ -3,7 +3,7 @@ import {
   Phone, Video, MoreHorizontal, Search as SearchIcon, UserPlus,
   Image, Smile, Mic, Send, Paperclip
 } from 'lucide-react'
-import { Bell, Pin, Users, Edit, ExternalLink, Shield, EyeOff, TriangleAlert, Trash } from 'lucide-react'
+import { Bell, Pin, Users, Edit, ExternalLink, Shield, EyeOff, TriangleAlert, Trash, X } from 'lucide-react'
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion"
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -35,6 +35,9 @@ export function ChatArea({
   const [messageText, setMessageText] = useState('')
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
+  const [audioUrl, setAudioUrl] = useState(null);    // URL tạm thời để phát file ghi âm
+  const mediaRecorderRef = useRef(null);             // lưu MediaRecorder instance
+  const audioChunksRef = useRef([]);                // lưu các chunks âm thanh khi ghi
   const [isOpen, setIsOpen] = useState(false)
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
@@ -207,6 +210,15 @@ export function ChatArea({
     setShowEmojiPicker(false)
   }
 
+  const handleSendAudioMessage = () => {
+    if (!audioUrl || sending) return
+    const blob = audioChunksRef.current.length > 0 ? new Blob(audioChunksRef.current, { type: "audio/webm" }) : null;
+    if (!blob) return
+    onSendMessage?.({ type: 'audio', content: blob })
+    setAudioUrl(null)
+    audioChunksRef.current = [] // reset chunks sau khi gửi
+  }
+
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -247,6 +259,51 @@ export function ChatArea({
     })
   }
 
+  // Hàm bắt đầu ghi âm
+  const startRecording = async () => {
+    try {
+      // Yêu cầu quyền truy cập microphone từ người dùng
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      // Tạo MediaRecorder từ stream âm thanh
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = []; // reset chunks cũ
+
+      // Khi có dữ liệu âm thanh sẵn sàng (chunk)
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data); // lưu chunk
+      };
+
+      // Khi dừng ghi âm
+      mediaRecorder.onstop = () => {
+        // Ghép tất cả chunks thành một Blob
+        const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+
+        // Tạo URL tạm thời để phát hoặc download
+        const url = URL.createObjectURL(blob);
+        setAudioUrl(url);
+
+        // Nếu có callback onSend, gửi Blob lên server
+        // if (onSend) {
+        //   onSend(blob);
+        // }
+      };
+
+      mediaRecorder.start(); // bắt đầu ghi âm
+      setIsRecording(true);    // cập nhật trạng thái đang ghi
+    } catch (err) {
+      console.error("Error accessing microphone", err);
+    }
+  };
+
+  // Hàm dừng ghi âm
+  const stopRecording = () => {
+    mediaRecorderRef.current?.stop(); // dừng MediaRecorder
+    // Dừng tất cả track trong stream
+    mediaRecorderRef.current?.stream.getTracks().forEach(track => track.stop());
+    setIsRecording(false);              // cập nhật trạng thái
+  };
 
   // === Derive hiển thị banner (text + buttons) từ friendship/status ===
   const outgoingSent = uiFriendship.status === 'pending' && uiFriendship.direction === 'outgoing'
@@ -475,7 +532,7 @@ export function ChatArea({
               <Button
                 variant={isRecording ? 'destructive' : 'ghost'}
                 size="sm"
-                onClick={() => setIsRecording(v => !v)}
+                onClick={isRecording ? stopRecording : startRecording}
                 className="shrink-0"
                 type="button"
               >
@@ -490,6 +547,38 @@ export function ChatArea({
               <span className="text-sm">Đang ghi âm...</span>
             </div>
           )}
+
+          {/* Nếu đã có audioUrl, hiển thị audio player và nút download */}
+          {audioUrl && (
+            <div className="flex items-center space-x-2 p-2 bg-gray-100 rounded-md">
+              {/* Nút hủy ghi âm */}
+              <Button
+                onClick={() => {
+                  setAudioUrl(null); // reset audio
+                }}
+                className="shrink-0 p-2 bg-red-100 hover:bg-red-200 rounded-full"
+              >
+                <X className="w-4 h-4 text-red-600" />
+              </Button>
+
+              {/* Player phát lại file ghi âm */}
+              <audio
+                src={audioUrl}
+                controls
+                className="flex-1 outline-none"
+              />
+
+              {/* Nút gửi ghi âm */}
+              <Button
+                onClick={handleSendAudioMessage}
+                className="shrink-0 p-2 bg-green-100 hover:bg-green-200 rounded-full"
+                disabled={sending}
+              >
+                <Send className="w-4 h-4 text-green-600" />
+              </Button>
+            </div>
+          )}
+
         </div>
       </div>
 
