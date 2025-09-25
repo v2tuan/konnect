@@ -109,10 +109,19 @@ export const getConversationByUserId = async (userId) => {
 /**
  * Gửi tin nhắn trong conversation
  */
-export const sendMessage = async (conversationId, text) => {
+export const sendMessage = async (conversationId, payload, isFormData) => {
+  if (isFormData) {
+    // Nếu payload là FormData (file, image, audio)
+    payload.append("conversationId", conversationId)
+    const response = await authorizeAxiosInstance.post(`${API_ROOT}/api/messages`, payload, {
+      headers: { "Content-Type": "multipart/form-data" }
+    })
+    return response.data
+  }
+  // Nếu payload là object (text)
   const response = await authorizeAxiosInstance.post(`${API_ROOT}/api/messages`, {
     conversationId,
-    text
+    ...payload
   })
   return response.data
 }
