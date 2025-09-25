@@ -5,6 +5,8 @@ import User from "~/models/user";
 import { toOid } from "~/utils/formatter";
 import { messageService } from "./messageService";
 import { contactService } from "./contactService";
+import { mediaService } from "./mediaService";
+import { cloudinaryProvider } from "~/providers/CloudinaryProvider_v2";
 
 async function markFriendshipOnConversation(meId, convObj) {
   try {
@@ -47,8 +49,10 @@ async function markFriendshipOnConversation(meId, convObj) {
   return convObj
 }
 
-const createConversation = async (conversationData, userId) => {
-  const {type, memberIds} = conversationData
+const createConversation = async (conversationData, file, userId) => {
+  const { type, memberIds, name, avatarUrl } = conversationData
+  console.log("Creating conversation:", conversationData, "by user:", userId)
+  console.log(name, avatarUrl)
 
   const conversationDataToCreate = {
     type,
@@ -61,12 +65,12 @@ const createConversation = async (conversationData, userId) => {
     // Kiểm tra đã có cloud conversation chưa
 
     // Set up conversation data
-    conversationData.cloud = {
+    conversationDataToCreate.cloud = {
       ownerId: userId
     }
 
     membersToAdd = [
-      {userId: userId, role: 'owner'}
+      { userId: userId, role: 'owner' }
     ]
   } else if (type === 'direct') {
     // Kiểm tra recipient có tồn tại không
@@ -92,8 +96,8 @@ const createConversation = async (conversationData, userId) => {
     const existingConversation = await Conversation.findOne({
       type: 'direct',
       $or: [
-        {'direct.userA': userId, 'direct.userB': recipientId},
-        {'direct.userA': recipientId, 'direct.userB': userId}
+        { 'direct.userA': userId, 'direct.userB': recipientId },
+        { 'direct.userA': recipientId, 'direct.userB': userId }
       ]
     });
 
@@ -102,17 +106,18 @@ const createConversation = async (conversationData, userId) => {
     }
 
     // Set up conversation data
-    conversationData.direct = {
+    conversationDataToCreate.direct = {
       userA: userId,
       userB: recipientId
     };
 
     // Set up conversation data
     membersToAdd = [
-      {userId: userId, role: 'member'},
-      {userId: recipientId, role: 'member'}
+      { userId: userId, role: 'member' },
+      { userId: recipientId, role: 'member' }
     ]
-  } else if (type === 'group') {
+  }
+  else if (type === 'group') {
     // Kiểm tra tất cả member có tồn tại không
     // Kiểm tra có user hiện tại trong danh sách không nếu không thì thêm vào
     const uniqueMemberIds = [...new Set([userId, ...memberIds])]
@@ -121,10 +126,19 @@ const createConversation = async (conversationData, userId) => {
       throw new Error('Không thể tạo nhóm chỉ với 2 thành viên')
     }
 
+    let uploadResults = null
+    if (file) {
+      const uploadOptions = {
+        folder: `konnect/${name || 'group_avatars'}`,
+        resource_type: 'auto'
+    }
+      uploadResults = await cloudinaryProvider.uploadSingle(file, uploadOptions)
+    }
+
     // Set up conversation data
-    conversationData.group = {
-      name: 'New Group',
-      avatarURL: '/'
+    conversationDataToCreate.group = {
+      name: name ?? 'New Group',
+      avatarUrl: uploadResults?.secure_url ?? '/'
     }
 
     membersToAdd = uniqueMemberIds.map(id => ({
@@ -134,7 +148,7 @@ const createConversation = async (conversationData, userId) => {
   }
 
   // ============================= TẠO CONVERSATION ================================
-  const newConversation = await Conversation.create(conversationData)
+  const newConversation = await Conversation.create(conversationDataToCreate)
   await newConversation.save()
 
   // Thêm member vào conversation
@@ -269,8 +283,8 @@ const getConversation = async (page = 1, limit = 20, userId) => {
           $switch: {
             branches: [
               { case: { $eq: ['$conversation.type', 'direct'] }, then: { $ifNull: [{ $ifNull: [{ $arrayElemAt: ['$otherUsers.fullName', 0] }, null] }, 'Unknown'] } },
-              { case: { $eq: ['$conversation.type', 'group'] },  then: { $ifNull: ['$conversation.group.name', 'Group'] } },
-              { case: { $eq: ['$conversation.type', 'cloud'] },  then: 'Your Cloud' }
+              { case: { $eq: ['$conversation.type', 'group'] }, then: { $ifNull: ['$conversation.group.name', 'Group'] } },
+              { case: { $eq: ['$conversation.type', 'cloud'] }, then: 'Your Cloud' }
             ],
             default: 'Unknown'
           }
@@ -278,9 +292,9 @@ const getConversation = async (page = 1, limit = 20, userId) => {
         conversationAvatarUrl: {
           $switch: {
             branches: [
-              { case: { $eq: ['$conversation.type', 'direct'] }, then: { $ifNull: [{ $arrayElemAt: ['$otherUsers.avatarUrl', 0] }, '' ] } },
-              { case: { $eq: ['$conversation.type', 'group'] },  then: { $ifNull: ['$conversation.group.avatarUrl', '' ] } },
-              { case: { $eq: ['$conversation.type', 'cloud'] },  then: 'https://cdn-icons-png.flaticon.com/512/8038/8038388.png' }
+              { case: { $eq: ['$conversation.type', 'direct'] }, then: { $ifNull: [{ $arrayElemAt: ['$otherUsers.avatarUrl', 0] }, ''] } },
+              { case: { $eq: ['$conversation.type', 'group'] }, then: { $ifNull: ['$conversation.group.avatarUrl', ''] } },
+              { case: { $eq: ['$conversation.type', 'cloud'] }, then: 'https://cdn-icons-png.flaticon.com/512/8038/8038388.png' }
             ],
             default: ''
           }
@@ -292,11 +306,11 @@ const getConversation = async (page = 1, limit = 20, userId) => {
             $cond: [
               { $eq: ['$conversation.type', 'direct'] },
               {
-                id:        { $arrayElemAt: [ { $map: { input: '$otherUsers', as: 'u', in: '$$u._id' } }, 0 ] },
-                fullName:  { $arrayElemAt: [ '$otherUsers.fullName', 0 ] },
-                username:  { $arrayElemAt: [ '$otherUsers.username', 0 ] },
-                avatarUrl: { $arrayElemAt: [ '$otherUsers.avatarUrl', 0 ] },
-                status:    { $arrayElemAt: [ '$otherUsers.status', 0 ] }
+                id: { $arrayElemAt: [{ $map: { input: '$otherUsers', as: 'u', in: '$$u._id' } }, 0] },
+                fullName: { $arrayElemAt: ['$otherUsers.fullName', 0] },
+                username: { $arrayElemAt: ['$otherUsers.username', 0] },
+                avatarUrl: { $arrayElemAt: ['$otherUsers.avatarUrl', 0] },
+                status: { $arrayElemAt: ['$otherUsers.status', 0] }
               },
               {}
             ]
@@ -312,12 +326,12 @@ const getConversation = async (page = 1, limit = 20, userId) => {
               { $eq: ['$conversation.type', 'group'] },
               {
                 $map: {
-                  input: { $concatArrays: [ [ '$meUser' ], '$otherUsers' ] },
+                  input: { $concatArrays: [['$meUser'], '$otherUsers'] },
                   as: 'm',
                   in: {
-                    id:        '$$m._id',
-                    fullName:  '$$m.fullName',
-                    username:  '$$m.username',
+                    id: '$$m._id',
+                    fullName: '$$m.fullName',
+                    username: '$$m.username',
                     avatarUrl: '$$m.avatarUrl'
                   }
                 }
@@ -425,7 +439,7 @@ const fetchConversationDetail = async (userId, conversationId, limit = 30, befor
     )
   ]
 
-  const combinedIds = [...new Set([ ...senderIds, ...memberIds ])]
+  const combinedIds = [...new Set([...senderIds, ...memberIds])]
 
   let usersById = new Map()
   if (combinedIds.length) {
@@ -441,19 +455,19 @@ const fetchConversationDetail = async (userId, conversationId, limit = 30, befor
       const u = usersById.get(String(uid))
       return u
         ? {
-            id: u._id,
-            fullName: u.fullName || null,
-            username: u.username || null,
-            avatarUrl: u.avatarUrl || null,
-            status: u.status || null // friendship sẽ gắn sau
-          }
+          id: u._id,
+          fullName: u.fullName || null,
+          username: u.username || null,
+          avatarUrl: u.avatarUrl || null,
+          status: u.status || null // friendship sẽ gắn sau
+        }
         : {
-            id: uid,
-            fullName: null,
-            username: null,
-            avatarUrl: null,
-            status: null
-          }
+          id: uid,
+          fullName: null,
+          username: null,
+          avatarUrl: null,
+          status: null
+        }
     })
   }
 
@@ -461,21 +475,21 @@ const fetchConversationDetail = async (userId, conversationId, limit = 30, befor
   const messagesWithSender =
     convo.type === 'group'
       ? messages.map(m => {
-          const key = m?.senderId ? String(m.senderId) : null
-          const u = key ? usersById.get(key) : null
-          return {
-            ...m,
-            sender: u
-              ? {
-                  id: u._id,
-                  fullName: u.fullName || null,
-                  username: u.username || null,
-                  avatarUrl: u.avatarUrl || null,
-                  status: u.status || null
-                }
-              : null
-          }
-        })
+        const key = m?.senderId ? String(m.senderId) : null
+        const u = key ? usersById.get(key) : null
+        return {
+          ...m,
+          sender: u
+            ? {
+              id: u._id,
+              fullName: u.fullName || null,
+              username: u.username || null,
+              avatarUrl: u.avatarUrl || null,
+              status: u.status || null
+            }
+            : null
+        }
+      })
       : messages
 
   const result = {
@@ -505,28 +519,28 @@ const fetchConversationDetail = async (userId, conversationId, limit = 30, befor
 
 const getUnreadSummary = async (userId) => {
   // Lấy membership của user
-  const members = await ConversationMember.find({userId})
-  .select("conversation lastReadMessageSeq")
-  .lean()
+  const members = await ConversationMember.find({ userId })
+    .select("conversation lastReadMessageSeq")
+    .lean()
 
   // Lấy messageSeq của các conversation liên quan
   const convoIds = members.map(m => m.conversation)
-  const convos = await Conversation.find({_id: {$in: convoIds}})
-  .select("_id messageSeq")
-  .lean()
+  const convos = await Conversation.find({ _id: { $in: convoIds } })
+    .select("_id messageSeq")
+    .lean()
 
   const seqMap = Object.fromEntries(convos.map(c => [String(c._id), c.messageSeq || 0]))
 
   const items = members.map(m => {
     const cid = String(m.conversation)
     const unread = Math.max(0, (seqMap[cid] || 0) - (m.lastReadMessageSeq || 0))
-    return {conversationId: cid, unread}
+    return { conversationId: cid, unread }
   })
 
   const totalConversations = items.reduce((acc, i) => acc + (i.unread > 0 ? 1 : 0), 0)
   const totalMessages = items.reduce((acc, i) => acc + i.unread, 0)
 
-  return {items, totalConversations, totalMessages}
+  return { items, totalConversations, totalMessages }
 }
 
 export const conversationService = {
