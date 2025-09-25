@@ -1,31 +1,30 @@
-import { CONTACT_TABS } from "@/components/common/Sidebar/Contact/ContactSidebar";
-import { Tabs, TabsContent } from "@/components/ui/tabs";
-import { useOutletContext } from "react-router-dom";
-import { ListFriend } from "@/components/common/Sidebar/Contact/ListFriend";
+import FriendRequest from '@/components/common/Sidebar/Contact/FriendRequest.jsx'
+import { Route, Routes, useLocation, useNavigate } from 'react-router-dom'
+import ListFriend from '../../components/common/Sidebar/Contact/ListFriend.jsx'
+import { useEffect } from 'react'
 
-export default function ContactPage() {
-  // mở rộng context để lấy data cần cho ContactsList
-  const { contactTab, setContactTab } = useOutletContext();
+const ContactPage = () => {
+  const navigate = useNavigate()
+  const location = useLocation()
+
+  // Effect để handle redirect khi vào /contacts (không có tab)
+  useEffect(() => {
+    if (location.pathname === '/contacts' || location.pathname === '/contacts/') {
+      navigate('/contacts/friends', { replace: true })
+    }
+  }, [location.pathname, navigate])
 
   return (
-    <div className="h-full w-full p-4">
-      <Tabs value={contactTab} onValueChange={setContactTab} className="h-full">
-        {/* Friends list */}
-        <TabsContent value="friends" className="h-full m-0">
-          <div className="h-[calc(100vh-180px)] border rounded-md overflow-hidden">
-            <ListFriend/>
-          </div>
-        </TabsContent>
-
-        {/* Các tab còn lại giữ placeholder */}
-        {CONTACT_TABS.filter(t => t.value !== "friends").map((tab) => (
-          <TabsContent key={tab.value} value={tab.value} className="h-full m-0">
-            <div className="h-[calc(100vh-180px)] border rounded-md flex items-center justify-center font-medium text-muted-foreground">
-              {tab.name} Content
-            </div>
-          </TabsContent>
-        ))}
-      </Tabs>
+    <div className="w-full h-full">
+      {/* Chỉ render nội dung chính, AppSidebar sẽ handle tabs */}
+      <Routes>
+        <Route path="friends" element={<ListFriend />} />
+        <Route path="friendsRequest" element={<FriendRequest />} />
+        <Route path="groups" element={<div>Joined groups and communities (placeholder)</div>} />
+        <Route path="groupsRequest" element={<div>Group and community invitations (placeholder)</div>} />
+      </Routes>
     </div>
-  );
+  )
 }
+
+export default ContactPage
