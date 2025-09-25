@@ -1,33 +1,45 @@
-// server/socket.js
-import { Server } from "socket.io"
+import { useEffect, useRef, useState } from "react"
+import { getWebRTCSocket } from "@/lib/socket"
 
-export function attachSocket(server) {
-  const io = new Server(server, { cors: { origin: "*" } })
+export function useCallInvite(currentUserId) {
+  const [incoming, setIncoming] = useState(null)
+  const socketRef = useRef(null)
 
-  io.on("connection", (socket) => {
-    const userId = socket.handshake.auth?.userId || socket.handshake.query?.userId
-    if (userId) {
-      const room = `user:${String(userId)}`
-      socket.join(room)
-      console.log("[SOCKET] joined", room)
+  useEffect(() => {
+    const s = getWebRTCSocket(currentUserId)
+    socketRef.current = s
+
+    const onIncoming = (data) => setIncoming({ ...data, receivedAt: Date.now() })
+    const onCancelled = () => setIncoming(null)
+
+    s.on("call:incoming", onIncoming)
+    s.on("call:cancelled", onCancelled)
+
+    return () => {
+      s.off("call:incoming", onIncoming)
+      s.off("call:cancelled", onCancelled)
     }
+  }, [currentUserId])
 
-    socket.on("call:invite", (payload = {}) => {
-      const { toUserIds = [] } = payload
-      console.log("[CALL] invite ->", toUserIds)
-      toUserIds
-        .filter(Boolean)
-        .forEach(uid => io.to(`user:${String(uid)}`).emit("call:incoming", payload))
+  const invite = ({ conversationId, mode, toUserIds, fromUser, peer, timeoutMs = 30000 }) => {
+    socketRef.current?.emit("call:invite", {
+      conversationId, mode, toUserIds, fromUser, peer, timeoutMs
     })
+  }
 
-    socket.on("call:cancel", (payload = {}) => {
-      const { toUserIds = [] } = payload
-      console.log("[CALL] cancel ->", toUserIds)
-      toUserIds
-        .filter(Boolean)
-        .forEach(uid => io.to(`user:${String(uid)}`).emit("call:cancelled", payload))
-    })
-  })
+  const cancel = ({ toUserIds, conversationId }) => {
+    socketRef.current?.emit("call:cancel", { toUserIds, conversationId })
+    setIncoming(null)
+  }
 
-  return io
+  const accept = ({ toUserId, conversationId }) => {
+    socketRef.current?.emit("call:accept", { toUserId, conversationId })
+  }
+
+  const reject = ({ toUserId, conversationId, reason }) => {
+    socketRef.current?.emit("call:reject", { toUserId, conversationId, reason })
+    setIncoming(null)
+  }
+
+  return { incoming, invite, cancel, accept, reject }
 }

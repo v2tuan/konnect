@@ -1,4 +1,4 @@
-import { getSocket } from "@/lib/socket"
+import { getWebRTCSocket  } from "@/lib/socket"
 import { useEffect, useRef, useState } from 'react'
 
 const ICE = { iceServers: [{ urls: ['stun:stun.l.google.com:19302'] }] }
@@ -63,7 +63,7 @@ export function useWebRTCGroup({ roomId, currentUserId, initialMode = 'video' })
   }
 
   useEffect(() => {
-    const socket = getSocket('/webrtc')
+    const socket = getWebRTCSocket('/webrtc')
     socketRef.current = socket
 
     const join = async () => {

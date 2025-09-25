@@ -38,6 +38,7 @@ export const disconnectSocket = () => {
   }
 }
 
+//namespace rieng cho phan call
 export function getWebRTCSocket(currentUserId) {
   if (!webrtcSocket) {
     webrtcSocket = io(`${API_ROOT}/webrtc`, {
