@@ -1,3 +1,4 @@
+// src/lib/socket.js
 import { io } from "socket.io-client"
 import { API_ROOT } from "@/utils/constant"
 
@@ -6,11 +7,15 @@ let webrtcSocket = null
 
 export const getSocket = () => socket
 
-export const connectSocket = () => {
+export const connectSocket = (currentUserId) => {
   if (socket?.connected) return socket
+
   socket = io(API_ROOT, {
     transports: ["websocket"],
-    withCredentials: true
+    withCredentials: true,
+    auth: { userId: String(currentUserId || "") }
+    // nếu bạn muốn dùng query thay auth:
+    // query: { userId: String(currentUserId || "") }
   })
 
   socket.on("connect", () => console.log("[socket] connected", socket.id))
@@ -22,7 +27,7 @@ export const connectSocket = () => {
   )
 
   return socket
-};
+}
 
 export const disconnectSocket = () => {
   try {
@@ -33,9 +38,12 @@ export const disconnectSocket = () => {
   }
 }
 
-export function getWebRTCSocket() {
+export function getWebRTCSocket(currentUserId) {
   if (!webrtcSocket) {
-    webrtcSocket = io(`${API_ROOT}/webrtc`, { withCredentials: true })
+    webrtcSocket = io(`${API_ROOT}/webrtc`, {
+      withCredentials: true,
+      auth: { userId: String(currentUserId || "") } // giữ đồng nhất
+    })
   }
   return webrtcSocket
 }
