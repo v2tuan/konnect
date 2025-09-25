@@ -31,6 +31,7 @@ export function ChatArea({
   onStopTyping,
   othersTyping = false
 }) {
+  console.log('Message:', messages)
   const [messageText, setMessageText] = useState('')
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
@@ -94,7 +95,7 @@ export function ChatArea({
       setFriendReq(s => ({ ...s, loading: true }))
       const res = await submitFriendRequestAPI(otherUserId)
       const requestId =
-      res?.requestId || res?.data?.requestId || res?.data?._id || res?._id || null
+        res?.requestId || res?.data?.requestId || res?.data?._id || res?._id || null
 
       // cập nhật cả 2: UI + friendReq
       setUiFriendship({ status: 'pending', direction: 'outgoing', requestId })
@@ -120,7 +121,7 @@ export function ChatArea({
 
       setFriendReq({ sent: false, requestId: null, loading: false })
     } catch (e) {
-    // rollback nếu BE lỗi (hiếm)
+      // rollback nếu BE lỗi (hiếm)
       setUiFriendship({ status: 'pending', direction: 'outgoing', requestId: rid })
       setFriendReq(s => ({ ...s, sent: true, loading: false }))
     }
@@ -201,7 +202,7 @@ export function ChatArea({
   const handleSendMessage = () => {
     const value = messageText.trim()
     if (!value || sending) return
-    onSendMessage?.({type: 'text', content: value})
+    onSendMessage?.({ type: 'text', content: value })
     setMessageText('')
     setShowEmojiPicker(false)
   }
@@ -225,8 +226,18 @@ export function ChatArea({
   }
 
   const handleImageChange = (e) => {
-    const file = e.target.files?.[0]
+    const files = e.target.files
+    if (!files) return
+
+    // Chuyển FileList thành mảng để dễ thao tác
+    const fileArray = Array.from(files)
+
+    onSendMessage?.({
+      type: 'image',   // đổi type cho rõ là nhiều file
+      content: fileArray
+    })
   }
+
 
   // === Derive hiển thị banner (text + buttons) từ friendship/status ===
   const outgoingSent = uiFriendship.status === 'pending' && uiFriendship.direction === 'outgoing'
@@ -411,8 +422,10 @@ export function ChatArea({
             <Input
               type="file"
               ref={imageRef}
+              onChange={handleImageChange}
               accept="image/*"
               className="hidden"
+              multiple
             />
             <Button variant="ghost" size="sm" className="shrink-0" onClick={handleFileClick}>
               <Paperclip className="w-5 h-5" />
@@ -473,7 +486,7 @@ export function ChatArea({
       {/* Slide Panel */}
       <div
         className={`fixed flex flex-col top-0 right-0 h-full w-80 shadow-lg transform transition-transform duration-300 ease-in-out border-l ${isOpen ? 'translate-x-0' : 'translate-x-full'
-        }`}
+          }`}
       >
         <div className="flex items-center justify-center p-4 border-b h-18">
           <h2 className="text-lg font-semibold">Conversation information</h2>

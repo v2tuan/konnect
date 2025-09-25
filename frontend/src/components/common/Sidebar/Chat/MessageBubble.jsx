@@ -124,33 +124,98 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
         </div>
 
         {/* Bubble */}
-        <div
-          className={`
-            relative p-3 rounded-lg
-            ${isOwn
-      ? 'bg-blue-500 text-white rounded-br-sm'
-      : 'bg-secondary text-secondary-foreground rounded-bl-sm'
-    }
-          `}
-        >
-          {message.isPinned && (
-            <Pin className="absolute top-1 right-1 w-3 h-3 text-yellow-500" />
-          )}
+        {message.media || message.body?.media ? (
+          (
+            <>
+              {/* Hiển thị media với layout thông minh */}
+              <div className={`
+  ${message.media.length === 1
+              ? 'flex justify-center'
+              : message.media.length === 2
+                ? 'grid grid-cols-2 gap-2'
+                : message.media.length <= 4
+                  ? 'grid grid-cols-2 gap-2 max-w-md'
+                  : 'grid grid-cols-3 gap-2 max-w-lg'
+            }
+`}>
+                {message.media.map((m, index) => (
+                  <div key={index} className="relative">
+                    {message.isPinned && (
+                      <Pin className="absolute top-1 right-1 w-3 h-3 text-yellow-500 z-10" />
+                    )}
+                    <img
+                      src={m.url ?? message.body?.media?.url}
+                      alt="message attachment"
+                      className={`
+          rounded-lg shadow-md object-cover
+          ${message.media.length === 1
+                    ? 'max-w-sm max-h-96 w-full' // Ảnh đơn: hiển thị lớn
+                    : message.media.length === 2
+                      ? 'w-full h-32 sm:h-40' // 2 ảnh: vừa phải
+                      : message.media.length <= 4
+                        ? 'w-full h-24 sm:h-32' // 3-4 ảnh: nhỏ hơn
+                        : 'w-full h-20 sm:h-24' // 5+ ảnh: rất nhỏ
+                  }
+          hover:shadow-lg transition-shadow duration-200 cursor-pointer
+        `}
+                      onClick={() => {
+                        // Có thể thêm function để mở ảnh full size
+                        // openImageModal(m.url ?? message.body?.media?.url);
+                      }}
+                    />
 
-          <p className="text-sm whitespace-pre-wrap break-words">
-            {message.text ?? message.body?.text ?? ''}
-          </p>
+                    {/* Hiển thị số thứ tự nếu có nhiều hơn 5 ảnh */}
+                    {/* {message.media.length > 5 && (
+                      <div className="absolute bottom-1 right-1 bg-black bg-opacity-60 text-white text-xs px-1 rounded">
+                        {index + 1}
+                      </div>
+                    )} */}
+                  </div>
+                ))}
+              </div>
 
-          {Array.isArray(message.reactions) && message.reactions.length > 0 && (
-            <div className="flex gap-1 mt-1">
-              {message.reactions.map((reaction, i) => (
-                <Badge key={i} variant="secondary" className="text-xs">
-                  {reaction.emoji} {reaction.count}
-                </Badge>
-              ))}
-            </div>
-          )}
-        </div>
+              {/* Reactions - hiển thị bên ngoài container ảnh */}
+              {Array.isArray(message.reactions) && message.reactions.length > 0 && (
+                <div className="flex gap-1 mt-2 flex-wrap">
+                  {message.reactions.map((reaction, i) => (
+                    <Badge key={i} variant="secondary" className="text-xs">
+                      {reaction.emoji} {reaction.count}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </>
+          )
+        ) : (
+          // Nếu là text thì render bubble
+          <div
+            className={`
+      relative p-3 rounded-lg
+      ${isOwn
+            ? 'bg-blue-500 text-white rounded-br-sm'
+            : 'bg-secondary text-secondary-foreground rounded-bl-sm'
+          }
+    `}
+          >
+            {message.isPinned && (
+              <Pin className="absolute top-1 right-1 w-3 h-3 text-yellow-500" />
+            )}
+
+            <p className="text-sm whitespace-pre-wrap break-words">
+              {message.text ?? message.body?.text ?? ''}
+            </p>
+
+            {Array.isArray(message.reactions) && message.reactions.length > 0 && (
+              <div className="flex gap-1 mt-1">
+                {message.reactions.map((reaction, i) => (
+                  <Badge key={i} variant="secondary" className="text-xs">
+                    {reaction.emoji} {reaction.count}
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Time + status */}
         {showMeta && (

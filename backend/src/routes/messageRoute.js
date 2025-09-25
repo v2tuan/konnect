@@ -1,6 +1,7 @@
 import express from 'express'
 import { messageController } from '~/controllers/messageController'
 import authMiddleware from '~/middlewares/authMiddleware'
+import { multerUploadMiddleware } from '~/middlewares/multerUploadMiddleware'
 
 const Router = express.Router()
 
@@ -8,6 +9,6 @@ Router.route('/:conversationId')
   .get(authMiddleware, messageController.listMessages)
 
 Router.route('/')
-  .post(authMiddleware, messageController.sendMessage)
+  .post(authMiddleware,multerUploadMiddleware.upload.array('file', 10), messageController.sendMessage)
 
 export const messageRoutes = Router

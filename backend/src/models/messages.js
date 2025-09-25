@@ -23,10 +23,12 @@ let messageSchema = new mongoose.Schema({
     body: {
         text: { type: String, default: '' }
     },
-    media: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'Media'
-    },
+    media: [
+        {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Media'
+        }
+    ],
     recalled: {
         type: Boolean,
         default: false

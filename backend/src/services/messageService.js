@@ -6,6 +6,8 @@ import { MAX_LIMIT_MESSAGE } from '~/utils/constant'
 import { notificationService } from '~/services/notificationService'
 import ConversationMember from "~/models/conversation_members";
 import { CloudinaryProvider } from '~/providers/CloudinaryProvider'
+import Media from '~/models/medias'
+import { mediaService } from './mediaService'
 
 function toPublicMessage(m) {
   return {
@@ -14,6 +16,7 @@ function toPublicMessage(m) {
     seq: m.seq,
     type: m.type,
     body: m.body,
+    media: m.media,
     senderId: m.senderId,
     createdAt: m.createdAt
   }
@@ -63,49 +66,48 @@ async function sendMessage({ userId, conversationId, type, text, file, io }) {
 
   let newMediaDoc = null
   // 3. Tạo bản ghi message mới
-  if(['image','file','audio'].includes(type) && file) {
-    const upload = await CloudinaryProvider.streamUpload(file.buffer, "konnect/conversationId");
+  let newMediaDocs = []
+  if (['image', 'file', 'audio'].includes(type) && file) {
+    const files = file || []
+    const uploadResults = await mediaService.uploadMultiple(files, conversationId)
 
-    // Lưu thông tin file vào collection Medias
-    const media = {
-      conversationId: new mongoose.Types.ObjectId(conversationId),
-      uploaderId: new mongoose.Types.ObjectId(userId),
-      type,
-      url: upload.secrue_url, // URL truy cập file
-      metadata: {
-        filename: file.originalname,
-        size: file.size,
-        mimetype: file.mimetype
-      },
-      uploadedAt: now
-    }
+    const promises = uploadResults.map((result, index) => {
+      const media = {
+        conversationId: new mongoose.Types.ObjectId(conversationId),
+        uploaderId: new mongoose.Types.ObjectId(userId),
+        type,
+        url: result.url, // URL truy cập file
+        metadata: {
+          filename: files[index].originalname,
+          size: result.bytes,
+          mimetype: files[index].mimetype
+        },
+        uploadedAt: now
+      }
 
-    newMediaDoc = await mongoose.model('Media').create(media)
-    if (!newMediaDoc) {
-      throw new Error('Failed to save media info')
-    }
-    // Gán thông tin media vào message
-    file = {
-      _id: newMediaDoc._id,
-      conversationId: newMediaDoc.conversationId,
-      type: newMediaDoc.type,
-      url: newMediaDoc.url,
-      metadata: newMediaDoc.metadata,
-      uploadedAt: newMediaDoc.uploadedAt
-    }
+      // Trả về promise lưu vào DB
+      return Media.create(media)
+    })
+
+    // Đợi tất cả media được lưu
+    newMediaDocs = await Promise.all(promises)
+
   }
-  
-  const newMessage = await Message.create({
+
+  let newMessage = await Message.create({
     conversationId: new mongoose.Types.ObjectId(conversationId),
     seq: messageSeq,
     senderId: new mongoose.Types.ObjectId(userId),
-    media: newMediaDoc ? newMediaDoc._id : null,
+    media: Array.isArray(newMediaDocs) ? newMediaDocs.map(m => m._id) : [], // danh sách media
     type,
     body: {
       text: type === 'text' ? text : '' // chỉ lưu text nếu type = text
     },
     createdAt: now
   })
+
+  // populate sau khi create
+  newMessage = await newMessage.populate('media');
 
   // 4. Cập nhật thông tin lastMessage của hội thoại
   await Conversation.updateOne(
@@ -198,6 +200,7 @@ async function listMessages({ userId, conversationId, limit = 30, beforeSeq }) {
     // đảo ngược tin nhắn, mới nhất xếp trước
     const docs = await Message
       .find(q)
+      .populate('media')
       .sort({ seq: -1 })
       .limit(_limit)
       .lean()

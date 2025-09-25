@@ -37,6 +37,7 @@ export const useCloudChat = (options = {}) => {
       seq: m.seq ?? 0,
       createdAt: m.createdAt ?? Date.now(),
       body: m.body,
+      media: m.media || null,
       text: m.body?.text ?? m.text ?? "",
       senderId: m.senderId,
       type: m.type
@@ -179,14 +180,20 @@ export const useCloudChat = (options = {}) => {
       if (message.type === "text") {
         payload = {
           type: "text",
-          body: {text: message.content}
+          body: { text: message.content }
         }
       }
       else if (["image", "file", "audio"].includes(message.type)) {
         // Tạo FormData để upload file/blob
         payload = new FormData()
         payload.append("type", message.type)
-        payload.append("file", message.content)
+        if (Array.isArray(message.content)) {
+          message.content.forEach(f => {
+            payload.append("file", f)  // thêm nhiều file vào cùng key "file"
+          })
+        } else {
+          payload.append("file", message.content) // trường hợp chỉ 1 file
+        }
         isFormData = true
       }
       else {

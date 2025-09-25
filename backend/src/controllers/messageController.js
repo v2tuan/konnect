@@ -34,6 +34,7 @@ const sendMessage = async (req, res, next) => {
   try {
     const userId = req.userId
     const { conversationId, type, body } = req.body
+    console.log(req.files)
 
     if (!conversationId) {
       return res.status(StatusCodes.BAD_REQUEST).json({ message: "conversationId is required" })
@@ -44,7 +45,7 @@ const sendMessage = async (req, res, next) => {
         return res.status(StatusCodes.BAD_REQUEST).json({ message: "Text body is required for text messages" })
       }
     } else if (["image", "file", "audio"].includes(type)) {
-      if (!req.file) {
+      if (!req.files) {
         return res.status(StatusCodes.BAD_REQUEST).json({ message: "File is required for image, file, or audio messages" })
       }
     } else {
@@ -56,7 +57,7 @@ const sendMessage = async (req, res, next) => {
       conversationId,
       type,
       text: body?.text,
-      file: req.file,   // ⚡ Thêm file vào service
+      file: req.files,   // ⚡ Thêm file vào service
       io: req.io
     })
 
