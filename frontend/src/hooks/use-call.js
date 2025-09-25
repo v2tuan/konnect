@@ -1,4 +1,4 @@
-import { getWebRTCSocket  } from "@/lib/socket"
+import { getWebRTCSocket } from "@/lib/socket"
 import { useEffect, useRef, useState } from 'react'
 
 const ICE = { iceServers: [{ urls: ['stun:stun.l.google.com:19302'] }] }
@@ -10,6 +10,7 @@ export function useWebRTCGroup({ roomId, currentUserId, initialMode = 'video' })
   const pcsRef = useRef(new Map()) // peerId -> RTCPeerConnection
   const remoteStreamsRef = useRef(new Map()) // peerId -> MediaStream
   const socketRef = useRef(null)
+  const peerIdsRef = useRef([])
 
   const ensureLocalStream = async (target = mode) => {
     const needVideo = target === 'video'
@@ -62,6 +63,9 @@ export function useWebRTCGroup({ roomId, currentUserId, initialMode = 'video' })
     s.getTracks().forEach(t => pc.addTrack(t, s))
   }
 
+  useEffect(() => { peerIdsRef.current = peerIds }, [peerIds])
+
+
   useEffect(() => {
     const socket = getWebRTCSocket('/webrtc')
     socketRef.current = socket
@@ -84,13 +88,17 @@ export function useWebRTCGroup({ roomId, currentUserId, initialMode = 'video' })
     })
 
     socket.on('peer-joined', async ({ peerId }) => {
-      if (peerIds.length >= 3) return // đủ 4 người
+      if (peerIdsRef.current.length >= 3) return // đủ 4 người
       const pc = createPC(peerId)
       addLocalTracksTo(pc)
       const offer = await pc.createOffer()
       await pc.setLocalDescription(offer)
       socket.emit('rtc-offer', { to: peerId, sdp: offer, from: currentUserId })
-      setPeerIds(ids => [...new Set([...ids, peerId])].slice(0, 3))
+      setPeerIds(ids => {
+        const next = [...new Set([...ids, peerId])].slice(0, 3)
+        peerIdsRef.current = next
+        return next
+      })
     })
 
     socket.on('rtc-offer', async ({ from, sdp }) => {
