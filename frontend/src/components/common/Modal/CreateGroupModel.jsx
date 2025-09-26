@@ -1,12 +1,14 @@
-import { getFriendsAPI } from "@/apis"
+import { createConversation, getFriendsAPI } from "@/apis"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { Label } from "@radix-ui/react-label"
 import { fr } from "date-fns/locale"
-import { Camera, Image, Search, Users, X } from "lucide-react"
+import { Camera, Image, LoaderCircle, Search, Users, X } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
+import { set } from "date-fns"
+import { toast } from "react-toastify"
 
 export default function CreateGroupDialog() {
   const [selectedMembers, setSelectedMembers] = useState([]) // Mảng tên thành viên đã chọn
@@ -22,33 +24,16 @@ export default function CreateGroupDialog() {
   const [page, setPage] = useState(1)
   const [debouncedQ, setDebouncedQ] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
-
-
-  const tabs = ['Tất cả', 'Khách hàng', 'Gia đình', 'Công việc', 'Bạn bè', 'Trả lời sau']
-
-  const recentContacts = [
-    { name: 'Nguyễn Văn A', avatar: '👨', isSelected: true },
-    { name: 'Trần Văn B', avatar: '👨' },
-    { name: 'Duy Lon', avatar: '👨' },
-    { name: 'Nguyễn Văn D', avatar: '👨' },
-    { name: 'Nguyễn Văn E', avatar: '👨' }
-  ]
-
-  const alphabetContacts = {
-    'F': [{ name: 'Nguyễn Văn F', avatar: '👨' }],
-    'G': [
-      { name: 'Nguyễn Văn G', avatar: '👨' },
-      { name: 'Nguyễn Văn H', avatar: '👨' }
-    ]
-  }
+  const [open, setOpen] = useState(false)
+  const [sending, setSending] = useState(false)
 
   const toggleMember = (member) => {
     setSelectedMembers(prev =>
-      prev.some(m => m.id === member.id)        // kiểm tra đã có chưa
-        ? prev.filter(m => m.id !== member.id)  // remove
-        : [...prev, member]                     // add
-    );
-  };
+      prev.some(m => m.id === member.id) // kiểm tra đã có chưa
+        ? prev.filter(m => m.id !== member.id) // remove
+        : [...prev, member] // add
+    )
+  }
 
 
   const removeMember = (member) => {
@@ -138,6 +123,37 @@ export default function CreateGroupDialog() {
     setPage(1)
   }, [debouncedQ])
 
+  const handleCreateGroup = async () => {
+    // Logic tạo nhóm
+    const payload = new FormData()
+    payload.append('type', 'group')
+    payload.append('name', groupName)
+    const formData = new FormData()
+    selectedMembers.forEach(m => formData.append('memberIds[]', m.id))
+    if (fileInputRef.current?.files?.[0]) {
+      payload.append('avatarUrl', fileInputRef.current.files[0])
+    }
+    payload.append('memberIds', JSON.stringify(selectedMembers.map(m => m.id)))
+    // Gọi API tạo nhóm
+    try {
+      setSending(true)
+      if (sending) return
+      const response = await createConversation(payload)
+      // Đóng dialog và reset state
+      setSelectedMembers([])
+      setGroupName('')
+      setGroupImage(null)
+      setOpen(false)
+      toast.success('Nhóm đã được tạo thành công!')
+      // Có thể chuyển hướng đến nhóm mới tạo hoặc cập nhật lại danh sách nhóm ở đây
+      console.log('Nhóm mới tạo:', response)
+      setSending(false)
+    }
+    catch (err) {
+      setSending(false)
+    }
+  }
+
   const ContactItem = ({ contact, section = 'recent' }) => (
     <div
       className="flex items-center p-3 rounded-md border border-transparent cursor-pointer hover:bg-primary/10 hover:border-primary/50"
@@ -147,7 +163,7 @@ export default function CreateGroupDialog() {
       <div className={`w-4 h-4 rounded-full border-2 mr-3 flex items-center justify-center ${selectedMembers.some(m => m.id == contact.id)
         ? 'bg-blue-500 border-blue-500'
         : 'border-gray-300'
-        }`}>
+      }`}>
         {selectedMembers.some(m => m.id == contact.id) && (
           <div className="w-2 h-2 bg-white rounded-full"></div>
         )}
@@ -161,7 +177,7 @@ export default function CreateGroupDialog() {
     </div>
   )
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <form>
         <DialogTrigger asChild>
           <button className="flex flex-col items-center p-3 rounded-lg transition-colors cursor-pointer">
@@ -176,7 +192,7 @@ export default function CreateGroupDialog() {
               <div className="flex items-center justify-between p-4 border-b">
                 <h2 className="font-semibold">Create Group</h2>
                 <DialogClose asChild>
-                  <button className="p-1 rounded-full hover:bg-primary/50">
+                  <button className="p-1 rounded-full hover:bg-primary/50 hover:text-primary-foreground">
                     <X size={20} />
                   </button>
                 </DialogClose>
@@ -322,19 +338,17 @@ export default function CreateGroupDialog() {
 
               {/* Footer */}
               <div className="flex justify-end space-x-3 p-4 border-t">
-                <button className="px-6 py-2 rounded-md text-muted-foreground hover:bg-secondary">
+                <Button variant={"outline"} className={`px-6 py-2`} onClick={() => setOpen(false)}>
                   Hủy
-                </button>
+                </Button>
 
-                <button
-                  className={`px-6 py-2 rounded-md ${selectedMembers.length > 0 && groupName.trim()
-                    ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-                    : 'bg-muted text-muted-foreground cursor-not-allowed'
-                    }`}
-                  disabled={selectedMembers.length === 0 || !groupName.trim()}
+                <Button
+                className={`px-6 py-2`}
+                  disabled={selectedMembers.length === 0 || !groupName.trim() || sending}
+                  onClick={handleCreateGroup}
                 >
-                  Tạo nhóm
-                </button>
+                  {sending ? 'Creating Group...' : 'Create Group'}
+                </Button>
 
               </div>
             </div>

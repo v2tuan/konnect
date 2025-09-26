@@ -50,9 +50,12 @@ async function markFriendshipOnConversation(meId, convObj) {
 }
 
 const createConversation = async (conversationData, file, userId) => {
-  const { type, memberIds, name, avatarUrl } = conversationData
+  let { type, memberIds, name } = conversationData
   console.log("Creating conversation:", conversationData, "by user:", userId)
-  console.log(name, avatarUrl)
+  console.log(name)
+
+  memberIds = JSON.parse(memberIds || '[]');
+
 
   const conversationDataToCreate = {
     type,
