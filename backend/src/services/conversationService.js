@@ -54,7 +54,9 @@ const createConversation = async (conversationData, file, userId) => {
   console.log("Creating conversation:", conversationData, "by user:", userId)
   console.log(name)
 
-  memberIds = JSON.parse(memberIds || '[]');
+  memberIds = Array.isArray(memberIds)
+  ? memberIds
+  : JSON.parse(memberIds || "[]");
 
 
   const conversationDataToCreate = {
