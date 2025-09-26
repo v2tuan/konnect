@@ -104,6 +104,16 @@ export const getConversationByUserId = async (userId) => {
   return response.data
 }
 
+/**
+ * Tạo conversation mới
+ */
+export const createConversation = async (data) => {
+  const response = await authorizeAxiosInstance.post(`${API_ROOT}/api/conversation`, data, {
+    headers: { "Content-Type": "multipart/form-data" }
+  })
+  return response.data
+}
+
 /* ======================== MESSAGE APIs ======================== */
 
 /**
