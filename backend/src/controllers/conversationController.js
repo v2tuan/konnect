@@ -111,6 +111,24 @@ const getUnreadSummary = async (req, res, next) => {
     next(e)
   }
 }
+// GET /v1/api/conversations/:id/media?type=image&limit=24&page=1
+const listConversationMedia = async (req, res, next) => {
+  try {
+    const userId = req.userId;
+    if (!userId) return res.status(401).json({message: "Unauthorized"});
+
+    const conversationId = req.params.id;
+    const {type, page, limit} = req.query;
+
+    const result = await conversationService.listConversationMedia({
+      userId, conversationId, type, page, limit
+    });
+
+    return res.status(StatusCodes.OK).json(result);
+  } catch (e) {
+    next(e);
+  }
+};
 
 
 export const conversationController = {
@@ -118,5 +136,6 @@ export const conversationController = {
   getConversation,
   fetchConversationDetail,
   readToLatest,
-  getUnreadSummary
+  getUnreadSummary,
+  listConversationMedia
 }

@@ -97,11 +97,11 @@ export function AppSidebar(props) {
                   const active = location.pathname.startsWith(item.url)
                   const isMessageItem = item.url === "/chats"
                   return (
-                    <SidebarMenuItem key={item.title} className="relative">
+                    <SidebarMenuItem key={item.title} className="relative overflow-visible">
                       <SidebarMenuButton
                         asChild
                         isActive={active}
-                        className="w-full justify-center px-0"
+                        className="w-full justify-center px-0 overflow-visible"
                         tooltip={{ children: item.title, hidden: false }}
                         onClick={() => setOpen(true)} // mở submenu
                       >
@@ -111,8 +111,16 @@ export function AppSidebar(props) {
                           {/* ⭐ NEW: Badge tổng số cuộc trò chuyện có unread */}
                           {isMessageItem && totalConversations > 0 && (
                             <span
-                              className="absolute -right-1 -top-1 min-w-5 h-5 rounded-full bg-red-500 text-white text-[10px] px-1 leading-none flex items-center justify-center"
-                              aria-label={`${totalConversations} conversations have new messages`}>
+                              className="
+                            absolute z-10
+                            top-0 right-0 translate-x-1/3 -translate-y-1/3  /* đẩy chéo ra ngoài */
+                            min-w-5 h-5 rounded-full
+                            bg-red-500 text-white text-[10px] px-1 leading-none
+                            flex items-center justify-center
+                            shadow-sm
+                          "
+                              aria-label={`${totalConversations} conversations have new messages`}
+                            >
                               {totalConversations > 99 ? "99+" : totalConversations}
                             </span>
                           )}
