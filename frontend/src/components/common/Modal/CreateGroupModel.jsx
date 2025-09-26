@@ -9,6 +9,11 @@ import { Camera, Image, LoaderCircle, Search, Users, X } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { set } from "date-fns"
 import { toast } from "react-toastify"
+import { io } from 'socket.io-client'
+import { API_ROOT } from '@/utils/constant'
+import { useNavigate } from "react-router-dom"
+import { useSelector } from "react-redux"
+import { selectCurrentUser } from "@/redux/user/userSlice"
 
 export default function CreateGroupDialog() {
   const [selectedMembers, setSelectedMembers] = useState([]) // Mảng tên thành viên đã chọn
@@ -26,6 +31,9 @@ export default function CreateGroupDialog() {
   const [searchQuery, setSearchQuery] = useState('')
   const [open, setOpen] = useState(false)
   const [sending, setSending] = useState(false)
+  const socketRef = useRef(null)
+  const navigate = useNavigate()
+  const currentUser = useSelector(selectCurrentUser)
 
   const toggleMember = (member) => {
     setSelectedMembers(prev =>
@@ -123,6 +131,20 @@ export default function CreateGroupDialog() {
     setPage(1)
   }, [debouncedQ])
 
+  // Khởi tạo socket connection
+  useEffect(() => {
+    if (!socketRef.current) {
+      socketRef.current = io(API_ROOT, { withCredentials: true })
+    }
+    
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.disconnect()
+        socketRef.current = null
+      }
+    }
+  }, [])
+
   const handleCreateGroup = async () => {
     // Logic tạo nhóm
     const payload = new FormData()
@@ -139,18 +161,38 @@ export default function CreateGroupDialog() {
       setSending(true)
       if (sending) return
       const response = await createConversation(payload)
-      // Đóng dialog và reset state
+      const newConversation = response?.data || response
+
+      // ✅ Emit socket event để thông báo conversation mới
+      if (socketRef.current && newConversation) {
+        socketRef.current.emit('conversation:created', {
+          conversation: newConversation,
+          createdBy: currentUser?._id, // Thêm info người tạo
+          type: 'group'
+        })
+      }
+      window.dispatchEvent(new CustomEvent('local:conversation:created', {
+        detail: { conversation: newConversation }
+      }))
+
+      // Reset state và đóng modal
       setSelectedMembers([])
       setGroupName('')
       setGroupImage(null)
       setOpen(false)
+      
       toast.success('Nhóm đã được tạo thành công!')
-      // Có thể chuyển hướng đến nhóm mới tạo hoặc cập nhật lại danh sách nhóm ở đây
-      console.log('Nhóm mới tạo:', response)
       setSending(false)
-    }
-    catch (err) {
+
+      // ✅ Optional: Navigate đến conversation mới
+      if (newConversation?._id) {
+        navigate(`/chats/${newConversation._id}`)
+      }
+      
+    } catch (err) {
+      console.error('Error creating group:', err)
       setSending(false)
+      toast.error('Không thể tạo nhóm. Vui lòng thử lại!')
     }
   }
 
