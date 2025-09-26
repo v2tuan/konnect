@@ -22,9 +22,7 @@ const getConversation = async (req, res, next) => {
     const userId = req.userId
 
     const conversations = await conversationService.getConversation(page, limit, userId)
-    res.status(StatusCodes.OK).json({
-      data: conversations
-    })
+    return res.json(conversations)
   } catch (error) {
     next(error)
   }

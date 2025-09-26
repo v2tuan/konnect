@@ -171,8 +171,10 @@ const getConversation = async (page = 1, limit = 20, userId) => {
   const p = Math.max(1, Math.floor(Number(page) || 1))
   const l = Math.max(1, Math.min(100, Math.floor(Number(limit) || 20)))
   const skipVal = (p - 1) * l
-
   const uid = toOid(userId)
+
+  const total = await ConversationMember.countDocuments({ userId: uid })
+
   const pipeline = [
     { $match: { userId: uid } },
 
@@ -248,12 +250,7 @@ const getConversation = async (page = 1, limit = 20, userId) => {
     { $unwind: { path: '$meUser', preserveNullAndEmptyArrays: false } },
 
     // Sort key
-    {
-      $addFields: {
-        sortKey: { $ifNull: ['$conversation.lastMessage.createdAt', '$conversation.updatedAt'] }
-      }
-    },
-
+    { $addFields: { sortKey: { $ifNull: ['$conversation.lastMessage.createdAt', '$conversation.updatedAt'] } } },
     { $sort: { sortKey: -1 } },
     { $skip: skipVal },
     { $limit: l },
@@ -344,12 +341,11 @@ const getConversation = async (page = 1, limit = 20, userId) => {
     }
   ]
 
-  const rows = await ConversationMember.aggregate(pipeline).allowDiskUse(true)
+  const data = await ConversationMember.aggregate(pipeline).allowDiskUse(true)
+  await Promise.all(data.map(row => markFriendshipOnConversation(userId, row)))
 
-  // GẮN FRIENDSHIP thay vì isFriend
-  await Promise.all(rows.map(row => markFriendshipOnConversation(userId, row)))
-
-  return rows
+  const hasMore = p * l < total
+  return { data, page: p, limit: l, hasMore }
 }
 
 const fetchConversationDetail = async (userId, conversationId, limit = 30, beforeSeq) => {
