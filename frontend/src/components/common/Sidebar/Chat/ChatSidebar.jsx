@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { selectCurrentUser, upsertUsers } from '@/redux/user/userSlice'
 import { formatTimeAgo, pickPeerStatus } from '@/utils/helper'
 import { MessageCircle, Phone, Search, Users, Video } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate, useParams } from 'react-router-dom'
 import { SkeletonConversation } from '../Skeleton/SkeletonConversation'
@@ -93,11 +93,6 @@ function ConversationListItem({ conversation, usersById, isActive, onClick, getL
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between mb-1">
             <h3 className="font-medium truncate">{conversation.displayName}</h3>
-            {/* {conversation.direct && (
-              <span className={`text-xs ${presenceTextClass}`}>
-                {presenceText}
-              </span>
-            )} */}
           </div>
 
           <div className="flex items-center justify-between">
@@ -116,16 +111,20 @@ function ConversationListItem({ conversation, usersById, isActive, onClick, getL
   )
 }
 
-
 export function ChatSidebar({
   currentView,
   onViewChange
 }) {
   const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false) // Loading cho pagination
   const [searchList, setSearchList] = useState([])
   const [conversationList, setConversationList] = useState([])
-  const [pagination] = useState({ page: 1, limit: 10 })
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1)
+  const [hasMore, setHasMore] = useState(true)
+  const [limit] = useState(20) // Số conversation mỗi trang
 
   const navigate = useNavigate()
   const { conversationId: activeIdFromURL } = useParams()
@@ -136,6 +135,12 @@ export function ChatSidebar({
 
   const socketRef = useRef(null)
   const joinedRef = useRef(new Set())
+
+  // Ref cho scroll container để detect scroll
+  const scrollContainerRef = useRef(null)
+
+  // Observer cho intersection (detect khi scroll tới cuối)
+  const loadMoreRef = useRef(null)
 
   const getLastMessageText = (conv) => {
     const lm = conv.lastMessage
@@ -162,28 +167,90 @@ export function ChatSidebar({
     return body
   }
 
-
-  // Load conversations
-  useEffect(() => {
-    let mounted = true;
-    ( async () => {
-      try {
-        const { page, limit } = pagination
-        const conversations = await getConversations(page, limit)
-        if (!mounted) return
-        setConversationList(conversations?.data || [])
-        const peers = (conversations?.data || [])
-          .map(c => c?.direct?.otherUser)
-          .filter(Boolean)
-        if (peers.length) dispatch(upsertUsers(peers))
-      } catch {
-        setConversationList([])
-      } finally {
-        if (mounted) setLoading(false)
+  // Load conversations function
+  const loadConversations = useCallback(async (page = 1, isAppend = false) => {
+    try {
+      if (page === 1) {
+        setLoading(true)
+      } else {
+        setLoadingMore(true)
       }
-    })()
-    return () => { mounted = false }
-  }, [pagination, dispatch])
+
+      const conversations = await getConversations(page, limit)
+      const newConversations = conversations?.data || []
+
+      if (!isAppend) {
+        // Trang đầu: thay thế toàn bộ
+        setConversationList(newConversations)
+      } else {
+        // Trang sau: append vào cuối
+        setConversationList(prev => [...prev, ...newConversations])
+      }
+
+      // Kiểm tra còn trang sau không
+      setHasMore(newConversations.length === limit)
+
+      // Upsert users vào Redux
+      const peers = newConversations
+        .map(c => c?.direct?.otherUser)
+        .filter(Boolean)
+      if (peers.length) dispatch(upsertUsers(peers))
+
+    } catch (error) {
+      console.error('Error loading conversations:', error)
+      if (!isAppend) {
+        setConversationList([])
+      }
+    } finally {
+      if (page === 1) {
+        setLoading(false)
+      } else {
+        setLoadingMore(false)
+      }
+    }
+  }, [limit, dispatch])
+
+  // Load more function
+  const loadMore = useCallback(() => {
+    if (loadingMore || !hasMore) return
+    const nextPage = currentPage + 1
+    setCurrentPage(nextPage)
+    loadConversations(nextPage, true)
+  }, [loadingMore, hasMore, currentPage, loadConversations])
+
+  // Initial load conversations
+  useEffect(() => {
+    setCurrentPage(1)
+    setHasMore(true)
+    loadConversations(1, false)
+  }, [loadConversations])
+
+  // Intersection Observer for infinite scroll
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const target = entries[0]
+        if (target.isIntersecting && hasMore && !loadingMore && !loading) {
+          loadMore()
+        }
+      },
+      {
+        root: scrollContainerRef.current,
+        rootMargin: '50px', // Trigger khi còn cách 50px tới cuối
+        threshold: 0.1
+      }
+    )
+
+    if (loadMoreRef.current) {
+      observer.observe(loadMoreRef.current)
+    }
+
+    return () => {
+      if (loadMoreRef.current) {
+        observer.unobserve(loadMoreRef.current)
+      }
+    }
+  }, [hasMore, loadingMore, loading, loadMore])
 
   // Search user (debounce)
   useEffect(() => {
@@ -210,7 +277,6 @@ export function ChatSidebar({
       controller.abort()
     }
   }, [searchQuery, onViewChange])
-
 
   //socket: message:new
   useEffect(() => {
@@ -387,31 +453,65 @@ export function ChatSidebar({
         )
       )}
 
-      {/* Conversation List */}
-      <div className="flex-1 overflow-y-auto">
+      {/* Conversation List với Infinite Scroll */}
+      <div
+        ref={scrollContainerRef}
+        className="flex-1 overflow-y-auto"
+      >
         {currentView === 'chat' && (
           <div className="space-y-1 p-2">
-            {loading ? (
+            {/* Initial loading skeleton */}
+            {loading && conversationList.length === 0 ? (
               <>
                 <SkeletonConversation />
                 <SkeletonConversation />
                 <SkeletonConversation />
               </>
             ) : (
-              conversationList.map((conversation) => {
-                const id = extractId(conversation)
-                const isActive = activeIdFromURL === id
-                return (
-                  <ConversationListItem
-                    key={id}
-                    conversation={conversation}
-                    usersById={usersById}
-                    isActive={isActive}
-                    getLastMessageText={getLastMessageText}
-                    onClick={() => handleClickConversation(conversation)}
-                  />
-                )
-              })
+              <>
+                {/* Render conversation list */}
+                {conversationList.map((conversation) => {
+                  const id = extractId(conversation)
+                  const isActive = activeIdFromURL === id
+                  return (
+                    <ConversationListItem
+                      key={id}
+                      conversation={conversation}
+                      usersById={usersById}
+                      isActive={isActive}
+                      getLastMessageText={getLastMessageText}
+                      onClick={() => handleClickConversation(conversation)}
+                    />
+                  )
+                })}
+
+                {/* Load more trigger element */}
+                {hasMore && (
+                  <div
+                    ref={loadMoreRef}
+                    className="flex justify-center py-4"
+                  >
+                    {loadingMore ? (
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                        <span className="text-sm">Đang tải thêm...</span>
+                      </div>
+                    ) : (
+                      <div className="text-xs text-muted-foreground">
+                        Scroll để tải thêm
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Empty state */}
+                {!loading && conversationList.length === 0 && (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <MessageCircle className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                    <p>Chưa có cuộc trò chuyện nào</p>
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}
