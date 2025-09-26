@@ -37,6 +37,8 @@ const selectedUser = async (req, res, next) => {
                 ]
             })
 
+            console.log('akdgaskjdf', conversation)
+
             if (!conversation) {
                 let conversationDataToCreate = {
                     type: 'direct',
@@ -45,8 +47,9 @@ const selectedUser = async (req, res, next) => {
                         userId
                     ]
                 }
-                conversation = conversationService.createConversation(conversationDataToCreate, currentUserId)
+                conversation = await conversationService.createConversation(conversationDataToCreate, null, currentUserId)
             }
+            console.log(conversation)
 
             const conversationData = {
                 id: conversation._id,
