@@ -15,10 +15,11 @@ import { usePresenceText } from '@/hooks/use-relative-time'
 import { useSelector } from 'react-redux'
 import { selectCurrentUser } from '@/redux/user/userSlice'
 import CallModal from '../../Modal/CallModal'
-import { useCallInvite } from '@/components/common/Modal/CallToast'
+import { useCallInvite } from '@/hooks/useCallInvite' // Import hook mới
 import CreateGroupDialog from '../../Modal/CreateGroupModel'
 import { fi } from 'date-fns/locale'
 import { submitFriendRequestAPI, updateFriendRequestStatusAPI } from '@/apis'
+import CallerRingingPanel from '@/components/common/Modal/CallerRingPanel'
 
 export function ChatArea({
   mode = 'direct',
@@ -136,7 +137,14 @@ export function ChatArea({
   const { ringing, startCall, cancelCaller, setOnOpenCall } = useCallInvite(currentUser?._id)
 
   useEffect(() => {
-    setOnOpenCall((mode, acceptedAt) => setCall({ mode, acceptedAt }))
+    setOnOpenCall((conversationId, mode, acceptedAt) => {
+      console.log('Opening call modal:', { conversationId, mode, acceptedAt })
+      setCall({
+        conversationId: conversationId,
+        mode: mode,
+        startedAt: acceptedAt
+      })
+    })
   }, [setOnOpenCall])
 
   // Danh sách người nhận chuông
@@ -147,16 +155,27 @@ export function ChatArea({
       .filter(id => id && id !== currentUser?._id))
 
   const handleStartCall = (mode) => {
-    if (!conversation?._id || toUserIds.length === 0) return
+    if (!toUserIds.length) {
+      console.error('No recipients for call')
+      return
+    }
+
+    const callId = `${conversation._id}:${Date.now()}`
+    
     startCall({
+      callId,
       conversationId: conversation._id,
-      mode, // 'audio' | 'video'
+      mode,
       toUserIds,
-      me: { id: currentUser?._id, name: currentUser?.fullName, avatarUrl: currentUser?.avatarUrl },
-      peer: isDirect
-        ? { id: otherUserId, name: otherUser?.fullName, avatarUrl: otherUser?.avatarUrl }
-        : { id: 'group', name: safeName, avatarUrl: conversation?.conversationAvatarUrl },
-      onOpenCall: (m, acceptedAt) => setCall({ mode: m, acceptedAt })
+      me: {
+        id: currentUser._id,
+        name: currentUser.displayName || currentUser.username,
+        avatarUrl: currentUser.avatarUrl
+      },
+      peer: otherUser ? {
+        name: otherUser.displayName || otherUser.username,
+        avatarUrl: otherUser.avatarUrl
+      } : null
     })
   }
 
@@ -315,7 +334,19 @@ export function ChatArea({
   const outgoingSent = uiFriendship.status === 'pending' && uiFriendship.direction === 'outgoing'
 
   return (
-    <div className="h-full flex">
+    <div className="flex flex-col h-full">
+      {/* Hiển thị panel chờ khi đang gọi */}
+      {ringing && (
+        <div className="p-2 bg-blue-50 border-b">
+          <CallerRingingPanel
+            avatarUrl={ringing.peer?.avatarUrl}
+            name={ringing.peer?.name || 'Unknown'}
+            leftMs={ringing.leftMs}
+            onCancel={() => cancelCaller(toUserIds)}
+          />
+        </div>
+      )}
+
       {/* Main */}
       <div className={`flex flex-col flex-1 min-h-0 transition-all duration-300 ease-in-out ${isOpen ? 'mr-80' : 'mr-0'}`}>
         {/* Header */}
