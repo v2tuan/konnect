@@ -1,21 +1,5 @@
 import mongoose from "mongoose";
 
-let mediaSchema = new mongoose.Schema({
-    mediaId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'Media'
-    },
-    mimeType: {
-        type: String
-    },
-    size: {
-        type: Number
-    },
-    thumbnailUrl: {
-        type: String
-    }
-}, { _id: false });
-
 let messageSchema = new mongoose.Schema({
     conversationId: {
         type: mongoose.Schema.Types.ObjectId,
@@ -33,13 +17,18 @@ let messageSchema = new mongoose.Schema({
     },
     type: {
         type: String,
-        enum: ['text', 'image', 'file', 'notification'],
+        enum: ['text', 'image', 'file', 'notification', 'audio'],
         required: true
     },
     body: {
         text: { type: String, default: '' }
     },
-    media: mediaSchema,
+    media: [
+        {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Media'
+        }
+    ],
     recalled: {
         type: Boolean,
         default: false

@@ -104,20 +104,68 @@ export const getConversationByUserId = async (userId) => {
   return response.data
 }
 
+/**
+ * Tạo conversation mới
+ */
+export const createConversation = async (data) => {
+  const response = await authorizeAxiosInstance.post(`${API_ROOT}/api/conversation`, data, {
+    headers: { "Content-Type": "multipart/form-data" }
+  })
+  return response.data
+}
+
 /* ======================== MESSAGE APIs ======================== */
 
 /**
  * Gửi tin nhắn trong conversation
  */
-export const sendMessage = async (conversationId, text) => {
+export const sendMessage = async (conversationId, payload, isFormData) => {
+  if (isFormData) {
+    // Nếu payload là FormData (file, image, audio)
+    payload.append("conversationId", conversationId)
+    const response = await authorizeAxiosInstance.post(`${API_ROOT}/api/messages`, payload, {
+      headers: { "Content-Type": "multipart/form-data" }
+    })
+    return response.data
+  }
+  // Nếu payload là object (text)
   const response = await authorizeAxiosInstance.post(`${API_ROOT}/api/messages`, {
     conversationId,
-    text
+    ...payload
   })
   return response.data
 }
 
 export const fetchConversationDetail = async (conversationId, params = {}) => {
   const response = await authorizeAxiosInstance.get(`${API_ROOT}/api/conversation/chats/${conversationId}`, {params})
+  return response.data
+}
+
+export const getFriendRequestsAPI = async ({params = {}}) => {
+  const response = await authorizeAxiosInstance.get(`${API_ROOT}/api/contacts/friends/requests`, {params})
+  return response.data
+}
+
+export const submitFriendRequestAPI = async (toUserId) => {
+  const response = await authorizeAxiosInstance.post(
+    `${API_ROOT}/api/contacts/friends/requests`,
+    { toUserId }
+  )
+  return response.data
+}
+
+export const updateFriendRequestStatusAPI = async ({ requestId, action }) => {
+  const response = await authorizeAxiosInstance.put(
+    `${API_ROOT}/api/contacts/friends/requests`,
+    { requestId, action }
+  )
+  return response.data
+}
+
+export const getFriendsAPI = async (params = {}) => {
+  const response = await authorizeAxiosInstance.get(
+    `${API_ROOT}/api/contacts/friends`,
+    { params }
+  )
   return response.data
 }

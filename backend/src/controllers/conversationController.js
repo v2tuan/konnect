@@ -7,7 +7,8 @@ const {conversationService} = require("~/services/conversationService")
 
 const createConversation = async (req, res, next) => {
   try {
-    const newConversation = await conversationService.createConversation(req.body, req.userId)
+    const newConversation = await conversationService.createConversation(req.body, req.file, req.userId)
+    console.log(req.userId)
     res.status(StatusCodes.CREATED).json({
       data: newConversation
     })
@@ -22,9 +23,7 @@ const getConversation = async (req, res, next) => {
     const userId = req.userId
 
     const conversations = await conversationService.getConversation(page, limit, userId)
-    res.status(StatusCodes.OK).json({
-      data: conversations
-    })
+    return res.json(conversations)
   } catch (error) {
     next(error)
   }

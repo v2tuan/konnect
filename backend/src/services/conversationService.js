@@ -1,13 +1,63 @@
-import Conversation from "~/models/conversations";
-import ConversationMember from "~/models/conversation_members";
-import User from "~/models/user";
 import mongoose from "mongoose";
-import {messageService} from "./messageService";
-import {toOid} from "~/utils/formatter";
-import Media from "~/models/medias";
+import ConversationMember from "~/models/conversation_members";
+import Conversation from "~/models/conversations";
+import User from "~/models/user";
+import { toOid } from "~/utils/formatter";
+import { messageService } from "./messageService";
+import { contactService } from "./contactService";
+import { mediaService } from "./mediaService";
+import { cloudinaryProvider } from "~/providers/CloudinaryProvider_v2";
 
-const createConversation = async (conversationData, userId) => {
-  const {type, memberIds} = conversationData
+async function markFriendshipOnConversation(meId, convObj) {
+  try {
+    // DIRECT
+    const d = convObj?.direct
+    const otherUser = d?.otherUser
+    const otherUserId = otherUser?._id || otherUser?.id
+    if (convObj?.type === 'direct' && otherUserId) {
+      const rel = await contactService.getFriendRelation(meId, otherUserId)
+      // luôn gắn object friendship; FE sẽ dựa vào status để render
+      convObj.direct.otherUser.friendship = rel || { status: 'none' }
+    }
+
+    // GROUP
+    const members = convObj?.group?.members
+    if (convObj?.type === 'group' && Array.isArray(members) && members.length) {
+      await Promise.all(
+        members.map(async (m) => {
+          const mid = m?._id || m?.id
+          if (!mid || String(mid) === String(meId)) {
+            m.friendship = { status: 'none' } // với chính mình thì đặt 'none' hoặc bỏ qua
+            return
+          }
+          const rel = await contactService.getFriendRelation(meId, mid)
+          m.friendship = rel || { status: 'none' }
+        })
+      )
+    }
+  } catch (e) {
+    // fallback an toàn để không làm vỡ response
+    if (convObj?.direct?.otherUser && !convObj.direct.otherUser.friendship) {
+      convObj.direct.otherUser.friendship = { status: 'none' }
+    }
+    if (Array.isArray(convObj?.group?.members)) {
+      convObj.group.members.forEach(m => {
+        if (!m.friendship) m.friendship = { status: 'none' }
+      })
+    }
+  }
+  return convObj
+}
+
+const createConversation = async (conversationData, file, userId) => {
+  let { type, memberIds, name } = conversationData
+  console.log("Creating conversation:", conversationData, "by user:", userId)
+  console.log(name)
+
+  memberIds = Array.isArray(memberIds)
+  ? memberIds
+  : JSON.parse(memberIds || "[]");
+
 
   const conversationDataToCreate = {
     type,
@@ -20,12 +70,12 @@ const createConversation = async (conversationData, userId) => {
     // Kiểm tra đã có cloud conversation chưa
 
     // Set up conversation data
-    conversationData.cloud = {
+    conversationDataToCreate.cloud = {
       ownerId: userId
     }
 
     membersToAdd = [
-      {userId: userId, role: 'owner'}
+      { userId: userId, role: 'owner' }
     ]
   } else if (type === 'direct') {
     // Kiểm tra recipient có tồn tại không
@@ -51,8 +101,8 @@ const createConversation = async (conversationData, userId) => {
     const existingConversation = await Conversation.findOne({
       type: 'direct',
       $or: [
-        {'direct.userA': userId, 'direct.userB': recipientId},
-        {'direct.userA': recipientId, 'direct.userB': userId}
+        { 'direct.userA': userId, 'direct.userB': recipientId },
+        { 'direct.userA': recipientId, 'direct.userB': userId }
       ]
     });
 
@@ -61,17 +111,18 @@ const createConversation = async (conversationData, userId) => {
     }
 
     // Set up conversation data
-    conversationData.direct = {
+    conversationDataToCreate.direct = {
       userA: userId,
       userB: recipientId
     };
 
     // Set up conversation data
     membersToAdd = [
-      {userId: userId, role: 'member'},
-      {userId: recipientId, role: 'member'}
+      { userId: userId, role: 'member' },
+      { userId: recipientId, role: 'member' }
     ]
-  } else if (type === 'group') {
+  }
+  else if (type === 'group') {
     // Kiểm tra tất cả member có tồn tại không
     // Kiểm tra có user hiện tại trong danh sách không nếu không thì thêm vào
     const uniqueMemberIds = [...new Set([userId, ...memberIds])]
@@ -80,10 +131,19 @@ const createConversation = async (conversationData, userId) => {
       throw new Error('Không thể tạo nhóm chỉ với 2 thành viên')
     }
 
+    let uploadResults = null
+    if (file) {
+      const uploadOptions = {
+        folder: `konnect/${name || 'group_avatars'}`,
+        resource_type: 'auto'
+    }
+      uploadResults = await cloudinaryProvider.uploadSingle(file, uploadOptions)
+    }
+
     // Set up conversation data
-    conversationData.group = {
-      name: 'New Group',
-      avatarURL: '/'
+    conversationDataToCreate.group = {
+      name: name ?? 'New Group',
+      avatarUrl: uploadResults?.secure_url ?? '/'
     }
 
     membersToAdd = uniqueMemberIds.map(id => ({
@@ -93,7 +153,7 @@ const createConversation = async (conversationData, userId) => {
   }
 
   // ============================= TẠO CONVERSATION ================================
-  const newConversation = await Conversation.create(conversationData)
+  const newConversation = await Conversation.create(conversationDataToCreate)
   await newConversation.save()
 
   // Thêm member vào conversation
@@ -112,14 +172,16 @@ const createConversation = async (conversationData, userId) => {
   return newConversation
 }
 
-export const getConversation = async (page = 1, limit = 20, userId) => {
+const getConversation = async (page = 1, limit = 20, userId) => {
   const p = Math.max(1, Math.floor(Number(page) || 1))
   const l = Math.max(1, Math.min(100, Math.floor(Number(limit) || 20)))
   const skipVal = (p - 1) * l
-
   const uid = toOid(userId)
+
+  const total = await ConversationMember.countDocuments({ userId: uid })
+
   const pipeline = [
-    {$match: {userId: uid}},
+    { $match: { userId: uid } },
 
     // Join sang conversation
     {
@@ -130,7 +192,7 @@ export const getConversation = async (page = 1, limit = 20, userId) => {
         as: 'conversation'
       }
     },
-    {$unwind: '$conversation'},
+    { $unwind: '$conversation' },
 
     // Lấy user của lastMessage.senderId
     {
@@ -141,27 +203,27 @@ export const getConversation = async (page = 1, limit = 20, userId) => {
         as: 'lastSender'
       }
     },
-    {$unwind: {path: '$lastSender', preserveNullAndEmptyArrays: true}},
+    { $unwind: { path: '$lastSender', preserveNullAndEmptyArrays: true } },
 
-    // Lấy TẤT CẢ other members (không unwind) = những người khác mình
+    // Lấy other members (không unwind) = những người khác mình
     {
       $lookup: {
         from: 'conversationmembers',
-        let: {convId: '$conversation._id', me: '$userId'},
+        let: { convId: '$conversation._id', me: '$userId' },
         pipeline: [
           {
             $match: {
               $expr: {
                 $and: [
-                  {$eq: ['$conversation', '$$convId']},
-                  {$ne: ['$userId', '$$me']}
+                  { $eq: ['$conversation', '$$convId'] },
+                  { $ne: ['$userId', '$$me'] }
                 ]
               }
             }
           },
-          {$project: {_id: 0, userId: 1}}
+          { $project: { _id: 0, userId: 1 } }
         ],
-        as: 'otherMembers' // [{ userId }]
+        as: 'otherMembers'
       }
     },
 
@@ -169,44 +231,34 @@ export const getConversation = async (page = 1, limit = 20, userId) => {
     {
       $lookup: {
         from: 'users',
-        let: {ids: '$otherMembers.userId'},
+        let: { ids: '$otherMembers.userId' },
         pipeline: [
-          {$match: {$expr: {$in: ['$_id', '$$ids']}}},
-          {
-            $project: {
-              fullName: 1,
-              username: 1,
-              avatarUrl: 1,
-              status: 1
-            }
-          }
+          { $match: { $expr: { $in: ['$_id', '$$ids'] } } },
+          { $project: { fullName: 1, username: 1, avatarUrl: 1, status: 1 } }
         ],
-        as: 'otherUsers' // [{ _id, fullName, ... }]
+        as: 'otherUsers'
       }
     },
+
+    // Me
     {
       $lookup: {
         from: 'users',
-        localField: 'userId',        // chính là uid đã $match ở đầu
+        localField: 'userId',
         foreignField: '_id',
         pipeline: [
-          {$project: {fullName: 1, username: 1, avatarUrl: 1}}
+          { $project: { fullName: 1, username: 1, avatarUrl: 1 } }
         ],
         as: 'meUser'
       }
     },
-    {$unwind: {path: '$meUser', preserveNullAndEmptyArrays: false}},
+    { $unwind: { path: '$meUser', preserveNullAndEmptyArrays: false } },
 
-    // Coalesce key sort
-    {
-      $addFields: {
-        sortKey: {$ifNull: ['$conversation.lastMessage.createdAt', '$conversation.updatedAt']}
-      }
-    },
-
-    {$sort: {sortKey: -1}},
-    {$skip: skipVal},
-    {$limit: l},
+    // Sort key
+    { $addFields: { sortKey: { $ifNull: ['$conversation.lastMessage.createdAt', '$conversation.updatedAt'] } } },
+    { $sort: { sortKey: -1 } },
+    { $skip: skipVal },
+    { $limit: l },
 
     // Build payload
     {
@@ -229,16 +281,12 @@ export const getConversation = async (page = 1, limit = 20, userId) => {
         messageSeq: '$conversation.messageSeq',
         updatedAt: '$conversation.updatedAt',
 
-        // Hiển thị theo type
         displayName: {
           $switch: {
             branches: [
-              {
-                case: {$eq: ['$conversation.type', 'direct']},
-                then: {$ifNull: [{$ifNull: [{$arrayElemAt: ['$otherUsers.fullName', 0]}, null]}, 'Unknown']}
-              },
-              {case: {$eq: ['$conversation.type', 'group']}, then: {$ifNull: ['$conversation.group.name', 'Group']}},
-              {case: {$eq: ['$conversation.type', 'cloud']}, then: 'Your Cloud'}
+              { case: { $eq: ['$conversation.type', 'direct'] }, then: { $ifNull: [{ $ifNull: [{ $arrayElemAt: ['$otherUsers.fullName', 0] }, null] }, 'Unknown'] } },
+              { case: { $eq: ['$conversation.type', 'group'] }, then: { $ifNull: ['$conversation.group.name', 'Group'] } },
+              { case: { $eq: ['$conversation.type', 'cloud'] }, then: 'Your Cloud' }
             ],
             default: 'Unknown'
           }
@@ -246,46 +294,41 @@ export const getConversation = async (page = 1, limit = 20, userId) => {
         conversationAvatarUrl: {
           $switch: {
             branches: [
-              {
-                case: {$eq: ['$conversation.type', 'direct']},
-                then: {$ifNull: [{$arrayElemAt: ['$otherUsers.avatarUrl', 0]}, '']}
-              },
-              {case: {$eq: ['$conversation.type', 'group']}, then: {$ifNull: ['$conversation.group.avatarUrl', '']}},
-              {
-                case: {$eq: ['$conversation.type', 'cloud']},
-                then: 'https://cdn-icons-png.flaticon.com/512/8038/8038388.png'
-              }
+              { case: { $eq: ['$conversation.type', 'direct'] }, then: { $ifNull: [{ $arrayElemAt: ['$otherUsers.avatarUrl', 0] }, ''] } },
+              { case: { $eq: ['$conversation.type', 'group'] }, then: { $ifNull: ['$conversation.group.avatarUrl', ''] } },
+              { case: { $eq: ['$conversation.type', 'cloud'] }, then: 'https://cdn-icons-png.flaticon.com/512/8038/8038388.png' }
             ],
             default: ''
           }
         },
 
-        // Với direct: build otherUser = phần tử đầu tiên (không còn duplicate)
+        // DIRECT: otherUser (lấy phần tử đầu)
         direct: {
           otherUser: {
             $cond: [
-              {$eq: ['$conversation.type', 'direct']},
+              { $eq: ['$conversation.type', 'direct'] },
               {
-                id: {$arrayElemAt: [{$map: {input: '$otherUsers', as: 'u', in: '$$u._id'}}, 0]},
-                fullName: {$arrayElemAt: ['$otherUsers.fullName', 0]},
-                userName: {$arrayElemAt: ['$otherUsers.username', 0]},
-                avatarUrl: {$arrayElemAt: ['$otherUsers.avatarUrl', 0]},
-                status: {$arrayElemAt: ['$otherUsers.status', 0]}
+                id: { $arrayElemAt: [{ $map: { input: '$otherUsers', as: 'u', in: '$$u._id' } }, 0] },
+                fullName: { $arrayElemAt: ['$otherUsers.fullName', 0] },
+                username: { $arrayElemAt: ['$otherUsers.username', 0] },
+                avatarUrl: { $arrayElemAt: ['$otherUsers.avatarUrl', 0] },
+                status: { $arrayElemAt: ['$otherUsers.status', 0] }
               },
-              {} // không phải direct thì trả rỗng
+              {}
             ]
           }
         },
 
+        // GROUP: build members (bao gồm cả mình + others)
         group: {
           name: '$conversation.group.name',
           avatarUrl: '$conversation.group.avatarUrl',
           members: {
             $cond: [
-              {$eq: ['$conversation.type', 'group']},
+              { $eq: ['$conversation.type', 'group'] },
               {
                 $map: {
-                  input: {$concatArrays: [['$meUser'], '$otherUsers']}, // [meUser, ...otherUsers]
+                  input: { $concatArrays: [['$meUser'], '$otherUsers'] },
                   as: 'm',
                   in: {
                     id: '$$m._id',
@@ -295,7 +338,7 @@ export const getConversation = async (page = 1, limit = 20, userId) => {
                   }
                 }
               },
-              [] // không phải group thì rỗng
+              []
             ]
           }
         }
@@ -303,42 +346,46 @@ export const getConversation = async (page = 1, limit = 20, userId) => {
     }
   ]
 
-  const rows = await ConversationMember.aggregate(pipeline).allowDiskUse(true)
-  return rows
+  const data = await ConversationMember.aggregate(pipeline).allowDiskUse(true)
+  await Promise.all(data.map(row => markFriendshipOnConversation(userId, row)))
+
+  const hasMore = p * l < total
+  return { data, page: p, limit: l, hasMore }
 }
 
-export const fetchConversationDetail = async (userId, conversationId, limit = 30, beforeSeq) => {
+const fetchConversationDetail = async (userId, conversationId, limit = 30, beforeSeq) => {
   if (!mongoose.isValidObjectId(conversationId)) {
-    const err = new Error("Invalid conversationId");
-    err.status = 400;
-    throw err;
+    const err = new Error('Invalid conversationId')
+    err.status = 400
+    throw err
   }
 
-  const convo = await Conversation.findById(conversationId).lean();
+  const convo = await Conversation.findById(conversationId).lean()
   if (!convo) {
-    const err = new Error("Conversation not found");
-    err.status = 404;
-    throw err;
+    const err = new Error('Conversation not found')
+    err.status = 404
+    throw err
   }
 
-  await messageService.assertCanAccessConversation(userId, convo);
+  await messageService.assertCanAccessConversation(userId, convo)
 
-  let displayName = null;
-  let conversationAvatarUrl = null;
-  let enrichedDirect = convo.direct || null;
+  // ===== Header =====
+  let displayName = null
+  let conversationAvatarUrl = null
+  let enrichedDirect = convo.direct || null
 
-  if (convo.type === "direct") {
+  if (convo.type === 'direct') {
     const [userA, userB] = await Promise.all([
       User.findById(convo.direct?.userA).lean(),
       User.findById(convo.direct?.userB).lean()
-    ]);
+    ])
 
-    const meIsA = String(convo.direct?.userA) === String(userId);
-    const other = meIsA ? userB : userA;
+    const meIsA = String(convo.direct?.userA) === String(userId)
+    const other = meIsA ? userB : userA
 
     if (other) {
-      displayName = other.fullName || other.username || "User";
-      conversationAvatarUrl = other.avatarUrl || null;
+      displayName = other.fullName || other.username || 'User'
+      conversationAvatarUrl = other.avatarUrl || null
       enrichedDirect = {
         ...convo.direct,
         otherUser: {
@@ -346,87 +393,91 @@ export const fetchConversationDetail = async (userId, conversationId, limit = 30
           fullName: other.fullName || null,
           username: other.username || null,
           avatarUrl: other.avatarUrl || null,
-          status: other.status || null
+          status: other.status || null // { isOnline, lastActiveAt }
+          // friendship sẽ gắn sau, không có isFriend nữa
         }
-      };
+      }
     } else {
-      displayName = "Conversation";
+      displayName = 'Conversation'
     }
   }
 
-  if (convo.type === "group") {
-    displayName = convo.group?.name || "Group";
-    conversationAvatarUrl = convo.group?.avatarUrl || null;
+  if (convo.type === 'group') {
+    displayName = convo.group?.name || 'Group'
+    conversationAvatarUrl = convo.group?.avatarUrl || null
   }
 
-  if (convo.type === "cloud") {
-    displayName = "Cloud Chat";
+  if (convo.type === 'cloud') {
+    displayName = 'Cloud Chat'
   }
 
-  // ===== Messages
-  const messages = await messageService.listMessages({userId, conversationId, limit, beforeSeq});
-  const nextBeforeSeq = messages.length > 0 ? messages[0].seq : null;
+  // ===== Messages (oldest -> newest) =====
+  const messages = await messageService.listMessages({ userId, conversationId, limit, beforeSeq })
+  const nextBeforeSeq = messages.length > 0 ? messages[0].seq : null
 
-  // ===== GROUP MEMBERS (mới)
-  let groupMembers = [];
-  let memberIds = [];
+  // ===== Group members =====
+  let groupMembers = []
+  let memberIds = []
   if (convo.type === 'group') {
     const cms = await ConversationMember.find(
-      {conversation: convo._id},
-      {userId: 1}
-    ).lean();
+      { conversation: convo._id },
+      { userId: 1 }
+    ).lean()
 
     memberIds = (cms || [])
-    .map(cm => cm?.userId)
-    .filter(Boolean)
-    .map(id => String(id));
+      .map(cm => cm?.userId)
+      .filter(Boolean)
+      .map(id => String(id))
   }
 
-  // ===== HỢP NHẤT ID cần load user (senders + members)
+  // ===== Load users (senders + members) =====
   const senderIds = [
     ...new Set(
       messages
-      .map(m => m?.senderId)
-      .filter(Boolean)
-      .map(id => String(id))
+        .map(m => m?.senderId)
+        .filter(Boolean)
+        .map(id => String(id))
     )
-  ];
+  ]
 
-  const combinedIds = [...new Set([...senderIds, ...memberIds])];
+  const combinedIds = [...new Set([...senderIds, ...memberIds])]
 
-  let usersById = new Map();
+  let usersById = new Map()
   if (combinedIds.length) {
     const users = await User.find(
-      {_id: {$in: combinedIds.map(id => new mongoose.Types.ObjectId(id))}},
-      {fullName: 1, username: 1, avatarUrl: 1, status: 1}
-    ).lean();
-    usersById = new Map(users.map(u => [String(u._id), u]));
+      { _id: { $in: combinedIds.map(id => new mongoose.Types.ObjectId(id)) } },
+      { fullName: 1, username: 1, avatarUrl: 1, status: 1 }
+    ).lean()
+    usersById = new Map(users.map(u => [String(u._id), u]))
   }
 
   if (convo.type === 'group') {
     groupMembers = memberIds.map(uid => {
-      const u = usersById.get(String(uid));
-      return u ? {
-        id: u._id,
-        fullName: u.fullName || null,
-        username: u.username || null,
-        avatarUrl: u.avatarUrl || null,
-        status: u.status || null
-      } : {
-        id: uid,
-        fullName: null,
-        username: null,
-        avatarUrl: null,
-        status: null
-      };
-    });
+      const u = usersById.get(String(uid))
+      return u
+        ? {
+          id: u._id,
+          fullName: u.fullName || null,
+          username: u.username || null,
+          avatarUrl: u.avatarUrl || null,
+          status: u.status || null // friendship sẽ gắn sau
+        }
+        : {
+          id: uid,
+          fullName: null,
+          username: null,
+          avatarUrl: null,
+          status: null
+        }
+    })
   }
 
+  // Enrich messages.sender cho group
   const messagesWithSender =
     convo.type === 'group'
       ? messages.map(m => {
-        const key = m?.senderId ? String(m.senderId) : null;
-        const u = key ? usersById.get(key) : null;
+        const key = m?.senderId ? String(m.senderId) : null
+        const u = key ? usersById.get(key) : null
         return {
           ...m,
           sender: u
@@ -438,58 +489,17 @@ export const fetchConversationDetail = async (userId, conversationId, limit = 30
               status: u.status || null
             }
             : null
-        };
+        }
       })
-      : messages;
+      : messages
 
-  // ======= MEDIA PREVIEW (ảnh/file/link) =======
-  // Đếm theo type
-  const countsAgg = await Media.aggregate([
-    {$match: {conversationId: convo._id}},
-    {$group: {_id: "$type", count: {$sum: 1}}}
-  ]);
-
-  const counts = countsAgg.reduce((acc, r) => {
-    acc[r._id] = r.count;
-    return acc;
-  }, {image: 0, file: 0, link: 0});
-
-  // Lấy mẫu: 6 ảnh, 5 file, 5 link gần nhất
-  const [images, files, links] = await Promise.all([
-    Media.find({conversationId: convo._id, type: 'image'})
-    .sort({createdAt: -1})
-    .limit(6)
-    .select({_id: 1, url: 1, mimeType: 1, width: 1, height: 1, createdAt: 1})
-    .lean(),
-    Media.find({conversationId: convo._id, type: 'file'})
-    .sort({createdAt: -1})
-    .limit(5)
-    .select({_id: 1, url: 1, fileName: 1, fileSize: 1, mimeType: 1, createdAt: 1, title: 1})
-    .lean(),
-    Media.find({conversationId: convo._id, type: 'link'})
-    .sort({createdAt: -1})
-    .limit(5)
-    .select({_id: 1, linkUrl: 1, title: 1, description: 1, createdAt: 1})
-    .lean()
-  ]);
-
-  const mediaPreview = {
-    counts,                 // { image, file, link }
-    images,                 // up to 6
-    files,                  // up to 5
-    links                   // up to 5
-  };
-
-  return {
+  const result = {
     conversation: {
       _id: convo._id,
       type: convo.type,
       direct: enrichedDirect,
       group: convo.type === 'group'
-        ? {
-          ...(convo.group || {}),
-          members: groupMembers
-        }
+        ? { ...(convo.group || {}), members: groupMembers }
         : (convo.group || null),
       cloud: convo.cloud || null,
       displayName,
@@ -499,86 +509,44 @@ export const fetchConversationDetail = async (userId, conversationId, limit = 30
       updatedAt: convo.updatedAt
     },
     messages: messagesWithSender,
-    pageInfo: {limit, beforeSeq, nextBeforeSeq},
+    pageInfo: { limit, beforeSeq, nextBeforeSeq }
+  }
 
-    // 👇 Thêm block này để FE hiển thị trong slide panel
-    mediaPreview
-  };
-};
+  // Gắn FRIENDSHIP (không còn isFriend)
+  await markFriendshipOnConversation(userId, result.conversation)
+
+  return result
+}
+
 const getUnreadSummary = async (userId) => {
   // Lấy membership của user
-  const members = await ConversationMember.find({userId})
-  .select("conversation lastReadMessageSeq")
-  .lean()
+  const members = await ConversationMember.find({ userId })
+    .select("conversation lastReadMessageSeq")
+    .lean()
 
   // Lấy messageSeq của các conversation liên quan
   const convoIds = members.map(m => m.conversation)
-  const convos = await Conversation.find({_id: {$in: convoIds}})
-  .select("_id messageSeq")
-  .lean()
+  const convos = await Conversation.find({ _id: { $in: convoIds } })
+    .select("_id messageSeq")
+    .lean()
 
   const seqMap = Object.fromEntries(convos.map(c => [String(c._id), c.messageSeq || 0]))
 
   const items = members.map(m => {
     const cid = String(m.conversation)
     const unread = Math.max(0, (seqMap[cid] || 0) - (m.lastReadMessageSeq || 0))
-    return {conversationId: cid, unread}
+    return { conversationId: cid, unread }
   })
 
   const totalConversations = items.reduce((acc, i) => acc + (i.unread > 0 ? 1 : 0), 0)
   const totalMessages = items.reduce((acc, i) => acc + i.unread, 0)
 
-  return {items, totalConversations, totalMessages}
+  return { items, totalConversations, totalMessages }
 }
-const listConversationMedia = async ({userId, conversationId, type, page = 1, limit = 24}) => {
-  if (!mongoose.isValidObjectId(conversationId)) {
-    const err = new Error("Invalid conversationId");
-    err.status = 400;
-    throw err;
-  }
 
-  const convo = await Conversation.findById(conversationId).lean();
-  if (!convo) {
-    const err = new Error("Conversation not found");
-    err.status = 404;
-    throw err;
-  }
-
-  await messageService.assertCanAccessConversation(userId, convo);
-
-  const p = Math.max(1, Math.floor(Number(page) || 1));
-  const l = Math.max(1, Math.min(100, Math.floor(Number(limit) || 24)));
-  const skip = (p - 1) * l;
-
-  const match = {conversationId: convo._id};
-  if (type && ['image', 'file', 'link'].includes(type)) match.type = type;
-
-  const [items, total] = await Promise.all([
-    Media.find(match)
-    .sort({createdAt: -1})
-    .skip(skip)
-    .limit(l)
-    .select({
-      _id: 1, type: 1, mimeType: 1, createdAt: 1,
-      url: 1, fileName: 1, fileSize: 1, width: 1, height: 1, duration: 1,
-      linkUrl: 1, title: 1, description: 1, messageId: 1, uploaderId: 1
-    })
-    .lean(),
-    Media.countDocuments(match)
-  ]);
-
-  return {
-    items,
-    pageInfo: {
-      page: p, limit: l,
-      total, totalPages: Math.ceil(total / l)
-    }
-  };
-};
 export const conversationService = {
   createConversation,
   getConversation,
   fetchConversationDetail,
-  getUnreadSummary,
-  listConversationMedia
+  getUnreadSummary
 }

@@ -1,46 +1,51 @@
+import { createConversation, getFriendsAPI } from "@/apis"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { Label } from "@radix-ui/react-label"
-import { Camera, Image, Search, Users, X } from "lucide-react"
-import { useRef, useState } from "react"
+import { fr } from "date-fns/locale"
+import { Camera, Image, LoaderCircle, Search, Users, X } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
+import { set } from "date-fns"
+import { toast } from "react-toastify"
+import { io } from 'socket.io-client'
+import { API_ROOT } from '@/utils/constant'
+import { useNavigate } from "react-router-dom"
+import { useSelector } from "react-redux"
+import { selectCurrentUser } from "@/redux/user/userSlice"
 
 export default function CreateGroupDialog() {
-  const [selectedMembers, setSelectedMembers] = useState(['Nguyễn Văn A'])
+  const [selectedMembers, setSelectedMembers] = useState([]) // Mảng tên thành viên đã chọn
   const [groupName, setGroupName] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [activeTab, setActiveTab] = useState('Tất cả')
   const [groupImage, setGroupImage] = useState(null)
   const fileInputRef = useRef(null)
+  const [friends, setFriends] = useState([]) /** @type {[FriendUI[], any]} */
+  const [hasNext, setHasNext] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+  const [page, setPage] = useState(1)
+  const [debouncedQ, setDebouncedQ] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [open, setOpen] = useState(false)
+  const [sending, setSending] = useState(false)
+  const socketRef = useRef(null)
+  const navigate = useNavigate()
+  const currentUser = useSelector(selectCurrentUser)
 
-  const tabs = ['Tất cả', 'Khách hàng', 'Gia đình', 'Công việc', 'Bạn bè', 'Trả lời sau']
-
-  const recentContacts = [
-    { name: 'Nguyễn Văn A', avatar: '👨', isSelected: true },
-    { name: 'Trần Văn B', avatar: '👨' },
-    { name: 'Duy Lon', avatar: '👨' },
-    { name: 'Nguyễn Văn D', avatar: '👨' },
-    { name: 'Nguyễn Văn E', avatar: '👨' }
-  ]
-
-  const alphabetContacts = {
-    'F': [{ name: 'Nguyễn Văn F', avatar: '👨' }],
-    'G': [
-      { name: 'Nguyễn Văn G', avatar: '👨' },
-      { name: 'Nguyễn Văn H', avatar: '👨' }
-    ]
-  }
-
-  const toggleMember = (memberName) => {
+  const toggleMember = (member) => {
     setSelectedMembers(prev =>
-      prev.includes(memberName)
-        ? prev.filter(name => name !== memberName)
-        : [...prev, memberName]
+      prev.some(m => m.id === member.id) // kiểm tra đã có chưa
+        ? prev.filter(m => m.id !== member.id) // remove
+        : [...prev, member] // add
     )
   }
 
-  const removeMember = (memberName) => {
-    setSelectedMembers(prev => prev.filter(name => name !== memberName))
+
+  const removeMember = (member) => {
+    setSelectedMembers(prev => prev.filter(itemMember => itemMember.id !== member.id))
   }
 
   // Đọc ảnh bằng FileReader chuyển thành base64 để hiển thị lại
@@ -84,28 +89,137 @@ export default function CreateGroupDialog() {
     }
   }
 
+  // Debounce search 400ms
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQ(searchQuery.trim()), 400)
+    return () => clearTimeout(t)
+  }, [searchQuery])
+
+  // Fetch friends when page or debouncedQ changes
+  useEffect(() => {
+    let cancelled = false
+    const fetchFriends = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const res = await getFriendsAPI({ page, limit: 30, q: debouncedQ })
+        if (cancelled) return
+        const mapped = (res?.data || []).map((r) => ({
+          id: r.friend.id,
+          name: r.friend.fullName || r.friend.username,
+          username: r.friend.username,
+          avatar: r.friend.avatarUrl,
+          status: r.friend.status?.isOnline ? 'online' : 'offline',
+          lastActiveAt: r.friend.status?.lastActiveAt || null
+        }))
+        setFriends((prev) => (page === 1 ? mapped : [...prev, ...mapped]))
+        setHasNext(!!res?.hasNext)
+      } catch (e) {
+        if (!cancelled) setError(e?.message || 'Không tải được danh sách bạn bè.')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    fetchFriends()
+    return () => {
+      cancelled = true
+    }
+  }, [page, debouncedQ])
+
+  // Reset về page 1 khi đổi q
+  useEffect(() => {
+    setPage(1)
+  }, [debouncedQ])
+
+  // Khởi tạo socket connection
+  useEffect(() => {
+    if (!socketRef.current) {
+      socketRef.current = io(API_ROOT, { withCredentials: true })
+    }
+    
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.disconnect()
+        socketRef.current = null
+      }
+    }
+  }, [])
+
+  const handleCreateGroup = async () => {
+    // Logic tạo nhóm
+    const payload = new FormData()
+    payload.append('type', 'group')
+    payload.append('name', groupName)
+    const formData = new FormData()
+    selectedMembers.forEach(m => formData.append('memberIds[]', m.id))
+    if (fileInputRef.current?.files?.[0]) {
+      payload.append('avatarUrl', fileInputRef.current.files[0])
+    }
+    payload.append('memberIds', JSON.stringify(selectedMembers.map(m => m.id)))
+    // Gọi API tạo nhóm
+    try {
+      setSending(true)
+      if (sending) return
+      const response = await createConversation(payload)
+      const newConversation = response?.data || response
+
+      // ✅ Emit socket event để thông báo conversation mới
+      if (socketRef.current && newConversation) {
+        socketRef.current.emit('conversation:created', {
+          conversation: newConversation,
+          createdBy: currentUser?._id, // Thêm info người tạo
+          type: 'group'
+        })
+      }
+      window.dispatchEvent(new CustomEvent('local:conversation:created', {
+        detail: { conversation: newConversation }
+      }))
+
+      // Reset state và đóng modal
+      setSelectedMembers([])
+      setGroupName('')
+      setGroupImage(null)
+      setOpen(false)
+      
+      toast.success('Nhóm đã được tạo thành công!')
+      setSending(false)
+
+      // ✅ Optional: Navigate đến conversation mới
+      if (newConversation?._id) {
+        navigate(`/chats/${newConversation._id}`)
+      }
+      
+    } catch (err) {
+      console.error('Error creating group:', err)
+      setSending(false)
+      toast.error('Không thể tạo nhóm. Vui lòng thử lại!')
+    }
+  }
+
   const ContactItem = ({ contact, section = 'recent' }) => (
     <div
       className="flex items-center p-3 rounded-md border border-transparent cursor-pointer hover:bg-primary/10 hover:border-primary/50"
-      onClick={() => toggleMember(contact.name)}
+      onClick={() => toggleMember(contact)}
     >
 
-      <div className={`w-4 h-4 rounded-full border-2 mr-3 flex items-center justify-center ${selectedMembers.includes(contact.name)
+      <div className={`w-4 h-4 rounded-full border-2 mr-3 flex items-center justify-center ${selectedMembers.some(m => m.id == contact.id)
         ? 'bg-blue-500 border-blue-500'
         : 'border-gray-300'
-        }`}>
-        {selectedMembers.includes(contact.name) && (
+      }`}>
+        {selectedMembers.some(m => m.id == contact.id) && (
           <div className="w-2 h-2 bg-white rounded-full"></div>
         )}
       </div>
-      <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center mr-3 text-white">
-        {contact.avatar}
-      </div>
+      <Avatar className="w-10 h-10 mr-3">
+        <AvatarImage src={contact.avatar} />
+        <AvatarFallback>{contact.name}</AvatarFallback>
+      </Avatar>
+
       <span className="font-medium text-sm">{contact.name}</span>
     </div>
   )
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <form>
         <DialogTrigger asChild>
           <button className="flex flex-col items-center p-3 rounded-lg transition-colors cursor-pointer">
@@ -120,7 +234,7 @@ export default function CreateGroupDialog() {
               <div className="flex items-center justify-between p-4 border-b">
                 <h2 className="font-semibold">Create Group</h2>
                 <DialogClose asChild>
-                  <button className="p-1 rounded-full hover:bg-primary/50">
+                  <button className="p-1 rounded-full hover:bg-primary/50 hover:text-primary-foreground">
                     <X size={20} />
                   </button>
                 </DialogClose>
@@ -191,6 +305,7 @@ export default function CreateGroupDialog() {
                   <Input
                     placeholder="Nhập tên, số điện thoại, hoặc danh sách số điện thoại."
                     className="pl-10 rounded-full border border-border"
+                    onChange={(e) => setSearchQuery(e.target.value)}
                   />
                 </div>
               </div>
@@ -202,22 +317,31 @@ export default function CreateGroupDialog() {
                   {/* Contacts List */}
                   <div className="flex-1 overflow-y-auto">
                     {/* Recent Contacts */}
-                    <div className="px-4 py-2">
+                    {/* <div className="px-4 py-2">
                       <h3 className="text-sm font-semibold mb-2">Trò chuyện gần đây</h3>
                       {recentContacts.map(contact => (
                         <ContactItem key={contact.name} contact={contact} />
                       ))}
-                    </div>
+                    </div> */}
 
                     {/* Alphabetical Contacts */}
-                    {Object.entries(alphabetContacts).map(([letter, contacts]) => (
+                    {/* {Object.entries(alphabetContacts).map(([letter, contacts]) => (
                       <div key={letter} className="px-4 py-2">
                         <h3 className="text-sm font-semibold mb-2">{letter}</h3>
                         {contacts.map(contact => (
                           <ContactItem key={contact.name} contact={contact} section="alphabet" />
                         ))}
                       </div>
-                    ))}
+                    ))} */}
+
+                    {/* Friends from API */}
+                    {friends.length > 0 && (
+                      <div className="px-4 py-2">
+                        {friends.map(friend => (
+                          <ContactItem key={friend.id} contact={friend} section="alphabet" />
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -235,10 +359,7 @@ export default function CreateGroupDialog() {
                       <div className="flex flex-wrap gap-2">
                         {selectedMembers.map(member => (
                           <div key={member} className="inline-flex items-center bg-blue-100 rounded-full px-3 py-1">
-                            <div className="w-4 h-4 bg-blue-500 rounded-full mr-2 flex items-center justify-center">
-                              <span className="text-xs text-white">👨</span>
-                            </div>
-                            <span className="text-sm text-blue-700">{member}</span>
+                            <span className="text-sm text-blue-700">{member.name}</span>
                             <button
                               onClick={() => removeMember(member)}
                               className="text-blue-500 hover:text-blue-700 ml-1"
@@ -259,46 +380,21 @@ export default function CreateGroupDialog() {
 
               {/* Footer */}
               <div className="flex justify-end space-x-3 p-4 border-t">
-                <button className="px-6 py-2 rounded-md text-muted-foreground hover:bg-secondary">
+                <Button variant={"outline"} className={`px-6 py-2`} onClick={() => setOpen(false)}>
                   Hủy
-                </button>
+                </Button>
 
-                <button
-                  className={`px-6 py-2 rounded-md ${selectedMembers.length > 0 && groupName.trim()
-                    ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-                    : 'bg-muted text-muted-foreground cursor-not-allowed'
-                    }`}
-                  disabled={selectedMembers.length === 0 || !groupName.trim()}
+                <Button
+                className={`px-6 py-2`}
+                  disabled={selectedMembers.length === 0 || !groupName.trim() || sending}
+                  onClick={handleCreateGroup}
                 >
-                  Tạo nhóm
-                </button>
+                  {sending ? 'Creating Group...' : 'Create Group'}
+                </Button>
 
               </div>
             </div>
           </div>
-          {/* <DialogHeader>
-            <DialogTitle>Edit profile</DialogTitle>
-            <DialogDescription>
-                            Make changes to your profile here. Click save when you&apos;re
-                            done.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4">
-            <div className="grid gap-3">
-              <Label htmlFor="name-1">Name</Label>
-              <Input id="name-1" name="name" defaultValue="Pedro Duarte" />
-            </div>
-            <div className="grid gap-3">
-              <Label htmlFor="username-1">Username</Label>
-              <Input id="username-1" name="username" defaultValue="@peduarte" />
-            </div>
-          </div>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="outline">Cancel</Button>
-            </DialogClose>
-            <Button type="submit">Save changes</Button>
-          </DialogFooter> */}
         </DialogContent>
       </form>
     </Dialog>

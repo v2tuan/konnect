@@ -3,17 +3,33 @@
 import { AppSidebar } from "@/components/common/Sidebar/app-sidebar"
 import { SidebarProvider } from "@/components/ui/sidebar"
 import * as React from "react"
-import { Outlet } from "react-router-dom"
+import { Outlet, useLocation, useNavigate } from "react-router-dom"
 
 export default function MainLayout() {
+  const navigate = useNavigate()
+  const location = useLocation()
+
   // Chat state
   const [currentView, setCurrentView] = React.useState("chat")
   const [chats, setChats] = React.useState([])
   const [selectedChat, setSelectedChat] = React.useState(null)
   const [contacts, setContacts] = React.useState([])
 
-  // Contact tab state
-  const [contactTab, setContactTab] = React.useState("home")
+  // Lấy contactTab từ URL thay vì local state
+  const getContactTabFromURL = () => {
+    const pathSegments = location.pathname.split('/').filter(Boolean)
+    if (pathSegments[0] === 'contacts') {
+      return pathSegments[1] || 'friends' // Default to 'friends' if no subtab
+    }
+    return 'friends' // Default fallback
+  }
+
+  const contactTab = getContactTabFromURL()
+
+  // Handler để thay đổi contact tab thông qua routing
+  const handleContactTabChange = (tab) => {
+    navigate(`/contacts/${tab}`)
+  }
 
   //cloud state
   const [cloudTab, setCloudTab] = React.useState("cloud")
@@ -78,7 +94,7 @@ export default function MainLayout() {
         <AppSidebar
           chatState={chatState}
           contactTab={contactTab}
-          onContactTabChange={setContactTab}
+          onContactTabChange={handleContactTabChange}
           cloudTab={cloudTab}
           onCloudTabChange={setCloudTab}
         />
@@ -87,7 +103,7 @@ export default function MainLayout() {
         <div className="flex-1 flex flex-col min-w-0">
           <div className="flex-1 min-h-0">
             {/* Truyền state xuống page qua Outlet context */}
-            <Outlet context={{ chatState, contactTab, setContactTab, cloudTab, setCloudTab }} />
+            <Outlet context={{ chatState, contactTab, setContactTab: handleContactTabChange, cloudTab, setCloudTab }} />
           </div>
         </div>
       </div>

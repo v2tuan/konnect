@@ -1,4 +1,3 @@
-// pages/MessagePage.jsx
 "use client"
 
 import { ChatArea } from "@/components/common/Sidebar/Chat/ChatArea"

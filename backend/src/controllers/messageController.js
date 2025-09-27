@@ -1,29 +1,71 @@
+import { flatten } from "flat"
 import { StatusCodes } from "http-status-codes"
 import { messageService } from "~/services/messageService"
+
+/**
+ * API nhận message
+ */
+// const sendMessage = async (req, res, next) => {
+//   try {
+//     const userId = req.userId
+//     const { conversationId, payload} = req.body
+//     const { type, body } = payload
+
+//     if (!conversationId) {
+//       return res.status(StatusCodes.BAD_REQUEST).json({ message: 'conversationId is required'})
+//     }
+
+//     if (!['text','image','file','notification'].includes(type))
+//       return res.status(StatusCodes.BAD_REQUEST).json({ message: 'Invalid type message'})
+//     const result = await messageService.sendMessage({
+//       userId,
+//       conversationId,
+//       type,
+//       text: body,
+//       io: req.io
+//     })
+//     res.status(StatusCodes.CREATED).json(result)
+//   } catch (error) {
+//     next(error)
+//   }
+// }
 
 const sendMessage = async (req, res, next) => {
   try {
     const userId = req.userId
-    const { conversationId, type='text', text=''} = req.body
+    const { conversationId, type, body } = req.body
 
     if (!conversationId) {
-      return res.status(StatusCodes.BAD_REQUEST).json({ message: 'conversationId is required'})
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "conversationId is required" })
     }
 
-    if (!['text','image','file','notification'].includes(type))
-      return res.status(StatusCodes.BAD_REQUEST).json({ message: 'Invalid type message'})
+    if (type === "text") {
+      if (!body || !body.text) {
+        return res.status(StatusCodes.BAD_REQUEST).json({ message: "Text body is required for text messages" })
+      }
+    } else if (["image", "file", "audio"].includes(type)) {
+      if (!req.files) {
+        return res.status(StatusCodes.BAD_REQUEST).json({ message: "File is required for image, file, or audio messages" })
+      }
+    } else {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "Invalid message type" })
+    }
+
     const result = await messageService.sendMessage({
       userId,
       conversationId,
       type,
-      text,
+      text: body?.text,
+      file: req.files,   // ⚡ Thêm file vào service
       io: req.io
     })
+
     res.status(StatusCodes.CREATED).json(result)
   } catch (error) {
     next(error)
   }
 }
+
 const listMessages = async(req, res, next) => {
   try {
     const userId = req.userId

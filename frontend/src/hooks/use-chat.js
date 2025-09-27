@@ -4,9 +4,16 @@ import { extractId } from "@/utils/helper"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { io } from "socket.io-client"
 
+/**
+ * Custom Hook: useCloudChat
+ * Quản lý chat theo cloud/direct với socket realtime
+ */
 export const useCloudChat = (options = {}) => {
+  // -------------------------------
+  // 1) Options & States
+  // -------------------------------
   const {
-    mode = "cloud",
+    mode = "cloud", // cloud | direct
     currentUserId,
     conversationId: externalConversationId = null,
     initialConversation = null,
@@ -18,37 +25,48 @@ export const useCloudChat = (options = {}) => {
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
   const [othersTyping, setOthersTyping] = useState(false)
-  const [cursor, setCursor] = useState(null) //load tin nhan cu hon
+  const [cursor, setCursor] = useState(null) // cursor để load tin nhắn cũ
   const socketRef = useRef(null)
 
+  // -------------------------------
+  // 2) Helper: Chuẩn hóa tin nhắn
+  // -------------------------------
   const normalizeIncoming = (m) => {
     const base = {
       id: m._id || m.id || String(m.seq ?? Date.now()),
       seq: m.seq ?? 0,
       createdAt: m.createdAt ?? Date.now(),
       body: m.body,
+      media: m.media || null,
       text: m.body?.text ?? m.text ?? "",
       senderId: m.senderId,
       type: m.type
     }
+
+    // Cloud mode mặc định là own
     if (mode === "cloud") return { ...base, isOwn: true }
+
     return { ...base, isOwn: String(m.senderId) === String(currentUserId) }
   }
 
-  // 1) Khởi tạo conversation
+  // -------------------------------
+  // 3) Load Conversation & Messages
+  // -------------------------------
   useEffect(() => {
     let mounted = true
 
-    ;(async () => {
+    const initConversation = async () => {
       try {
         setLoading(true)
 
-        // Có id từ URL (direct/group) -> set ngay
-        if (externalConversationId && mode !== 'cloud') {
+        // 3.1) Nếu có conversationId từ URL (direct/group)
+        if (externalConversationId && mode !== "cloud") {
           const data = await fetchConversationDetail(externalConversationId)
           if (!mounted) return
+
           const convo = data?.conversation
-          const items = Array.isArray(data?.messages) ? data.messages: []
+          const items = Array.isArray(data?.messages) ? data.messages : []
+
           setConversation(convo || { id: externalConversationId, type: mode })
           setCid(externalConversationId)
           setMessages(items.map(normalizeIncoming))
@@ -56,44 +74,54 @@ export const useCloudChat = (options = {}) => {
           return
         }
 
-        // Không có id nhưng là cloud -> tự load cloud conversation
+        // 3.2) Nếu cloud mode và chưa có conversationId
         if (mode === "cloud") {
           const res = await getCloudConversation()
+          if (!mounted) return
+
           const convo = res?.conversation
           const id = extractId(convo)
           const items = Array.isArray(res?.messages) ? res.messages : []
-          if (!mounted) return
+
           setConversation(convo || null)
           setCid(id)
           setMessages(items.map(normalizeIncoming))
           setCursor(res?.paging?.nextBeforeReq ?? null)
           return
         }
-      } catch (e) {
-        console.error(e)
+
+      } catch (error) {
+        console.error("Init conversation failed:", error)
       } finally {
         if (mounted) setLoading(false)
       }
-    })()
+    }
 
+    initConversation()
     return () => { mounted = false }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [externalConversationId, mode])
 
-  // 2) Socket theo cid
+  // -------------------------------
+  // 4) Socket Realtime
+  // -------------------------------
   useEffect(() => {
     if (!cid) return
 
-    const s = io(API_ROOT, { withCredentials: true })
-    socketRef.current = s
+    const socket = io(API_ROOT, { withCredentials: true })
+    socketRef.current = socket
 
-    s.on("connect", () => {
-      s.emit("conversation:join", { conversationId: cid })
+    // Join room conversation
+    socket.on("connect", () => {
+      socket.emit("conversation:join", { conversationId: cid })
     })
 
-    const onNewMessage = (payload) => {
+    // -------------------------------
+    // 4.1) Event Handlers
+    // -------------------------------
+    const handleNewMessage = (payload) => {
       if (extractId(payload?.conversationId) !== cid) return
       const nm = normalizeIncoming(payload?.message || payload)
+
       setMessages((prev) => {
         const next = [...prev, nm]
         next.sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))
@@ -101,78 +129,175 @@ export const useCloudChat = (options = {}) => {
       })
     }
 
-    const onTypingStart = (payload) => {
+    const handleTypingStart = (payload) => {
       if (extractId(payload?.conversationId) === cid) setOthersTyping(true)
     }
-    const onTypingStop = (payload) => {
+
+    const handleTypingStop = (payload) => {
       if (extractId(payload?.conversationId) === cid) setOthersTyping(false)
     }
 
-    s.on("message:new", onNewMessage)
-    s.on("typing:start", onTypingStart)
-    s.on("typing:stop", onTypingStop)
+    // -------------------------------
+    // 4.2) Listen Events
+    // -------------------------------
+    socket.on("message:new", handleNewMessage)
+    socket.on("typing:start", handleTypingStart)
+    socket.on("typing:stop", handleTypingStop)
 
+    // -------------------------------
+    // 4.3) Cleanup
+    // -------------------------------
     return () => {
-      s.off("message:new", onNewMessage)
-      s.off("typing:start", onTypingStart)
-      s.off("typing:stop", onTypingStop)
-      s.disconnect()
+      socket.off("message:new", handleNewMessage)
+      socket.off("typing:start", handleTypingStart)
+      socket.off("typing:stop", handleTypingStop)
+      socket.disconnect()
       socketRef.current = null
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cid, mode, currentUserId])
 
-  // 3) Gửi tin
-  const send = async (text) => {
-    if (!cid || !text || !text.trim() || sending) return
+  // -------------------------------
+  // 5) Gửi tin nhắn
+  // -------------------------------
+  /**
+ * Gửi tin nhắn dạng text, file, image, audio
+ * @param {Object} message
+ * @param {"text"|"image"|"file"|"audio"} message.type
+ * @param {string|File|Blob} message.content
+ */
+  const send = async (message) => {
+    // Nếu chưa có conversation hoặc đang gửi → dừng
+    if (!cid || sending) return
+    if (!message?.content) return
+
+    setSending(true) // đánh dấu đang gửi
+
     try {
-      setSending(true)
-      await sendMessage(cid, text.trim())
-    } catch (error) {
-      console.error("Send failed", error)
-    } finally {
-      setSending(false)
+      let payload
+      let isFormData = false
+
+      // Chuẩn bị payload theo type
+      if (message.type === "text") {
+        payload = {
+          type: "text",
+          body: { text: message.content }
+        }
+      }
+      else if (["image", "file", "audio"].includes(message.type)) {
+        // Tạo FormData để upload file/blob
+        payload = new FormData()
+        payload.append("type", message.type)
+        if (Array.isArray(message.content)) {
+          message.content.forEach(f => {
+            payload.append("file", f)  // thêm nhiều file vào cùng key "file"
+          })
+        } else {
+          payload.append("file", message.content) // trường hợp chỉ 1 file
+        }
+        isFormData = true
+      }
+      else {
+        console.warn("Unsupported message type:", message.type)
+        return
+      }
+
+      // Gửi payload lên server
+      await sendMessage(cid, payload, isFormData)
+    }
+    catch (error) {
+      console.error("Send message failed:", error)
+    }
+    finally {
+      setSending(false) // reset trạng thái gửi
     }
   }
 
-  // 4) Typing emitters
+
+  const sendViaSocket = (type, content) => {
+    if (!cid || !socketRef.current) return
+
+    let payload
+
+    if (type === "text") {
+      payload = { conversationId: cid, message: { type: "text", body: { text: content } } }
+    } else if (type === "image" || type === "audio" || type === "file") {
+      // content là File/Blob
+      const reader = new FileReader()
+      reader.onload = () => {
+        const arrayBuffer = reader.result
+        payload = {
+          conversationId: cid,
+          message: {
+            type,
+            data: arrayBuffer,
+            fileName: content.name,
+            fileSize: content.size,
+          },
+        }
+        socketRef.current.emit("message:new", payload)
+      }
+      reader.readAsArrayBuffer(content)
+      return
+    }
+
+    socketRef.current.emit("message:new", payload)
+  }
+
+
+  // -------------------------------
+  // 6) Typing emitters
+  // -------------------------------
   const startTyping = () => {
     if (!cid) return
     socketRef.current?.emit("typing:start", { conversationId: cid })
   }
+
   const stopTyping = () => {
     if (!cid) return
     socketRef.current?.emit("typing:stop", { conversationId: cid })
   }
 
+  // -------------------------------
+  // 7) Load tin nhắn cũ
+  // -------------------------------
   const loadOlder = async () => {
-    if (!cid || cursor === null ) return { hasMore: false }
+    if (!cid || cursor === null) return { hasMore: false }
+
     try {
       const data = await fetchConversationDetail(cid, { beforeReq: cursor, limit: 30 })
       const older = Array.isArray(data?.messages) ? data.messages : []
+
       if (!older.length) {
         setCursor(null)
         return { hasMore: false }
       }
+
       setMessages((prev) => {
         const merged = [...older.map(normalizeIncoming), ...prev]
-        merged.sort((a, b) => (a.seq??0) - (b.seq ?? 0))
+        merged.sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))
         return merged
       })
+
       setCursor(data?.pageInfo?.nextBeforeSeq ?? null)
       return { hasMore: data?.pageInfo?.nextBeforeSeq != null }
     } catch (error) {
-      console.error(error)
+      console.error("Load older messages failed:", error)
       return { hasMore: false }
     }
   }
 
+  // -------------------------------
+  // 8) Messages đã được sắp xếp
+  // -------------------------------
   const normalizedMessages = useMemo(() => {
     const arr = [...messages]
     arr.sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))
     return arr
   }, [messages])
 
+  // -------------------------------
+  // 9) Return values
+  // -------------------------------
   return {
     loading,
     sending,
@@ -183,7 +308,7 @@ export const useCloudChat = (options = {}) => {
     startTyping,
     stopTyping,
     othersTyping,
-    loadOlder, //load tin nhan cu
+    loadOlder,
     hasMore: cursor != null
   }
 }

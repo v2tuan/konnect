@@ -1,8 +1,8 @@
 /* eslint-disable no-empty */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { io } from 'socket.io-client'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate, useParams } from 'react-router-dom'
-import { io } from 'socket.io-client'
 
 import { getConversationByUserId, getConversations, searchUserByUsername } from '@/apis'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -11,24 +11,76 @@ import { Input } from '@/components/ui/input'
 import { SkeletonConversation } from '../Skeleton/SkeletonConversation'
 
 import { selectCurrentUser, upsertUsers } from '@/redux/user/userSlice'
+import { formatTimeAgo, pickPeerStatus, extractId } from '@/utils/helper'
+import { MessageCircle } from 'lucide-react'
 import { usePresenceText } from '@/hooks/use-relative-time'
-import { extractId, formatTimeAgo, pickPeerStatus } from '@/utils/helper'
 import { API_ROOT } from '@/utils/constant'
-
-// ⭐ unread store
 import { useUnreadStore } from '@/store/useUnreadStore'
 
-// =========================
-// Item riêng để an toàn hook
-// =========================
+/* ========================= Helpers ========================= */
+
+const glyphs = (s) => Array.from(String(s ?? ''))
+
+// cắt N ký tự (safe emoji)
+const cut = (s, n) => {
+  const g = glyphs(s)
+  return g.length <= n ? s : g.slice(0, n).join('') + '…'
+}
+
+// Lấy N từ đầu, M ký tự/từ, và tối đa K ký tự toàn chuỗi
+const previewWords = (raw = '', wordLimit = 8, maxTokenLen = 10, maxTotalLen = 40) => {
+  const text = String(raw || '').trim()
+  if (!text) return ''
+  const tokens = text.split(/\s+/).map(t => {
+    const g = glyphs(t)
+    return g.length > maxTokenLen ? g.slice(0, maxTokenLen).join('') + '…' : t
+  })
+  let out = tokens.slice(0, wordLimit).join(' ')
+  out = cut(out, maxTotalLen)
+  return out
+}
+
+const buildConvFromSocket = (payload) => {
+  const conv = payload?.conversation || {}
+  const convId = extractId(conv) || extractId(payload?.conversationId)
+  const msg = payload?.message || payload
+
+  const type = conv.type || 'group'
+  const displayName = conv.displayName || conv.name || conv.group?.name || 'New group'
+  const conversationAvatarUrl =
+    conv.conversationAvatarUrl || conv.avatarUrl || conv.group?.avatarUrl || ''
+
+  return {
+    _id: convId,
+    id: convId,
+    type,
+    displayName,
+    conversationAvatarUrl,
+    group: conv.group || {
+      members: conv.members || conv.groupMembers || []
+    },
+    lastMessage: msg
+      ? {
+        _id: msg._id || msg.id,
+        textPreview: msg.body?.text ?? msg.text ?? '',
+        senderId: msg.senderId || msg.sender?._id || msg.sender?.id,
+        sender: msg.sender,
+        createdAt: msg.createdAt || Date.now()
+      }
+      : null
+  }
+}
+
+/* ===================== Item component ====================== */
+
 function ConversationListItem({
-  conversation,
-  usersById,
-  isActive,
-  unread = 0,
-  onClick,
-  lastMessageText
-}) {
+                                conversation,
+                                usersById,
+                                isActive,
+                                unread = 0,
+                                onClick,
+                                lastMessageText
+                              }) {
   const id = extractId(conversation)
 
   const status = conversation.type === 'direct'
@@ -40,13 +92,18 @@ function ConversationListItem({
     lastActiveAt: status.lastActiveAt
   })
 
-  const tone = presenceTextRaw?.toLowerCase() === 'away'
-    ? 'away'
-    : (status.isOnline ? 'online' : 'offline')
+  const tone =
+    presenceTextRaw?.toLowerCase() === 'away'
+      ? 'away'
+      : status.isOnline
+        ? 'online'
+        : 'offline'
 
   const presenceDotClass =
-    tone === 'online' ? 'bg-status-online bg-emerald-500'
-      : tone === 'away' ? 'bg-status-away bg-amber-400'
+    tone === 'online'
+      ? 'bg-status-online bg-emerald-500'
+      : tone === 'away'
+        ? 'bg-status-away bg-amber-400'
         : 'bg-status-offline bg-zinc-400'
 
   // Văn bản hiển thị: nếu có unread > 0 => "{n} tin nhắn mới"
@@ -104,15 +161,22 @@ function ConversationListItem({
   )
 }
 
-// =========================
-// ChatSidebar
-// =========================
+/* ======================= Main component ===================== */
+
 export function ChatSidebar({ currentView, onViewChange }) {
+  // Search state
   const [searchQuery, setSearchQuery] = useState('')
-  const [loading, setLoading] = useState(true)
+  const [loadingSearch, setLoadingSearch] = useState(false)
   const [searchList, setSearchList] = useState([])
+
+  // Conversation state
   const [conversationList, setConversationList] = useState([])
-  const [pagination] = useState({ page: 1, limit: 10 })
+  const [loadingConvs, setLoadingConvs] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [initialLoaded, setInitialLoaded] = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [hasMore, setHasMore] = useState(true)
+  const [limit] = useState(20)
 
   const navigate = useNavigate()
   const { conversationId: activeIdFromURL } = useParams()
@@ -129,68 +193,139 @@ export function ChatSidebar({ currentView, onViewChange }) {
   const socketRef = useRef(null)
   const joinedRef = useRef(new Set())
 
-  // -----------------------
-  // Utils: text tin cuối
-  // -----------------------
-  const getLastMessageText = (conv) => {
-    const lm = conv.lastMessage
-    if (!lm) return 'Chưa có tin nhắn'
-    if (!lm.textPreview) return 'Chưa có tin nhắn'
+  // Scroll/Observer refs
+  const scrollContainerRef = useRef(null)
+  const loadMoreRef = useRef(null)
+  const observerRef = useRef(null)
 
-    const sid = typeof lm.senderId === 'object' ? lm.senderId?._id : lm.senderId
-    if (sid && String(sid) === String(currentUser?._id)) {
-      return `You: ${lm.textPreview}`
-    }
+  /* ---------- Helpers cho LastMessageText ---------- */
+  const getLastMessageText = useCallback(
+    (conv) => {
+      const lm = conv.lastMessage
+      if (!lm || !lm.textPreview) return 'Chưa có tin nhắn'
 
-    if (conv.type === 'group') {
-      let senderName = lm.sender?.fullName || lm.sender?.username
-      if (!senderName && Array.isArray(conv.group?.members)) {
-        const m = conv.group.members.find(u => String(u.id || u._id) === String(sid))
-        senderName = m?.fullName || m?.username
+      const body = previewWords(lm.textPreview, 8, 20, 40)
+      const sid =
+        typeof lm.senderId === 'object' ? lm.senderId?._id : lm.senderId
+
+      if (sid && String(sid) === String(currentUser?._id)) {
+        return `You: ${body}`
       }
-      if (senderName) return `${senderName}: ${lm.textPreview}`
-    }
 
-    return lm.textPreview
-  }
+      if (conv.type === 'group') {
+        let senderName = lm.sender?.fullName || lm.sender?.username
+        if (!senderName && Array.isArray(conv.group?.members)) {
+          const m = conv.group.members.find(
+            (u) => String(u.id || u._id) === String(sid)
+          )
+          senderName = m?.fullName || m?.username
+        }
+        if (senderName) return `${senderName}: ${body}`
+      }
+      return body
+    },
+    [currentUser?._id]
+  )
 
-  // -----------------------
-  // Load conversations
-  // -----------------------
-  useEffect(() => {
-    let mounted = true
-    ;(async () => {
+  /* =============== Load conversations =============== */
+
+  const loadConversations = useCallback(
+    async (page = 1, isAppend = false) => {
       try {
-        const { page, limit } = pagination
-        const conversations = await getConversations(page, limit)
-        if (!mounted) return
-        const data = conversations?.data || []
-        setConversationList(data)
-        const peers = data.map(c => c?.direct?.otherUser).filter(Boolean)
-        if (peers.length) dispatch(upsertUsers(peers))
-      } catch {
-        setConversationList([])
-      } finally {
-        if (mounted) setLoading(false)
-      }
-    })()
-    return () => {
-      mounted = false
-    }
-  }, [pagination, dispatch])
+        if (page === 1) setLoadingConvs(true)
+        else setLoadingMore(true)
 
-  // -----------------------
-  // Search (debounce)
-  // -----------------------
+        const conversations = await getConversations(page, limit)
+        const newConversations = conversations?.data || []
+
+        setConversationList(prev => (isAppend ? [...prev, ...newConversations] : newConversations))
+        setHasMore(newConversations.length === limit)
+
+        const peers = newConversations
+        .map((c) => c?.direct?.otherUser)
+        .filter(Boolean)
+        if (peers.length) dispatch(upsertUsers(peers))
+
+        if (page === 1) setInitialLoaded(true)
+      } catch (error) {
+        console.error('Error loading conversations:', error)
+        if (!isAppend) setConversationList([])
+      } finally {
+        if (page === 1) setLoadingConvs(false)
+        else setLoadingMore(false)
+      }
+    },
+    [limit, dispatch]
+  )
+
+  // Initial load
+  useEffect(() => {
+    setCurrentPage(1)
+    setHasMore(true)
+    loadConversations(1, false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const loadMore = useCallback(() => {
+    if (loadingMore || !hasMore) return
+    setCurrentPage(prev => {
+      const nextPage = prev + 1
+      loadConversations(nextPage, true)
+      return nextPage
+    })
+  }, [loadingMore, hasMore, loadConversations])
+
+  /* =============== IntersectionObserver =============== */
+
+  const attachObserver = useCallback(() => {
+    if (currentView !== 'chat') return
+    const sentinel = loadMoreRef.current
+    if (!sentinel) return
+    if (loadingConvs) return
+
+    if (observerRef.current) {
+      observerRef.current.disconnect()
+      observerRef.current = null
+    }
+
+    const rootEl = scrollContainerRef.current || null
+    observerRef.current = new IntersectionObserver(
+      entries => {
+        const entry = entries[0]
+        if (entry && entry.isIntersecting && hasMore && !loadingMore) {
+          loadMore()
+        }
+      },
+      {
+        root: rootEl,
+        rootMargin: '80px',
+        threshold: 0.1
+      }
+    )
+    observerRef.current.observe(sentinel)
+  }, [currentView, loadingConvs, hasMore, loadingMore, loadMore])
+
+  useEffect(() => {
+    attachObserver()
+    return () => {
+      if (observerRef.current) {
+        observerRef.current.disconnect()
+        observerRef.current = null
+      }
+    }
+  }, [attachObserver])
+
+  /* =============== Search (debounce) =============== */
+
   useEffect(() => {
     if (!searchQuery.trim()) {
       setSearchList([])
-      setLoading(false)
+      setLoadingSearch(false)
       onViewChange?.('chat')
       return
     }
     const controller = new AbortController()
-    setLoading(true)
+    setLoadingSearch(true)
     const t = setTimeout(async () => {
       try {
         const data = await searchUserByUsername(searchQuery)
@@ -198,7 +333,7 @@ export function ChatSidebar({ currentView, onViewChange }) {
       } catch {
         setSearchList([])
       } finally {
-        setLoading(false)
+        setLoadingSearch(false)
       }
     }, 500)
     return () => {
@@ -207,11 +342,11 @@ export function ChatSidebar({ currentView, onViewChange }) {
     }
   }, [searchQuery, onViewChange])
 
-  // -----------------------
-  // Socket: message:new
-  // -----------------------
+  /* =============== Socket wiring =============== */
+
   useEffect(() => {
-    if (loading || socketRef.current) return
+    if (!initialLoaded || socketRef.current) return
+
     const s = io(API_ROOT, { withCredentials: true })
     socketRef.current = s
 
@@ -225,8 +360,7 @@ export function ChatSidebar({ currentView, onViewChange }) {
             joinedRef.current.add(id)
           }
         })
-      } catch {
-      }
+      } catch {}
     })
 
     const onNewMessage = (payload) => {
@@ -239,14 +373,25 @@ export function ChatSidebar({ currentView, onViewChange }) {
       // Cập nhật lastMessage & đẩy conv lên đầu
       setConversationList(prev => {
         const idx = prev.findIndex(c => extractId(c) === convId)
-        if (idx === -1) return prev
+        if (idx === -1) {
+          const draft = buildConvFromSocket(payload)
+          try {
+            if (socketRef.current && !joinedRef.current.has(convId)) {
+              socketRef.current.emit('conversation:join', { conversationId: convId })
+              joinedRef.current.add(convId)
+            }
+          } catch {}
+          return [draft, ...prev]
+        }
+
         const old = prev[idx]
         const updated = {
           ...old,
           lastMessage: {
             _id: msg._id || msg.id,
             textPreview: msg.body?.text ?? msg.text ?? '',
-            senderId: msg.senderId,
+            senderId: msg.senderId || msg.sender?._id || msg.sender?.id,
+            sender: msg.sender,
             createdAt: msg.createdAt || Date.now()
           }
         }
@@ -255,9 +400,7 @@ export function ChatSidebar({ currentView, onViewChange }) {
         return [updated, ...next]
       })
 
-      // ⭐ Tăng unread nếu:
-      // - Không phải phòng đang mở
-      // - Và tin nhắn không phải do chính mình gửi
+      // ⭐ Tăng unread nếu: không phải phòng đang mở & không phải mình gửi
       const myId = String(currentUser?._id || '')
       const senderId = String((msg.senderId && msg.senderId._id) || msg.senderId || '')
       const isMine = myId && senderId && myId === senderId
@@ -268,16 +411,69 @@ export function ChatSidebar({ currentView, onViewChange }) {
       }
     }
 
+    const onConversationCreated = (payload) => {
+      const conversation = payload?.conversation
+      if (!conversation) return
+      const convId = extractId(conversation)
+      if (!convId) return
+
+      const currentUserId = currentUser?._id
+      const isUserInConversation =
+        conversation.type === 'group'
+          ? conversation.group?.members?.some(
+            (m) => String(m._id || m.id) === String(currentUserId)
+          )
+          : conversation.type === 'direct' &&
+          (String(conversation.direct?.otherUser?._id) === String(currentUserId) ||
+            String(conversation.direct?.user?._id) === String(currentUserId))
+
+      if (!isUserInConversation) return
+
+      setConversationList(prev => {
+        if (prev.some(c => extractId(c) === convId)) return prev
+
+        const newConv = {
+          ...conversation,
+          _id: convId,
+          id: convId,
+          displayName: conversation.displayName || conversation.name || 'New Conversation',
+          conversationAvatarUrl: conversation.conversationAvatarUrl || conversation.avatarUrl || '',
+          lastMessage: null
+        }
+
+        try {
+          if (socketRef.current && !joinedRef.current.has(convId)) {
+            socketRef.current.emit('conversation:join', { conversationId: convId })
+            joinedRef.current.add(convId)
+          }
+        } catch {}
+
+        return [newConv, ...prev]
+      })
+    }
+
+    const onAddedToConversation = (payload) => {
+      const conversation = payload?.conversation
+      const addedUserId = payload?.userId
+      if (!conversation || String(addedUserId) !== String(currentUser?._id)) return
+      onConversationCreated(payload)
+    }
+
     s.on('message:new', onNewMessage)
+    s.on('conversation:created', onConversationCreated)
+    s.on('conversation:member:added', onAddedToConversation)
+
     return () => {
       s.off('message:new', onNewMessage)
+      s.off('conversation:created', onConversationCreated)
+      s.off('conversation:member:added', onAddedToConversation)
       s.disconnect()
       socketRef.current = null
       joinedRef.current.clear()
     }
-  }, [loading, conversationList, currentUser?._id, activeIdFromURL, unreadMap, setUnread])
+  }, [initialLoaded, conversationList, currentUser?._id, activeIdFromURL, unreadMap, setUnread])
 
-  // Join room khi danh sách thay đổi (sau lần đầu)
+  // Đảm bảo join đủ room khi list thay đổi
   useEffect(() => {
     if (!socketRef.current) return
     try {
@@ -288,13 +484,46 @@ export function ChatSidebar({ currentView, onViewChange }) {
           joinedRef.current.add(id)
         }
       })
-    } catch {
-    }
+    } catch {}
   }, [conversationList])
 
-  // -----------------------
-  // Clicks
-  // -----------------------
+  // Lắng nghe event local
+  useEffect(() => {
+    const onLocalCreated = (e) => {
+      const conversation = e?.detail?.conversation
+      if (!conversation) return
+      const convId = extractId(conversation)
+      if (!convId) return
+
+      setConversationList(prev => {
+        if (prev.some(c => extractId(c) === convId)) return prev
+
+        const newConv = {
+          ...conversation,
+          _id: convId,
+          id: convId,
+          displayName: conversation.displayName || conversation.name || 'New Conversation',
+          conversationAvatarUrl:
+            conversation.conversationAvatarUrl || conversation.avatarUrl || '',
+          lastMessage: null
+        }
+
+        try {
+          if (socketRef.current && !joinedRef.current.has(convId)) {
+            socketRef.current.emit('conversation:join', { conversationId: convId })
+            joinedRef.current.add(convId)
+          }
+        } catch {}
+
+        return [newConv, ...prev]
+      })
+    }
+    window.addEventListener('local:conversation:created', onLocalCreated)
+    return () => window.removeEventListener('local:conversation:created', onLocalCreated)
+  }, [])
+
+  /* =============== Actions =============== */
+
   const handleClickUser = async (userId) => {
     try {
       const conversation = await getConversationByUserId(userId)
@@ -304,8 +533,7 @@ export function ChatSidebar({ currentView, onViewChange }) {
       // clear local unread để UI phản hồi ngay
       useUnreadStore.getState().setUnread(id, 0)
       navigate(`/chats/${id}`)
-    } catch {
-    }
+    } catch {}
   }
 
   const handleClickConversation = (conv) => {
@@ -317,30 +545,18 @@ export function ChatSidebar({ currentView, onViewChange }) {
     navigate(`/chats/${id}`)
   }
 
-  // Memo hóa map unread -> render text preview
-  const lastTexts = useMemo(() => {
-    const map = {}
-    for (const c of conversationList) {
-      const id = extractId(c)
-      const unread = unreadMap[id] || 0
-      if (unread > 0) map[id] = `${unread > 99 ? '99+' : unread} tin nhắn mới`
-      else map[id] = getLastMessageText(c)
-    }
-    return map
-  }, [conversationList, unreadMap])
+  /* ======================= Render ======================= */
 
-  // ========================
-  // Render
-  // ========================
+  const isChatView = currentView === 'chat'
+  const isSearchView = currentView === 'search'
+
   return (
     <div className="h-full flex flex-col">
       {/* Header: Search */}
       <div className="p-4 border-b border-border">
         <div className="relative">
-          <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4" viewBox="0 0 24 24"
-            fill="none">
-            <path d="M21 21l-4.3-4.3m1.8-4.7a7 7 0 11-14 0 7 7 0 0114 0z" stroke="currentColor" strokeWidth="2"
-              strokeLinecap="round" strokeLinejoin="round"/>
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4" viewBox="0 0 24 24" fill="none">
+            <path d="M21 21l-4.3-4.3m1.8-4.7a7 7 0 11-14 0 7 7 0 0114 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
           <Input
             placeholder="Tìm kiếm bạn bè, tin nhắn..."
@@ -357,7 +573,7 @@ export function ChatSidebar({ currentView, onViewChange }) {
       <div className="px-4 py-2 border-b border-border">
         <div className="flex gap-1">
           <Button
-            variant={currentView === 'chat' ? 'default' : 'ghost'}
+            variant={isChatView ? 'default' : 'ghost'}
             size="sm"
             onClick={() => onViewChange?.('chat')}
             className="flex-1"
@@ -376,18 +592,18 @@ export function ChatSidebar({ currentView, onViewChange }) {
       </div>
 
       {/* Skeleton khi search */}
-      {currentView === 'search' && loading && (
+      {isSearchView && loadingSearch && (
         <>
-          <SkeletonConversation/>
-          <SkeletonConversation/>
-          <SkeletonConversation/>
-          <SkeletonConversation/>
-          <SkeletonConversation/>
+          <SkeletonConversation />
+          <SkeletonConversation />
+          <SkeletonConversation />
+          <SkeletonConversation />
+          <SkeletonConversation />
         </>
       )}
 
       {/* Kết quả search */}
-      {currentView === 'search' && !loading && (
+      {isSearchView && !loadingSearch && (
         searchList.length === 0 ? (
           <p className="p-3 rounded-lg">No users found</p>
         ) : (
@@ -418,33 +634,61 @@ export function ChatSidebar({ currentView, onViewChange }) {
         )
       )}
 
-      {/* Conversation List */}
-      <div className="flex-1 overflow-y-auto">
-        {currentView === 'chat' && (
+      {/* Conversation List với Infinite Scroll */}
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
+        {isChatView && (
           <div className="space-y-1 p-2">
-            {loading ? (
+            {/* Initial loading skeleton */}
+            {loadingConvs && conversationList.length === 0 ? (
               <>
-                <SkeletonConversation/>
-                <SkeletonConversation/>
-                <SkeletonConversation/>
+                <SkeletonConversation />
+                <SkeletonConversation />
+                <SkeletonConversation />
               </>
             ) : (
-              conversationList.map((conversation) => {
-                const id = extractId(conversation)
-                const isActive = activeIdFromURL === id
-                const unread = unreadMap[id] || 0
-                return (
-                  <ConversationListItem
-                    key={id}
-                    conversation={conversation}
-                    usersById={usersById}
-                    isActive={isActive}
-                    unread={unread}
-                    lastMessageText={lastTexts[id]}
-                    onClick={() => handleClickConversation(conversation)}
-                  />
-                )
-              })
+              <>
+                {/* Render conversation list */}
+                {conversationList.map((conversation) => {
+                  const id = extractId(conversation)
+                  const isActive = activeIdFromURL === id
+                  const unread = unreadMap[id] || 0
+                  return (
+                    <ConversationListItem
+                      key={id}
+                      conversation={conversation}
+                      usersById={usersById}
+                      isActive={isActive}
+                      unread={unread}
+                      lastMessageText={getLastMessageText(conversation)}
+                      onClick={() => handleClickConversation(conversation)}
+                    />
+                  )
+                })}
+
+                {/* Load more trigger element */}
+                {hasMore && (
+                  <div ref={loadMoreRef} className="flex justify-center py-4">
+                    {loadingMore ? (
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                        <span className="text-sm">Đang tải thêm...</span>
+                      </div>
+                    ) : (
+                      <div className="text-xs text-muted-foreground">
+                        Scroll để tải thêm
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Empty state */}
+                {!loadingConvs && conversationList.length === 0 && (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <MessageCircle className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                    <p>Chưa có cuộc trò chuyện nào</p>
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}
