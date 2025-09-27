@@ -137,7 +137,9 @@ export function ChatArea({
 
   useEffect(() => {
     setOnOpenCall((conversationId, mode, acceptedAt) => {
-      console.log('Opening call modal:', { conversationId, mode, acceptedAt })
+      console.log('[ChatArea] Opening call modal:', { conversationId, mode, acceptedAt })
+
+      // Mở CallModal
       setCall({
         conversationId: conversationId,
         mode: mode,
@@ -160,7 +162,7 @@ export function ChatArea({
     }
 
     const callId = `${conversation._id}:${Date.now()}`
-    
+
     startCall({
       callId,
       conversationId: conversation._id,
@@ -689,7 +691,7 @@ export function ChatArea({
               <AccordionTrigger className="text-base p-4">File</AccordionTrigger>
               <AccordionContent>
                 <div className="px-4 pb-4">
-                  <div className="text-center py-6">  
+                  <div className="text-center py-6">
                     <p className="text-sm">Chưa có file nào</p>
                   </div>
                   <Button variant={"ghost"} className="w-full text-center text-blue-600 text-sm py-2 rounded transition-colors">

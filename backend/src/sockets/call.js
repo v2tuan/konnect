@@ -1,28 +1,23 @@
 export function registerCallSignaling(io, authMiddleware) {
   const nsp = io.of('/webrtc')
 
-  // Áp dụng xác thực riêng cho namespace
   if (authMiddleware) nsp.use(authMiddleware)
 
   nsp.on('connection', (socket) => {
-    // ================== NEW: join theo user-room để báo chuông ==================
     const authedUserId = socket.user?.id ? String(socket.user.id) : null
     if (authedUserId) {
       const userRoom = `user:${authedUserId}`
       socket.join(userRoom)
       console.log('[WEBRTC] joined', userRoom)
-    } else {
-      console.warn('[WEBRTC] missing userId in auth for ringing')
     }
 
-    // ================== EXISTING: signaling theo roomId ==================
+    // ===== WEBRTC SIGNALING (existing) =====
     socket.on('join-call', ({ roomId, userId }) => {
       socket.data = { roomId, userId }
       socket.join(roomId)
 
       const peers = [...(nsp.adapter.rooms.get(roomId) || [])].filter(id => id !== socket.id)
       socket.emit('peers-in-room', { peers })
-
       socket.to(roomId).emit('peer-joined', { peerId: socket.id, userId })
     })
 
@@ -31,22 +26,21 @@ export function registerCallSignaling(io, authMiddleware) {
       socket.to(roomId).emit('peer-left', { peerId: socket.id })
     })
 
-    // SDP/ICE chuyển tiếp đích danh (giữ nguyên)
     socket.on('rtc-offer', ({ to, sdp, from }) => nsp.to(to).emit('rtc-offer', { from, sdp }))
     socket.on('rtc-answer', ({ to, sdp, from }) => nsp.to(to).emit('rtc-answer', { from, sdp }))
     socket.on('rtc-ice', ({ to, candidate, from }) => nsp.to(to).emit('rtc-ice', { from, candidate }))
 
-    // ================== NEW: ringing invite/cancel theo user-room ==================
-    // Caller gửi invite (trước khi 2 bên join roomId), server đẩy 'call:incoming' đến user:<toUserId>
+    // ===== CALL INVITE SYSTEM =====
+    
+    // 1. Caller gửi invite
     socket.on('call:invite', (payload = {}) => {
       try {
         const {
-          toUserIds = [],            // mảng user đích
-          conversationId,            // dùng để FE mở đúng chat/call modal
-          mode,                      // 'audio' | 'video'
-          fromUser,                  // { id, name, avatarUrl } (gợi ý hiển thị)
-          peer,                      // đối tượng peer hiển thị cho receiver (optional)
-          timeoutMs = 30000
+          callId,
+          toUserIds = [],
+          conversationId,
+          mode,
+          from
         } = payload
 
         const targets = (toUserIds || []).map(String).filter(Boolean)
@@ -55,55 +49,84 @@ export function registerCallSignaling(io, authMiddleware) {
           return
         }
 
-        const notify = {
-          conversationId,
-          mode,
-          fromUser: fromUser || (authedUserId ? { id: authedUserId } : undefined),
-          peer,
-          timeoutMs
-        }
-
         console.log('[WEBRTC] invite ->', targets, 'conv:', conversationId, 'by:', authedUserId)
-        targets.forEach(uid => nsp.to(`user:${uid}`).emit('call:ringing', notify))
-      } catch (err) {
-        console.error('[WEBRTC] invite error:', err)
-      }
-    })
-
-    socket.on('call:cancel', (payload = {}) => {
-      try {
-        const { toUserIds = [], conversationId } = payload
-        const targets = (toUserIds || []).map(String).filter(Boolean)
-        if (targets.length === 0) return
-
-        console.log('[WEBRTC] cancel ->', targets, 'by:', authedUserId)
+        
+        // Emit đúng event name: call:ringing
         targets.forEach(uid => {
-          nsp.to(`user:${uid}`).emit('call:cancelled', {
-            by: authedUserId,
-            conversationId
+          nsp.to(`user:${uid}`).emit('call:ringing', {
+            callId,
+            conversationId,
+            mode,
+            from
           })
         })
       } catch (err) {
-        console.error('[WEBRTC] cancel error:', err)
+        console.error('[WEBRTC] call:invite error:', err)
       }
     })
 
-    // (Optional) accept/reject nếu bạn cần
-    socket.on('call:accept', ({ toUserId, conversationId }) => {
-      if (!toUserId) return
-      nsp.to(`user:${String(toUserId)}`).emit('call:accepted', {
-        by: authedUserId,
-        conversationId
-      })
+    // 2. Caller hủy cuộc gọi
+    socket.on('call:cancel', (payload = {}) => {
+      try {
+        const { callId, toUserIds = [] } = payload
+        const targets = (toUserIds || []).map(String).filter(Boolean)
+        
+        console.log('[WEBRTC] cancel ->', targets, 'by:', authedUserId)
+        
+        // Emit đúng event name: call:canceled (không phải call:cancelled)
+        targets.forEach(uid => {
+          nsp.to(`user:${uid}`).emit('call:canceled', { callId })
+        })
+      } catch (err) {
+        console.error('[WEBRTC] call:cancel error:', err)
+      }
     })
 
-    socket.on('call:reject', ({ toUserId, conversationId, reason }) => {
-      if (!toUserId) return
-      nsp.to(`user:${String(toUserId)}`).emit('call:rejected', {
-        by: authedUserId,
-        conversationId,
-        reason: reason || 'rejected'
-      })
+    // 3. Callee accept cuộc gọi  
+    socket.on('call:accept', (payload = {}) => {
+      try {
+        const { callId, conversationId, mode, fromUserId, toUserId } = payload
+        
+        console.log('[WEBRTC] accept by:', fromUserId, 'to:', toUserId, 'callId:', callId)
+        
+        const acceptedAt = new Date().toISOString()
+        
+        // Thông báo cho caller (toUserId)
+        if (toUserId) {
+          nsp.to(`user:${String(toUserId)}`).emit('call:accepted', {
+            callId,
+            conversationId,
+            mode,
+            acceptedAt
+          })
+        }
+        
+        // Thông báo cho chính callee (fromUserId) 
+        nsp.to(`user:${String(fromUserId)}`).emit('call:accepted', {
+          callId,
+          conversationId,
+          mode,
+          acceptedAt
+        })
+      } catch (err) {
+        console.error('[WEBRTC] call:accept error:', err)
+      }
+    })
+
+    // 4. Callee decline cuộc gọi
+    socket.on('call:decline', (payload = {}) => {
+      try {
+        const { callId, fromUserId, toUserId } = payload
+        
+        console.log('[WEBRTC] decline by:', fromUserId, 'to:', toUserId, 'callId:', callId)
+        
+        // Thông báo cho caller (toUserId)
+        if (toUserId) {
+          nsp.to(`user:${String(toUserId)}`).emit('call:declined', { callId })
+        }
+      } catch (err) {
+        console.error('[WEBRTC] call:decline error:', err)
+      }
     })
 
     socket.on('disconnect', () => {

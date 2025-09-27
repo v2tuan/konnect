@@ -5,7 +5,7 @@ import { ToastIncoming } from '@/components/common/Modal/CallToast'
 
 export function useCallInvite(currentUserId) {
   const socketRef = useRef(null)
-  
+
   // Khung chờ phía caller
   const [ringing, setRinging] = useState(null)
   // Map callId -> toastId
@@ -14,6 +14,8 @@ export function useCallInvite(currentUserId) {
   const onOpenCallRef = useRef(null)
 
   useEffect(() => {
+    if (!currentUserId) return
+
     const s = getWebRTCSocket(currentUserId)
     socketRef.current = s
 
@@ -22,8 +24,7 @@ export function useCallInvite(currentUserId) {
     // ===== Callee: nhận cuộc gọi đến =====
     const onRinging = ({ callId, conversationId, mode, from }) => {
       console.log('[useCallInvite] call:ringing received:', { callId, conversationId, mode, from })
-      
-      // Sử dụng createElement thay vì JSX
+
       const toastId = toast.info(
         createElement(ToastIncoming, {
           from: from,
@@ -31,7 +32,11 @@ export function useCallInvite(currentUserId) {
           onAccept: () => accept(callId, conversationId, mode, from),
           onDecline: () => decline(callId, from?.id)
         }),
-        { autoClose: false, closeOnClick: false }
+        {
+          autoClose: false,
+          closeOnClick: false,
+          toastId: callId // Đặt toastId = callId để dễ quản lý
+        }
       )
       toastMapRef.current.set(callId, toastId)
     }
@@ -39,18 +44,18 @@ export function useCallInvite(currentUserId) {
     // Caller hủy cuộc gọi
     const onCanceled = ({ callId }) => {
       console.log('[useCallInvite] call:canceled received:', callId)
-      const tid = toastMapRef.current.get(callId)
-      if (tid) toast.dismiss(tid)
+
+      // Dismiss toast by callId
+      toast.dismiss(callId)
       toastMapRef.current.delete(callId)
     }
 
     // Cả 2 bên được thông báo accept
     const onAccepted = ({ callId, conversationId, mode, acceptedAt }) => {
       console.log('[useCallInvite] call:accepted received:', { callId, conversationId, mode, acceptedAt })
-      
+
       // Đóng toast
-      const tid = toastMapRef.current.get(callId)
-      if (tid) toast.dismiss(tid)
+      toast.dismiss(callId)
       toastMapRef.current.delete(callId)
 
       // Caller tắt khung chờ
@@ -64,16 +69,18 @@ export function useCallInvite(currentUserId) {
 
       // Mở modal WebRTC
       if (typeof onOpenCallRef.current === 'function') {
+        console.log('[useCallInvite] Opening call modal:', { conversationId, mode, acceptedAt })
         onOpenCallRef.current(conversationId, mode, acceptedAt)
+      } else {
+        console.warn('[useCallInvite] onOpenCallRef not set!')
       }
     }
 
     // Caller nhận báo bị từ chối
     const onDeclined = ({ callId }) => {
       console.log('[useCallInvite] call:declined received:', callId)
-      
-      const tid = toastMapRef.current.get(callId)
-      if (tid) toast.dismiss(tid)
+
+      toast.dismiss(callId)
       toastMapRef.current.delete(callId)
 
       toast.warn('Call was declined')
@@ -96,18 +103,61 @@ export function useCallInvite(currentUserId) {
       s.off('call:canceled', onCanceled)
       s.off('call:accepted', onAccepted)
       s.off('call:declined', onDeclined)
-      
+
       // Dọn dẹp
       setRinging(prev => {
         if (prev?.timer) clearInterval(prev.timer)
         return null
       })
+      toastMapRef.current.forEach(toastId => toast.dismiss(toastId))
       toastMapRef.current.clear()
     }
   }, [currentUserId])
 
+  // ===== Helper functions =====
+  function accept(callId, conversationId, mode, fromUser) {
+    if (!socketRef.current) {
+      console.error('[useCallInvite] Socket not connected for accept')
+      return
+    }
+
+    console.log('[useCallInvite] Accepting call:', { callId, conversationId, mode, fromUser })
+
+    socketRef.current.emit('call:accept', {
+      callId,
+      conversationId,
+      mode,
+      fromUserId: currentUserId,
+      toUserId: fromUser?.id
+    })
+
+    // Dismiss toast ngay lập tức
+    toast.dismiss(callId)
+    toastMapRef.current.delete(callId)
+  }
+
+  function decline(callId, toUserId) {
+    if (!socketRef.current) {
+      console.error('[useCallInvite] Socket not connected for decline')
+      return
+    }
+
+    console.log('[useCallInvite] Declining call:', { callId, toUserId })
+
+    socketRef.current.emit('call:decline', {
+      callId,
+      fromUserId: currentUserId,
+      toUserId
+    })
+
+    // Dismiss toast ngay lập tức
+    toast.dismiss(callId)
+    toastMapRef.current.delete(callId)
+  }
+
   // Đăng ký callback mở modal
   function setOnOpenCall(fn) {
+    console.log('[useCallInvite] setOnOpenCall registered')
     onOpenCallRef.current = fn
   }
 
@@ -163,37 +213,12 @@ export function useCallInvite(currentUserId) {
   // Caller hủy chủ động
   function cancelCaller(toUserIds) {
     if (!ringing || !socketRef.current) return
-    
+
     console.log('[useCallInvite] Canceling call:', ringing.callId)
     socketRef.current.emit('call:cancel', { callId: ringing.callId, toUserIds })
-    
+
     if (ringing.timer) clearInterval(ringing.timer)
     setRinging(null)
-  }
-
-  // ===== Callee accept/decline =====
-  function accept(callId, conversationId, mode, fromUser) {
-    if (!socketRef.current) return
-    
-    console.log('[useCallInvite] Accepting call:', callId)
-    socketRef.current.emit('call:accept', {
-      callId,
-      conversationId,
-      mode,
-      fromUserId: currentUserId,
-      toUserId: fromUser?.id
-    })
-  }
-
-  function decline(callId, toUserId) {
-    if (!socketRef.current) return
-    
-    console.log('[useCallInvite] Declining call:', callId)
-    socketRef.current.emit('call:decline', {
-      callId,
-      fromUserId: currentUserId,
-      toUserId
-    })
   }
 
   return {
