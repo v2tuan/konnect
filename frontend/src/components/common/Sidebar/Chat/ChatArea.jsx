@@ -19,7 +19,6 @@ import { useCallInvite } from '@/hooks/useCallInvite' // Import hook mới
 import CreateGroupDialog from '../../Modal/CreateGroupModel'
 import { fi } from 'date-fns/locale'
 import { submitFriendRequestAPI, updateFriendRequestStatusAPI } from '@/apis'
-import CallerRingingPanel from '@/components/common/Modal/CallerRingPanel'
 
 export function ChatArea({
   mode = 'direct',
@@ -335,7 +334,7 @@ export function ChatArea({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Hiển thị panel chờ khi đang gọi */}
+      {/* Hiển thị panel chờ khi đang gọi
       {ringing && (
         <div className="p-2 bg-blue-50 border-b">
           <CallerRingingPanel
@@ -345,7 +344,7 @@ export function ChatArea({
             onCancel={() => cancelCaller(toUserIds)}
           />
         </div>
-      )}
+      )} */}
 
       {/* Main */}
       <div className={`flex flex-col flex-1 min-h-0 transition-all duration-300 ease-in-out ${isOpen ? 'mr-80' : 'mr-0'}`}>
