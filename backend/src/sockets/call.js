@@ -64,7 +64,7 @@ export function registerCallSignaling(io, authMiddleware) {
         }
 
         console.log('[WEBRTC] invite ->', targets, 'conv:', conversationId, 'by:', authedUserId)
-        targets.forEach(uid => nsp.to(`user:${uid}`).emit('call:incoming', notify))
+        targets.forEach(uid => nsp.to(`user:${uid}`).emit('call:ringing', notify))
       } catch (err) {
         console.error('[WEBRTC] invite error:', err)
       }
