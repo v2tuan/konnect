@@ -15,31 +15,26 @@ import { extractId } from '@/utils/helper'
 import { API_ROOT } from '@/utils/constant'
 import { io } from 'socket.io-client'
 
-const glyphs = (s) => Array.from(String(s ?? ""))
+/* ========================= Helpers ========================= */
 
-// cắt N ký tự
+const glyphs = (s) => Array.from(String(s ?? ''))
+
+// cắt N ký tự (safe emoji)
 const cut = (s, n) => {
   const g = glyphs(s)
-  return g.length <= n ? s : g.slice(0, n).join("") + "…"
+  return g.length <= n ? s : g.slice(0, n).join('') + '…'
 }
 
 // Lấy N từ đầu, M ký tự/từ, và tối đa K ký tự toàn chuỗi
-const previewWords = (raw = "", wordLimit = 8, maxTokenLen = 10, maxTotalLen = 20) => {
-  const text = String(raw || "").trim()
-  if (!text) return ""
-
-  // 1) Tách theo khoảng trắng; cắt từng token nếu > maxTokenLen
+const previewWords = (raw = '', wordLimit = 8, maxTokenLen = 10, maxTotalLen = 40) => {
+  const text = String(raw || '').trim()
+  if (!text) return ''
   const tokens = text.split(/\s+/).map(t => {
     const g = glyphs(t)
-    return g.length > maxTokenLen ? g.slice(0, maxTokenLen).join("") + "…" : t
+    return g.length > maxTokenLen ? g.slice(0, maxTokenLen).join('') + '…' : t
   })
-
-  // 2) Luôn join lại (kể cả khi tokens.length <= wordLimit)
-  let out = tokens.slice(0, wordLimit).join(" ")
-
-  // 3) Giới hạn tổng độ dài
+  let out = tokens.slice(0, wordLimit).join(' ')
   out = cut(out, maxTotalLen)
-
   return out
 }
 
@@ -48,10 +43,8 @@ const buildConvFromSocket = (payload) => {
   const convId = extractId(conv) || extractId(payload?.conversationId)
   const msg = payload?.message || payload
 
-  // Suy luận type/name/avatar cho group
   const type = conv.type || 'group'
-  const displayName =
-    conv.displayName || conv.name || conv.group?.name || 'New group'
+  const displayName = conv.displayName || conv.name || conv.group?.name || 'New group'
   const conversationAvatarUrl =
     conv.conversationAvatarUrl || conv.avatarUrl || conv.group?.avatarUrl || ''
 
@@ -66,15 +59,17 @@ const buildConvFromSocket = (payload) => {
     },
     lastMessage: msg
       ? {
-        _id: msg._id || msg.id,
-        textPreview: msg.body?.text ?? msg.text ?? '',
-        senderId: msg.senderId || msg.sender?._id || msg.sender?.id,
-        sender: msg.sender,
-        createdAt: msg.createdAt || Date.now()
-      }
-      : undefined
+          _id: msg._id || msg.id,
+          textPreview: msg.body?.text ?? msg.text ?? '',
+          senderId: msg.senderId || msg.sender?._id || msg.sender?.id,
+          sender: msg.sender,
+          createdAt: msg.createdAt || Date.now()
+        }
+      : null
   }
 }
+
+/* ===================== Item component ====================== */
 
 function ConversationListItem({ conversation, usersById, isActive, onClick, getLastMessageText }) {
   const id = extractId(conversation)
@@ -82,25 +77,23 @@ function ConversationListItem({ conversation, usersById, isActive, onClick, getL
     ? pickPeerStatus(conversation, usersById)
     : { isOnline: false, lastActiveAt: null }
 
-  // Luôn gọi hook để giữ thứ tự hook ổn định
   const presenceTextRaw = usePresenceText({
     isOnline: status.isOnline,
     lastActiveAt: status.lastActiveAt
   })
-  // const presenceText = conversation.direct ? presenceTextRaw : null
 
-  const tone = presenceTextRaw?.toLowerCase() === 'away'
-    ? 'away'
-    : (status.isOnline ? 'online' : 'offline')
-
-  // const presenceTextClass =
-  //   tone === 'online' ? 'text-emerald-500'
-  //     : tone === 'away' ? 'text-amber-500'
-  //       : 'text-muted-foreground'
+  const tone =
+    presenceTextRaw?.toLowerCase() === 'away'
+      ? 'away'
+      : status.isOnline
+        ? 'online'
+        : 'offline'
 
   const presenceDotClass =
-    tone === 'online' ? 'bg-status-online bg-emerald-500'
-      : tone === 'away' ? 'bg-status-away bg-amber-400'
+    tone === 'online'
+      ? 'bg-status-online bg-emerald-500'
+      : tone === 'away'
+        ? 'bg-status-away bg-amber-400'
         : 'bg-status-offline bg-zinc-400'
 
   return (
@@ -116,7 +109,7 @@ function ConversationListItem({ conversation, usersById, isActive, onClick, getL
             <AvatarFallback>{conversation.displayName?.[0]}</AvatarFallback>
           </Avatar>
 
-          {conversation.type=== 'direct' && (
+          {conversation.type === 'direct' && (
             <div
               className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${presenceDotClass}`}
             />
@@ -144,19 +137,19 @@ function ConversationListItem({ conversation, usersById, isActive, onClick, getL
   )
 }
 
-export function ChatSidebar({
-  currentView,
-  onViewChange
-}) {
+/* ======================= Main component ===================== */
+
+export function ChatSidebar({ currentView, onViewChange }) {
+  // Search state
   const [searchQuery, setSearchQuery] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [loadingMore, setLoadingMore] = useState(false)
+  const [loadingSearch, setLoadingSearch] = useState(false)
   const [searchList, setSearchList] = useState([])
+
+  // Conversation state
   const [conversationList, setConversationList] = useState([])
-
+  const [loadingConvs, setLoadingConvs] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [initialLoaded, setInitialLoaded] = useState(false)
-
-  // Pagination state
   const [currentPage, setCurrentPage] = useState(1)
   const [hasMore, setHasMore] = useState(true)
   const [limit] = useState(20)
@@ -166,142 +159,147 @@ export function ChatSidebar({
 
   const currentUser = useSelector(selectCurrentUser)
   const dispatch = useDispatch()
-  const usersById = useSelector((state) => state.user.usersById || {} )
+  const usersById = useSelector((state) => state.user.usersById || {})
 
+  // Socket & room joined
   const socketRef = useRef(null)
   const joinedRef = useRef(new Set())
 
-  // Ref cho scroll container để detect scroll
+  // Scroll/Observer refs
   const scrollContainerRef = useRef(null)
-
-  // Observer cho intersection (detect khi scroll tới cuối)
   const loadMoreRef = useRef(null)
+  const observerRef = useRef(null)
 
-  const getLastMessageText = (conv) => {
-    const lm = conv.lastMessage
-    if (!lm || !lm.textPreview) return "Chưa có tin nhắn"
+  /* =============== Helpers =============== */
 
-    //format lại độ dài tin nhắn
-    const body = previewWords(lm.textPreview, 8, 20, 40)
+  const getLastMessageText = useCallback(
+    (conv) => {
+      const lm = conv.lastMessage
+      if (!lm || !lm.textPreview) return 'Chưa có tin nhắn'
 
-    // nếu senderId = currentUser._id thì thêm prefix
-    const sid = typeof lm.senderId === 'object' ? lm.senderId?._id : lm.senderId
-    if (sid && String(sid) === String(currentUser._id)) {
-      return `You: ${body}`
-    }
+      const body = previewWords(lm.textPreview, 8, 20, 40)
+      const sid =
+        typeof lm.senderId === 'object' ? lm.senderId?._id : lm.senderId
 
-    if (conv.type === 'group') {
-      let senderName = lm.sender?.fullName || lm.sender?.username
-      if (!senderName && Array.isArray(conv.group?.members)) {
-        const m = conv.group.members.find(u => String(u.id || u._id) === String(sid))
-        senderName = m?.fullName || m?.username
-      }
-      if (senderName) return `${senderName}: ${body}`
-    }
-
-    return body
-  }
-
-  // Load conversations function
-  const loadConversations = useCallback(async (page = 1, isAppend = false) => {
-    try {
-      if (page === 1) {
-        setLoading(true)
-      } else {
-        setLoadingMore(true)
+      if (sid && String(sid) === String(currentUser?._id)) {
+        return `You: ${body}`
       }
 
-      const conversations = await getConversations(page, limit)
-      const newConversations = conversations?.data || []
-
-      if (!isAppend) {
-        // Trang đầu: thay thế toàn bộ
-        setConversationList(newConversations)
-      } else {
-        // Trang sau: append vào cuối
-        setConversationList(prev => [...prev, ...newConversations])
+      if (conv.type === 'group') {
+        let senderName = lm.sender?.fullName || lm.sender?.username
+        if (!senderName && Array.isArray(conv.group?.members)) {
+          const m = conv.group.members.find(
+            (u) => String(u.id || u._id) === String(sid)
+          )
+          senderName = m?.fullName || m?.username
+        }
+        if (senderName) return `${senderName}: ${body}`
       }
+      return body
+    },
+    [currentUser?._id]
+  )
 
-      // Kiểm tra còn trang sau không
-      setHasMore(newConversations.length === limit)
+  /* =============== Load conversations =============== */
 
-      // Upsert users vào Redux
-      const peers = newConversations
-        .map(c => c?.direct?.otherUser)
-        .filter(Boolean)
-      if (peers.length) dispatch(upsertUsers(peers))
+  const loadConversations = useCallback(
+    async (page = 1, isAppend = false) => {
+      try {
+        if (page === 1) setLoadingConvs(true)
+        else setLoadingMore(true)
 
-      // ✅ Set initialLoaded khi load trang đầu xong
-      if (page === 1) {
-        setInitialLoaded(true)
+        const conversations = await getConversations(page, limit)
+        const newConversations = conversations?.data || []
+
+        setConversationList(prev => (isAppend ? [...prev, ...newConversations] : newConversations))
+
+        setHasMore(newConversations.length === limit)
+
+        const peers = newConversations
+          .map((c) => c?.direct?.otherUser)
+          .filter(Boolean)
+        if (peers.length) dispatch(upsertUsers(peers))
+
+        if (page === 1) setInitialLoaded(true)
+      } catch (error) {
+        console.error('Error loading conversations:', error)
+        if (!isAppend) setConversationList([])
+      } finally {
+        if (page === 1) setLoadingConvs(false)
+        else setLoadingMore(false)
       }
+    },
+    [limit, dispatch]
+  )
 
-    } catch (error) {
-      console.error('Error loading conversations:', error)
-      if (!isAppend) {
-        setConversationList([])
-      }
-    } finally {
-      if (page === 1) {
-        setLoading(false)
-      } else {
-        setLoadingMore(false)
-      }
-    }
-  }, [limit, dispatch])
-
-  // Load more function
-  const loadMore = useCallback(() => {
-    if (loadingMore || !hasMore) return
-    const nextPage = currentPage + 1
-    setCurrentPage(nextPage)
-    loadConversations(nextPage, true)
-  }, [loadingMore, hasMore, currentPage, loadConversations])
-
-  // Initial load conversations
+  // Initial load
   useEffect(() => {
     setCurrentPage(1)
     setHasMore(true)
     loadConversations(1, false)
-  }, [loadConversations])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-  // Intersection Observer for infinite scroll
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const target = entries[0]
-        if (target.isIntersecting && hasMore && !loadingMore && !loading) {
+  const loadMore = useCallback(() => {
+    if (loadingMore || !hasMore) return
+    setCurrentPage(prev => {
+      const nextPage = prev + 1
+      loadConversations(nextPage, true)
+      return nextPage
+    })
+  }, [loadingMore, hasMore, loadConversations])
+
+  /* =============== IntersectionObserver =============== */
+
+  const attachObserver = useCallback(() => {
+    if (currentView !== 'chat') return
+    const sentinel = loadMoreRef.current
+    if (!sentinel) return
+    if (loadingConvs) return
+
+    if (observerRef.current) {
+      observerRef.current.disconnect()
+      observerRef.current = null
+    }
+
+    const rootEl = scrollContainerRef.current || null
+    observerRef.current = new IntersectionObserver(
+      entries => {
+        const entry = entries[0]
+        if (entry && entry.isIntersecting && hasMore && !loadingMore) {
           loadMore()
         }
       },
       {
-        root: scrollContainerRef.current,
-        rootMargin: '50px', // Trigger khi còn cách 50px tới cuối
+        root: rootEl,
+        rootMargin: '80px',
         threshold: 0.1
       }
     )
+    observerRef.current.observe(sentinel)
+  }, [currentView, loadingConvs, hasMore, loadingMore, loadMore])
 
-    if (loadMoreRef.current) {
-      observer.observe(loadMoreRef.current)
-    }
-
+  useEffect(() => {
+    attachObserver()
     return () => {
-      if (loadMoreRef.current) {
-        observer.unobserve(loadMoreRef.current)
+      if (observerRef.current) {
+        observerRef.current.disconnect()
+        observerRef.current = null
       }
     }
-  }, [hasMore, loadingMore, loading, loadMore])
+  }, [attachObserver])
 
-  // Search user (debounce)
+  /* =============== Search (debounce) =============== */
+
   useEffect(() => {
     if (!searchQuery.trim()) {
       setSearchList([])
-      setLoading(false)
+      setLoadingSearch(false)
       onViewChange?.('chat')
       return
     }
     const controller = new AbortController()
-    setLoading(true)
+    setLoadingSearch(true)
     const t = setTimeout(async () => {
       try {
         const data = await searchUserByUsername(searchQuery)
@@ -309,7 +307,7 @@ export function ChatSidebar({
       } catch {
         setSearchList([])
       } finally {
-        setLoading(false)
+        setLoadingSearch(false)
       }
     }, 500)
     return () => {
@@ -318,14 +316,14 @@ export function ChatSidebar({
     }
   }, [searchQuery, onViewChange])
 
-  //socket: message:new + conversation:created
+  /* =============== Socket wiring =============== */
+
   useEffect(() => {
     if (!initialLoaded || socketRef.current) return
 
     const s = io(API_ROOT, { withCredentials: true })
     socketRef.current = s
 
-    // Khi connect, join tất cả room có sẵn
     s.on('connect', () => {
       try {
         (conversationList || []).forEach(c => {
@@ -338,7 +336,6 @@ export function ChatSidebar({
       } catch {}
     })
 
-    // Existing message handler
     const onNewMessage = (payload) => {
       const convId = extractId(
         payload?.conversationId || payload?.conversation?._id || payload?.conversation
@@ -366,6 +363,7 @@ export function ChatSidebar({
             _id: msg._id || msg.id,
             textPreview: msg.body?.text ?? msg.text ?? '',
             senderId: msg.senderId || msg.sender?._id || msg.sender?.id,
+            sender: msg.sender,
             createdAt: msg.createdAt || Date.now()
           }
         }
@@ -375,70 +373,54 @@ export function ChatSidebar({
       })
     }
 
-    // ✅ NEW: Handler cho conversation mới tạo
     const onConversationCreated = (payload) => {
-      console.log('New conversation created:', payload)
-
       const conversation = payload?.conversation
       if (!conversation) return
-
       const convId = extractId(conversation)
       if (!convId) return
 
-      // Kiểm tra user hiện tại có trong conversation này không
       const currentUserId = currentUser?._id
       const isUserInConversation =
         conversation.type === 'group'
-          ? conversation.group?.members?.some(m =>
-            String(m._id || m.id) === String(currentUserId)
-          )
-          : conversation.type === 'direct' && (
-            String(conversation.direct?.otherUser?._id) === String(currentUserId) ||
-              String(conversation.direct?.user?._id) === String(currentUserId)
-          )
+          ? conversation.group?.members?.some(
+              (m) => String(m._id || m.id) === String(currentUserId)
+            )
+          : conversation.type === 'direct' &&
+            (String(conversation.direct?.otherUser?._id) === String(currentUserId) ||
+              String(conversation.direct?.user?._id) === String(currentUserId))
 
-      if (isUserInConversation) {
-        setConversationList(prev => {
-          // Kiểm tra đã có chưa
-          const exists = prev.some(c => extractId(c) === convId)
-          if (exists) return prev
+      if (!isUserInConversation) return
 
-          // Thêm vào đầu danh sách
-          const newConv = {
-            ...conversation,
-            _id: convId,
-            id: convId,
-            displayName: conversation.displayName || conversation.name || 'New Conversation',
-            conversationAvatarUrl: conversation.conversationAvatarUrl || conversation.avatarUrl || '',
-            lastMessage: null // Conversation mới chưa có tin nhắn
+      setConversationList(prev => {
+        if (prev.some(c => extractId(c) === convId)) return prev
+
+        const newConv = {
+          ...conversation,
+          _id: convId,
+          id: convId,
+          displayName: conversation.displayName || conversation.name || 'New Conversation',
+          conversationAvatarUrl: conversation.conversationAvatarUrl || conversation.avatarUrl || '',
+          lastMessage: null
+        }
+
+        try {
+          if (socketRef.current && !joinedRef.current.has(convId)) {
+            socketRef.current.emit('conversation:join', { conversationId: convId })
+            joinedRef.current.add(convId)
           }
+        } catch {}
 
-          // Join room ngay lập tức
-          try {
-            if (socketRef.current && !joinedRef.current.has(convId)) {
-              socketRef.current.emit('conversation:join', { conversationId: convId })
-              joinedRef.current.add(convId)
-            }
-          } catch {}
-
-          return [newConv, ...prev]
-        })
-      }
+        return [newConv, ...prev]
+      })
     }
 
-    // ✅ NEW: Handler cho khi được thêm vào group
     const onAddedToConversation = (payload) => {
-      console.log('Added to conversation:', payload)
-
       const conversation = payload?.conversation
       const addedUserId = payload?.userId
-
       if (!conversation || String(addedUserId) !== String(currentUser?._id)) return
-
-      onConversationCreated(payload) // Reuse logic trên
+      onConversationCreated(payload)
     }
 
-    // Register all handlers
     s.on('message:new', onNewMessage)
     s.on('conversation:created', onConversationCreated)
     s.on('conversation:member:added', onAddedToConversation)
@@ -451,8 +433,9 @@ export function ChatSidebar({
       socketRef.current = null
       joinedRef.current.clear()
     }
-  }, [initialLoaded, currentUser?._id])
+  }, [initialLoaded, currentUser?._id, conversationList])
 
+  // Đảm bảo join đủ room khi list thay đổi
   useEffect(() => {
     if (!socketRef.current) return
     try {
@@ -466,6 +449,7 @@ export function ChatSidebar({
     } catch {}
   }, [conversationList])
 
+  // Lắng nghe sự kiện local
   useEffect(() => {
     const onLocalCreated = (e) => {
       const conversation = e?.detail?.conversation
@@ -474,19 +458,18 @@ export function ChatSidebar({
       if (!convId) return
 
       setConversationList(prev => {
-      // đã có thì bỏ qua
         if (prev.some(c => extractId(c) === convId)) return prev
 
         const newConv = {
           ...conversation,
           _id: convId,
           id: convId,
-          displayName: conversation.displayName,
-          conversationAvatarUrl: conversation.conversationAvatarUrl,
+          displayName: conversation.displayName || conversation.name || 'New Conversation',
+          conversationAvatarUrl:
+            conversation.conversationAvatarUrl || conversation.avatarUrl || '',
           lastMessage: null
         }
 
-        // Join room ngay nếu socket đã sẵn sàng
         try {
           if (socketRef.current && !joinedRef.current.has(convId)) {
             socketRef.current.emit('conversation:join', { conversationId: convId })
@@ -501,7 +484,8 @@ export function ChatSidebar({
     return () => window.removeEventListener('local:conversation:created', onLocalCreated)
   }, [])
 
-  // Click user trong search → lấy/khởi tạo conversation rồi ROUTE
+  /* =============== Actions =============== */
+
   const handleClickUser = async (userId) => {
     try {
       const conversation = await getConversationByUserId(userId)
@@ -512,13 +496,17 @@ export function ChatSidebar({
     } catch {}
   }
 
-  // Click item trong list → ROUTE
   const handleClickConversation = (conv) => {
     const id = extractId(conv)
     if (!id) return
     onViewChange?.('chat')
     navigate(`/chats/${id}`)
   }
+
+  /* ======================= Render ======================= */
+
+  const isChatView = currentView === 'chat'
+  const isSearchView = currentView === 'search'
 
   return (
     <div className="h-full flex flex-col">
@@ -529,7 +517,7 @@ export function ChatSidebar({
           <Input
             placeholder="Tìm kiếm bạn bè, tin nhắn..."
             onChange={(e) => {
-              onViewChange?.("search")
+              onViewChange?.('search')
               setSearchQuery(e.target.value)
             }}
             className="pl-10"
@@ -541,7 +529,7 @@ export function ChatSidebar({
       <div className="px-4 py-2 border-b border-border">
         <div className="flex gap-1">
           <Button
-            variant={currentView === 'chat' ? 'default' : 'ghost'}
+            variant={isChatView ? 'default' : 'ghost'}
             size="sm"
             onClick={() => onViewChange?.('chat')}
             className="flex-1"
@@ -562,7 +550,7 @@ export function ChatSidebar({
       </div>
 
       {/* Skeleton khi search */}
-      {currentView === "search" && loading && (
+      {isSearchView && loadingSearch && (
         <>
           <SkeletonConversation />
           <SkeletonConversation />
@@ -573,7 +561,7 @@ export function ChatSidebar({
       )}
 
       {/* Kết quả search */}
-      {currentView === "search" && !loading && (
+      {isSearchView && !loadingSearch && (
         searchList.length === 0 ? (
           <p className="p-3 rounded-lg">No users found</p>
         ) : (
@@ -596,7 +584,7 @@ export function ChatSidebar({
                       <h3 className="font-medium truncate">{user.username}</h3>
                     </div>
                     <p className="text-sm text-muted-foreground truncate">
-                      {user.fullName || ""}
+                      {user.fullName || ''}
                     </p>
                   </div>
                 </div>
@@ -607,14 +595,11 @@ export function ChatSidebar({
       )}
 
       {/* Conversation List với Infinite Scroll */}
-      <div
-        ref={scrollContainerRef}
-        className="flex-1 overflow-y-auto"
-      >
-        {currentView === 'chat' && (
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
+        {isChatView && (
           <div className="space-y-1 p-2">
             {/* Initial loading skeleton */}
-            {loading && conversationList.length === 0 ? (
+            {loadingConvs && conversationList.length === 0 ? (
               <>
                 <SkeletonConversation />
                 <SkeletonConversation />
@@ -640,10 +625,7 @@ export function ChatSidebar({
 
                 {/* Load more trigger element */}
                 {hasMore && (
-                  <div
-                    ref={loadMoreRef}
-                    className="flex justify-center py-4"
-                  >
+                  <div ref={loadMoreRef} className="flex justify-center py-4">
                     {loadingMore ? (
                       <div className="flex items-center gap-2 text-muted-foreground">
                         <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
@@ -658,7 +640,7 @@ export function ChatSidebar({
                 )}
 
                 {/* Empty state */}
-                {!loading && conversationList.length === 0 && (
+                {!loadingConvs && conversationList.length === 0 && (
                   <div className="text-center py-8 text-muted-foreground">
                     <MessageCircle className="w-12 h-12 mx-auto mb-2 opacity-50" />
                     <p>Chưa có cuộc trò chuyện nào</p>

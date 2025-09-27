@@ -14,8 +14,6 @@ export const connectSocket = (currentUserId) => {
     transports: ["websocket"],
     withCredentials: true,
     auth: { userId: String(currentUserId || "") }
-    // nếu bạn muốn dùng query thay auth:
-    // query: { userId: String(currentUserId || "") }
   })
 
   socket.on("connect", () => console.log("[socket] connected", socket.id))
@@ -38,13 +36,31 @@ export const disconnectSocket = () => {
   }
 }
 
-//namespace rieng cho phan call
+// ===== WebRTC Socket cho call =====
 export function getWebRTCSocket(currentUserId) {
-  if (!webrtcSocket) {
+  // Tạo mới nếu chưa có hoặc đã disconnect
+  if (!webrtcSocket || webrtcSocket.disconnected) {
     webrtcSocket = io(`${API_ROOT}/webrtc`, {
       withCredentials: true,
-      auth: { userId: String(currentUserId || "") } // giữ đồng nhất
+      auth: { userId: String(currentUserId || "") }
     })
+    
+    webrtcSocket.on("connect", () => console.log("[webrtc] connected", webrtcSocket.id))
+    webrtcSocket.on("connect_error", (err) =>
+      console.error("[webrtc] connect_error:", err.message)
+    )
+    webrtcSocket.on("disconnect", (reason) =>
+      console.log("[webrtc] disconnected:", reason)
+    )
   }
   return webrtcSocket
+}
+
+export const disconnectWebRTCSocket = () => {
+  try {
+    webrtcSocket?.removeAllListeners()
+    webrtcSocket?.disconnect()
+  } finally {
+    webrtcSocket = null
+  }
 }
