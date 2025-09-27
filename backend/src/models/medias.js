@@ -1,4 +1,6 @@
 // models/media.js
+import mongoose from "mongoose";
+
 const mediaSchema = new mongoose.Schema({
   uploaderId: {type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true},
   conversationId: {type: mongoose.Schema.Types.ObjectId, ref: 'Conversation', required: true, index: true},
