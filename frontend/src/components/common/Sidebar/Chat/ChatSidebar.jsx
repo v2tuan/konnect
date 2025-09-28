@@ -1,5 +1,4 @@
 /* eslint-disable no-empty */
-import { io } from 'socket.io-client'
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -14,20 +13,20 @@ import { selectCurrentUser, upsertUsers } from '@/redux/user/userSlice'
 import { formatTimeAgo, pickPeerStatus, extractId } from '@/utils/helper'
 import { MessageCircle } from 'lucide-react'
 import { usePresenceText } from '@/hooks/use-relative-time'
-import { API_ROOT } from '@/utils/constant'
 import { useUnreadStore } from '@/store/useUnreadStore'
+
+// 🔌 socket chung
+import { connectSocket, getSocket } from '@/lib/socket'
 
 /* ========================= Helpers ========================= */
 
 const glyphs = (s) => Array.from(String(s ?? ''))
 
-// cắt N ký tự (safe emoji)
 const cut = (s, n) => {
   const g = glyphs(s)
   return g.length <= n ? s : g.slice(0, n).join('') + '…'
 }
 
-// Lấy N từ đầu, M ký tự/từ, và tối đa K ký tự toàn chuỗi
 const previewWords = (raw = '', wordLimit = 8, maxTokenLen = 10, maxTotalLen = 40) => {
   const text = String(raw || '').trim()
   if (!text) return ''
@@ -106,7 +105,6 @@ function ConversationListItem({
         ? 'bg-status-away bg-amber-400'
         : 'bg-status-offline bg-zinc-400'
 
-  // Văn bản hiển thị: nếu có unread > 0 => "{n} tin nhắn mới"
   const previewText = unread > 0
     ? `${unread > 99 ? '99+' : unread} tin nhắn mới`
     : lastMessageText
@@ -136,7 +134,6 @@ function ConversationListItem({
               {conversation.displayName}
             </h3>
 
-            {/* Badge tròn nhỏ bên phải thời gian */}
             {unread > 0 && (
               <span
                 className="ml-2 shrink-0 min-w-5 h-5 px-2 rounded-full text-[10px] leading-5 bg-primary text-primary-foreground text-center">
@@ -185,13 +182,13 @@ export function ChatSidebar({ currentView, onViewChange }) {
   const dispatch = useDispatch()
   const usersById = useSelector((state) => state.user.usersById || {})
 
-  // ⭐ unread state
+  // unread state
   const unreadMap = useUnreadStore(s => s.map)
   const setUnread = useUnreadStore(s => s.setUnread)
 
-  // socket
-  const socketRef = useRef(null)
+  // refs
   const joinedRef = useRef(new Set())
+  const listenersAttachedRef = useRef(false)
 
   // Scroll/Observer refs
   const scrollContainerRef = useRef(null)
@@ -342,16 +339,24 @@ export function ChatSidebar({ currentView, onViewChange }) {
     }
   }, [searchQuery, onViewChange])
 
-  /* =============== Socket wiring =============== */
+  /* =============== Socket wiring (dùng socket chung) =============== */
 
+  // 1) đảm bảo kết nối socket khi đã có currentUser
   useEffect(() => {
-    if (!initialLoaded || socketRef.current) return
+    if (!currentUser?._id) return
+    connectSocket(currentUser._id) // no-op nếu đã kết nối
+  }, [currentUser?._id])
 
-    const s = io(API_ROOT, { withCredentials: true })
-    socketRef.current = s
+  // 2) gắn listener một lần + join rooms mỗi lần connect
+  useEffect(() => {
+    if (!initialLoaded || !currentUser?._id) return
+    const s = getSocket()
+    if (!s) return
 
-    // Join tất cả room hiện có sau khi connect
-    s.on('connect', () => {
+    if (listenersAttachedRef.current) return
+    listenersAttachedRef.current = true
+
+    const joinAllRooms = () => {
       try {
         (conversationList || []).forEach(c => {
           const id = extractId(c)
@@ -361,7 +366,11 @@ export function ChatSidebar({ currentView, onViewChange }) {
           }
         })
       } catch {}
-    })
+    }
+
+    const onConnect = () => {
+      joinAllRooms()
+    }
 
     const onNewMessage = (payload) => {
       const convId = extractId(
@@ -376,8 +385,8 @@ export function ChatSidebar({ currentView, onViewChange }) {
         if (idx === -1) {
           const draft = buildConvFromSocket(payload)
           try {
-            if (socketRef.current && !joinedRef.current.has(convId)) {
-              socketRef.current.emit('conversation:join', { conversationId: convId })
+            if (!joinedRef.current.has(convId)) {
+              s.emit('conversation:join', { conversationId: convId })
               joinedRef.current.add(convId)
             }
           } catch {}
@@ -406,7 +415,7 @@ export function ChatSidebar({ currentView, onViewChange }) {
       const isMine = myId && senderId && myId === senderId
 
       if (convId !== activeIdFromURL && !isMine) {
-        const curr = unreadMap[convId] || 0
+        const curr = useUnreadStore.getState().map?.[convId] || 0
         setUnread(convId, curr + 1)
       }
     }
@@ -442,8 +451,8 @@ export function ChatSidebar({ currentView, onViewChange }) {
         }
 
         try {
-          if (socketRef.current && !joinedRef.current.has(convId)) {
-            socketRef.current.emit('conversation:join', { conversationId: convId })
+          if (!joinedRef.current.has(convId)) {
+            s.emit('conversation:join', { conversationId: convId })
             joinedRef.current.add(convId)
           }
         } catch {}
@@ -459,36 +468,38 @@ export function ChatSidebar({ currentView, onViewChange }) {
       onConversationCreated(payload)
     }
 
+    s.on('connect', onConnect)
     s.on('message:new', onNewMessage)
     s.on('conversation:created', onConversationCreated)
     s.on('conversation:member:added', onAddedToConversation)
 
     return () => {
+      s.off('connect', onConnect)
       s.off('message:new', onNewMessage)
       s.off('conversation:created', onConversationCreated)
       s.off('conversation:member:added', onAddedToConversation)
-      s.disconnect()
-      socketRef.current = null
-      joinedRef.current.clear()
+      listenersAttachedRef.current = false
     }
-  }, [initialLoaded, conversationList, currentUser?._id, activeIdFromURL, unreadMap, setUnread])
+  }, [initialLoaded, currentUser?._id, conversationList, activeIdFromURL, setUnread])
 
-  // Đảm bảo join đủ room khi list thay đổi
+  // 3) Khi danh sách hội thoại đổi → đảm bảo đã join đủ (kể cả đang online)
   useEffect(() => {
-    if (!socketRef.current) return
+    const s = getSocket()
+    if (!s) return
     try {
       (conversationList || []).forEach(c => {
         const id = extractId(c)
         if (id && !joinedRef.current.has(id)) {
-          socketRef.current.emit('conversation:join', { conversationId: id })
+          s.emit('conversation:join', { conversationId: id })
           joinedRef.current.add(id)
         }
       })
     } catch {}
   }, [conversationList])
 
-  // Lắng nghe event local
+  // Lắng nghe event local (khi tạo hội thoại mới local)
   useEffect(() => {
+    const s = getSocket()
     const onLocalCreated = (e) => {
       const conversation = e?.detail?.conversation
       if (!conversation) return
@@ -509,8 +520,8 @@ export function ChatSidebar({ currentView, onViewChange }) {
         }
 
         try {
-          if (socketRef.current && !joinedRef.current.has(convId)) {
-            socketRef.current.emit('conversation:join', { conversationId: convId })
+          if (s && !joinedRef.current.has(convId)) {
+            s.emit('conversation:join', { conversationId: convId })
             joinedRef.current.add(convId)
           }
         } catch {}
@@ -530,7 +541,6 @@ export function ChatSidebar({ currentView, onViewChange }) {
       const id = extractId(conversation?.data)
       if (!id) return
       onViewChange?.('chat')
-      // clear local unread để UI phản hồi ngay
       useUnreadStore.getState().setUnread(id, 0)
       navigate(`/chats/${id}`)
     } catch {}
@@ -540,7 +550,6 @@ export function ChatSidebar({ currentView, onViewChange }) {
     const id = extractId(conv)
     if (!id) return
     onViewChange?.('chat')
-    // clear local unread để UI phản hồi ngay
     useUnreadStore.getState().setUnread(id, 0)
     navigate(`/chats/${id}`)
   }
@@ -638,7 +647,6 @@ export function ChatSidebar({ currentView, onViewChange }) {
       <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
         {isChatView && (
           <div className="space-y-1 p-2">
-            {/* Initial loading skeleton */}
             {loadingConvs && conversationList.length === 0 ? (
               <>
                 <SkeletonConversation />
@@ -647,7 +655,6 @@ export function ChatSidebar({ currentView, onViewChange }) {
               </>
             ) : (
               <>
-                {/* Render conversation list */}
                 {conversationList.map((conversation) => {
                   const id = extractId(conversation)
                   const isActive = activeIdFromURL === id
@@ -665,7 +672,6 @@ export function ChatSidebar({ currentView, onViewChange }) {
                   )
                 })}
 
-                {/* Load more trigger element */}
                 {hasMore && (
                   <div ref={loadMoreRef} className="flex justify-center py-4">
                     {loadingMore ? (
@@ -681,7 +687,6 @@ export function ChatSidebar({ currentView, onViewChange }) {
                   </div>
                 )}
 
-                {/* Empty state */}
                 {!loadingConvs && conversationList.length === 0 && (
                   <div className="text-center py-8 text-muted-foreground">
                     <MessageCircle className="w-12 h-12 mx-auto mb-2 opacity-50" />

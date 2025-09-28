@@ -1,11 +1,11 @@
 // lib/presence.js
-const VIEW_TTL_MS = 60_000; // coi là "đang xem" nếu focus trong vòng 60s
+const VIEW_TTL_MS = 60_000; // coi là đang xem nếu vừa focus trong 60s
 
 export const presence = {
-  online: new Map(),     // userId -> { sockets:Set, lastActiveAt:Date }
-  activeConv: new Map(), // userId -> { conversationId, ts }
+  online: new Map(),     // userId -> { sockets:Set<string>, lastActiveAt:Date }
+  activeConv: new Map(), // userId -> { conversationId:string, ts:number }
 
-  // ---- helpers (cho service khác gọi) ----
+  // ===== helpers (cho service khác gọi) =====
   isOnline(userId) {
     return this.online.has(String(userId));
   },
@@ -16,24 +16,27 @@ export const presence = {
     return (Date.now() - a.ts) <= ttl;
   },
 
-  // ---- internal mutators (chỉ dùng trong socket layer) ----
+  // ===== internal mutators (socket layer dùng) =====
   _setOnline(userId, socketId) {
-    userId = String(userId);
-    let entry = this.online.get(userId);
-    if (!entry) entry = {sockets: new Set(), lastActiveAt: new Date()};
+    const uid = String(userId);
+    let entry = this.online.get(uid);
+    if (!entry) entry = { sockets: new Set(), lastActiveAt: new Date() };
     entry.sockets.add(socketId);
     entry.lastActiveAt = new Date();
-    this.online.set(userId, entry);
+    this.online.set(uid, entry);
   },
   _setOffline(userId, socketId) {
-    userId = String(userId);
-    const entry = this.online.get(userId);
+    const uid = String(userId);
+    const entry = this.online.get(uid);
     if (!entry) return;
     entry.sockets.delete(socketId);
-    if (entry.sockets.size === 0) this.online.delete(userId);
+    if (entry.sockets.size === 0) this.online.delete(uid);
   },
   _setActive(userId, conversationId) {
-    this.activeConv.set(String(userId), {conversationId: String(conversationId), ts: Date.now()});
+    this.activeConv.set(String(userId), {
+      conversationId: String(conversationId),
+      ts: Date.now(),
+    });
   },
   _clearActive(userId, conversationIdMaybe) {
     const uid = String(userId);
@@ -46,60 +49,112 @@ export const presence = {
   }
 };
 
-// Đăng ký toàn bộ socket event liên quan presence + focus
-export function registerPresence(io, {userService}) {
+/**
+ * Đăng ký socket presence (ONLINE/OFFLINE) + focus/blur (internal only)
+ * @param {import('socket.io').Server} io
+ * @param {{ userService: { markUserStatus: (userId: string, payload: {isOnline:boolean, lastActiveAt:Date}) => any } }} deps
+ */
+export function registerPresence(io, { userService }) {
   io.on('connection', (socket) => {
-    const userId = socket.user?.id;
-    if (userId) {
-      socket.join(`user:${userId}`);
-      presence._setOnline(userId, socket.id);
+    const authedUserId =
+      socket.user?.id ||
+      socket.user?._id ||
+      socket.handshake?.auth?.userId ||
+      null;
 
-      // lần đầu online -> cập nhật DB + broadcast
-      if (presence.online.get(String(userId))?.sockets.size === 1) {
+    // Tự join user-room nếu server đã biết userId từ middleware
+    if (authedUserId) {
+      socket.join(`user:${String(authedUserId)}`);
+      presence._setOnline(authedUserId, socket.id);
+
+      // lần đầu online → cập nhật DB + broadcast ONLINE
+      const entry = presence.online.get(String(authedUserId));
+      if (entry?.sockets?.size === 1) {
         const now = new Date();
-        userService.markUserStatus(userId, {isOnline: true, lastActiveAt: now});
-        io.emit('presence:update', {userId, isOnline: true, lastActiveAt: now.toISOString()});
+        Promise.resolve(userService.markUserStatus(authedUserId, { isOnline: true, lastActiveAt: now })).catch(() => {});
+        io.emit('presence:update', {
+          userId: String(authedUserId),
+          isOnline: true,
+          lastActiveAt: now.toISOString()
+        });
       }
     }
 
-    // Snapshot / heartbeat
-    socket.on('presence:snapshot', (userIds = []) => {
-      const payload = userIds.map(uid => {
-        const entry = presence.online.get(String(uid));
-        return {userId: uid, isOnline: !!entry, lastActiveAt: entry?.lastActiveAt?.toISOString() || null};
-      });
-      socket.emit('presence:snapshot', payload);
+    // Client vẫn có thể chủ động gửi user:join (không bắt buộc nếu middleware đã set)
+    socket.on('user:join', ({ userId }) => {
+      const uid = String(userId || authedUserId || '');
+      if (!uid) return;
+      socket.join(`user:${uid}`);
+      presence._setOnline(uid, socket.id);
+
+      const entry = presence.online.get(uid);
+      if (entry?.sockets?.size === 1) {
+        const now = new Date();
+        Promise.resolve(userService.markUserStatus(uid, { isOnline: true, lastActiveAt: now })).catch(() => {});
+        io.emit('presence:update', { userId: uid, isOnline: true, lastActiveAt: now.toISOString() });
+      }
     });
+
+    // Heartbeat / snapshot (optional)
     socket.on('presence:heartbeat', () => {
-      if (!userId) return;
-      const entry = presence.online.get(String(userId));
+      const uid = String(authedUserId || '');
+      if (!uid) return;
+      const entry = presence.online.get(uid);
       if (entry) entry.lastActiveAt = new Date();
     });
 
-    // Room hội thoại + focus/blur
-    socket.on('conversation:join', ({conversationId}) => {
+    socket.on('presence:snapshot', (userIds = []) => {
+      const payload = (Array.isArray(userIds) ? userIds : []).map((raw) => {
+        const uid = String(raw);
+        const entry = presence.online.get(uid);
+        return {
+          userId: uid,
+          isOnline: !!entry,
+          lastActiveAt: entry?.lastActiveAt?.toISOString() || null
+        };
+      });
+      socket.emit('presence:snapshot', payload);
+    });
+
+    // Join room hội thoại (để nhận message:new)
+    socket.on('conversation:join', ({ conversationId }) => {
       if (!conversationId) return;
-      socket.join(`conversation:${conversationId}`);
+      socket.join(`conversation:${String(conversationId)}`);
     });
-    socket.on('conversation:focus', ({conversationId}) => {
-      if (!userId || !conversationId) return;
-      presence._setActive(userId, conversationId);
+
+    // Focus/blur: chỉ cập nhật state server-side, KHÔNG broadcast global
+    socket.on('conversation:focus', ({ conversationId }) => {
+      const uid = String(authedUserId || '');
+      if (!uid || !conversationId) return;
+      presence._setActive(uid, conversationId);
     });
-    socket.on('conversation:blur', ({conversationId}) => {
-      if (!userId) return;
-      presence._clearActive(userId, conversationId);
+    socket.on('conversation:blur', ({ conversationId }) => {
+      const uid = String(authedUserId || '');
+      if (!uid) return;
+      presence._clearActive(uid, conversationId);
     });
 
     socket.on('disconnect', () => {
-      if (!userId) return;
-      presence._setOffline(userId, socket.id);
-      if (!presence.isOnline(userId)) {
-        // clear focus khi user hoàn toàn offline
-        presence._clearActive(userId);
+      const uid = String(authedUserId || '');
+      if (!uid) return;
+
+      presence._setOffline(uid, socket.id);
+
+      // Khi user hoàn toàn offline (không còn socket nào) → broadcast OFFLINE
+      if (!presence.isOnline(uid)) {
+        presence._clearActive(uid);
         const lastActiveAt = new Date();
-        userService.markUserStatus(userId, {isOnline: false, lastActiveAt});
-        io.emit('presence:update', {userId, isOnline: false, lastActiveAt: lastActiveAt.toISOString()});
+        Promise.resolve(userService.markUserStatus(uid, { isOnline: false, lastActiveAt })).catch(() => {});
+        io.emit('presence:update', {
+          userId: uid,
+          isOnline: false,
+          lastActiveAt: lastActiveAt.toISOString()
+        });
       }
     });
   });
 }
+
+// Giữ export này để các service import đúng như trước
+export const presenceSingleton = presence;
+export default presence;
