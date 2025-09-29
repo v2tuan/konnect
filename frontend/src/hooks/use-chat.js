@@ -16,7 +16,7 @@ export const useCloudChat = (options = {}) => {
     mode = "cloud", // cloud | direct
     currentUserId,
     conversationId: externalConversationId = null,
-    initialConversation = null,
+    initialConversation = null
   } = options
 
   const [conversation, setConversation] = useState(initialConversation)
@@ -38,6 +38,7 @@ export const useCloudChat = (options = {}) => {
       createdAt: m.createdAt ?? Date.now(),
       body: m.body,
       media: m.media || null,
+      reactions: m.reactions || [],
       text: m.body?.text ?? m.text ?? "",
       senderId: m.senderId,
       type: m.type
@@ -62,6 +63,7 @@ export const useCloudChat = (options = {}) => {
         // 3.1) Nếu có conversationId từ URL (direct/group)
         if (externalConversationId && mode !== "cloud") {
           const data = await fetchConversationDetail(externalConversationId)
+          console.log('Init conversation data:', data)
           if (!mounted) return
 
           const convo = data?.conversation
@@ -121,12 +123,25 @@ export const useCloudChat = (options = {}) => {
     const handleNewMessage = (payload) => {
       if (extractId(payload?.conversationId) !== cid) return
       const nm = normalizeIncoming(payload?.message || payload)
+      console.log('New message received via socket:', nm)
 
       setMessages((prev) => {
-        const next = [...prev, nm]
+        const exists = prev.find(msg => msg.id === nm.id)
+
+        let next
+        if (exists) {
+          // Cập nhật tin nhắn cũ
+          next = prev.map(msg => (msg.id === nm.id ? { ...msg, ...nm } : msg))
+        } else {
+          // Thêm tin nhắn mới
+          next = [...prev, nm]
+        }
+
+        // Sắp xếp theo seq
         next.sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))
         return next
       })
+
     }
 
     const handleTypingStart = (payload) => {
@@ -189,7 +204,7 @@ export const useCloudChat = (options = {}) => {
         payload.append("type", message.type)
         if (Array.isArray(message.content)) {
           message.content.forEach(f => {
-            payload.append("file", f)  // thêm nhiều file vào cùng key "file"
+            payload.append("file", f) // thêm nhiều file vào cùng key "file"
           })
         } else {
           payload.append("file", message.content) // trường hợp chỉ 1 file
@@ -231,8 +246,8 @@ export const useCloudChat = (options = {}) => {
             type,
             data: arrayBuffer,
             fileName: content.name,
-            fileSize: content.size,
-          },
+            fileSize: content.size
+          }
         }
         socketRef.current.emit("message:new", payload)
       }
@@ -265,6 +280,7 @@ export const useCloudChat = (options = {}) => {
 
     try {
       const data = await fetchConversationDetail(cid, { beforeReq: cursor, limit: 30 })
+      console.log('Load older messages data:', data)
       const older = Array.isArray(data?.messages) ? data.messages : []
 
       if (!older.length) {

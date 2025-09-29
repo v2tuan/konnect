@@ -1,5 +1,6 @@
 import { flatten } from "flat"
 import { StatusCodes } from "http-status-codes"
+import { set } from "mongoose"
 import { messageService } from "~/services/messageService"
 
 /**
@@ -66,6 +67,20 @@ const sendMessage = async (req, res, next) => {
   }
 }
 
+const setReaction = async (req, res, next) => {
+  try {
+    const userId = req.userId
+    const { messageId, emoji } = req.body
+    if (!emoji) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "emoji is required" })
+    }
+    const result = await messageService.setReaction({ userId, messageId, emoji, io: req.io })
+    return res.status(StatusCodes.OK).json(result)
+  } catch (error) {
+    next(error)
+  }
+}
+
 const listMessages = async(req, res, next) => {
   try {
     const userId = req.userId
@@ -83,6 +98,7 @@ const listMessages = async(req, res, next) => {
       limit,
       beforeSeq
     });
+    console.log('List messages result:', result);
     return res.status(StatusCodes.OK).json(result);
   } catch (error) {
     next(error)
@@ -90,5 +106,6 @@ const listMessages = async(req, res, next) => {
 }
 export const messageController = {
   sendMessage,
-  listMessages
+  listMessages,
+  setReaction
 }

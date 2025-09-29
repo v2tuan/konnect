@@ -29,6 +29,12 @@ let messageSchema = new mongoose.Schema({
             ref: 'Media'
         }
     ],
+    reactions: [
+        {
+            userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+            emoji: { type: String }  // ví dụ: '👍', '❤️', '😂'
+        }
+    ],
     recalled: {
         type: Boolean,
         default: false

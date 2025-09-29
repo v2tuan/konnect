@@ -136,6 +136,17 @@ export const sendMessage = async (conversationId, payload, isFormData) => {
   return response.data
 }
 
+/**
+ * set reaction cho message
+ */
+export const setReaction = async (messageId, emoji) => {
+  const response = await authorizeAxiosInstance.post(`${API_ROOT}/api/messages/reaction`, {
+    messageId,
+    emoji
+  })
+  return response.data
+}
+
 export const fetchConversationDetail = async (conversationId, params = {}) => {
   const response = await authorizeAxiosInstance.get(`${API_ROOT}/api/conversation/chats/${conversationId}`, {params})
   return response.data

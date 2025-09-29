@@ -1,10 +1,36 @@
 import { useMemo, useState } from 'react'
 import {
-  Pin, Reply, MoreHorizontal, Heart, Clock, Check, CheckCheck, FileText, FileSpreadsheet, Archive, Video, Music, File, Download
+  Pin, Reply, MoreHorizontal, Heart, Clock, Check, CheckCheck, FileText, FileSpreadsheet, Archive, Video, Music, File, Download,
+  Smile
 } from 'lucide-react'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import ReactionButton from './ReactionButton'
+
+function processReactions(reactions) {
+  const emojiCountMap = {}
+  const userEmojiMap = {}
+
+  reactions.forEach(({ userId, emoji }) => {
+    // Đếm emoji
+    emojiCountMap[emoji] = (emojiCountMap[emoji] || 0) + 1
+
+    // Gán emoji cho user
+    if (!userEmojiMap[userId]) userEmojiMap[userId] = []
+    if (!userEmojiMap[userId].includes(emoji)) {
+      userEmojiMap[userId].push(emoji)
+    }
+  })
+
+  // Sắp xếp emoji theo số lượng dùng nhiều nhất và lấy 3 cái
+  const topEmojis = Object.entries(emojiCountMap)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([emoji, count]) => ({ emoji, count }))
+
+  return { topEmojis, userEmojiMap }
+}
 
 function pickSender(conversation, message, contact) {
   if (message?.sender) {
@@ -139,7 +165,7 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
         {/* Action bar nổi hai bên bubble */}
         <div
           className={`
-            pointer-events-auto absolute top-1/2 -translate-y-1/2
+            z-[999] pointer-events-auto absolute top-1/2 -translate-y-1/2
             ${isOwn ? '-left-22' : '-right-22'}
             opacity-0 transition-opacity duration-150
             ${hovered ? 'opacity-100' : 'opacity-0'}
@@ -149,208 +175,203 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
           <Button size="sm" variant="ghost" className="h-6 w-6 p-0">
             <Reply className="w-3 h-3" />
           </Button>
-          <Button size="sm" variant="ghost" className="h-6 w-6 p-0">
-            <Heart className="w-3 h-3" />
-          </Button>
+
+          <ReactionButton messageId={message.id} />
+
           <Button size="sm" variant="ghost" className="h-6 w-6 p-0">
             <MoreHorizontal className="w-3 h-3" />
           </Button>
         </div>
 
-        {/* Bubble */}
-        {message.media && message.media.length > 0 ? (
-          (
-            <>
-              <div className="space-y-2">
-                {/* Phân loại media thành images và files */}
-                {(() => {
-                  const images = message.media.filter(m => m.type === 'image')
-                  const files = message.media.filter(m => m.type === 'file')
-                  const audios = message.media.filter(m => m.type === 'audio')
+        <div className='relative'>
+          {/* Bubble */}
+          {message.media && message.media.length > 0 ? (
+            (
+              <>
+                <div className="space-y-2">
+                  {/* Phân loại media thành images và files */}
+                  {(() => {
+                    const images = message.media.filter(m => m.type === 'image')
+                    const files = message.media.filter(m => m.type === 'file')
+                    const audios = message.media.filter(m => m.type === 'audio')
 
-                  return (
-                    <>
-                      {/* Hiển thị images với grid layout */}
-                      {images.length > 0 && (
-                        <div className={`
+                    return (
+                      <>
+                        {/* Hiển thị images với grid layout */}
+                        {images.length > 0 && (
+                          <div className={`
             ${images.length === 1 ? 'flex justify-center' :
                             images.length === 2 ? 'grid grid-cols-2 gap-2' :
                               images.length <= 4 ? 'grid grid-cols-2 gap-2 max-w-md' :
                                 'grid grid-cols-3 gap-2 max-w-lg'
                           }
           `}>
-                          {images.map((media, index) => (
-                            <div key={`image-${index}`} className="relative">
-                              {message.isPinned && (
-                                <Pin className="absolute top-1 right-1 w-3 h-3 text-yellow-500 z-10" />
-                              )}
-                              <img
-                                src={media.url ?? message.body?.media?.url}
-                                alt={media.metadata?.filename || "message attachment"}
-                                className={`
+                            {images.map((media, index) => (
+                              <div key={`image-${index}`} className="relative">
+                                {message.isPinned && (
+                                  <Pin className="absolute top-1 right-1 w-3 h-3 text-yellow-500 z-10" />
+                                )}
+                                <img
+                                  src={media.url ?? message.body?.media?.url}
+                                  alt={media.metadata?.filename || "message attachment"}
+                                  className={`
                     rounded-lg shadow-md object-cover
                     ${images.length === 1 ? 'max-w-sm max-h-96 w-full' :
-                                    images.length === 2 ? 'w-full h-32 sm:h-40' :
-                                      images.length <= 4 ? 'w-full h-24 sm:h-32' :
-                                        'w-full h-20 sm:h-24'
-                                  }
+                                images.length === 2 ? 'w-full h-32 sm:h-40' :
+                                  images.length <= 4 ? 'w-full h-24 sm:h-32' :
+                                    'w-full h-20 sm:h-24'
+                              }
                     hover:shadow-lg transition-shadow duration-200 cursor-pointer
                   `}
-                                onClick={() => {
-                                  // Có thể thêm function để mở ảnh full size
-                                  // openImageModal(media.url ?? message.body?.media?.url);
-                                }}
-                              />
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Hiển thị files dạng danh sách */}
-                      {files.length > 0 && (
-                        <div className="space-y-1">
-                          {files.map((media, index) => (
-                            <div
-                              key={`file-${index}`}
-                              className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg border border-gray-200 transition-colors duration-200"
-                            >
-                              {/* File icon dựa trên mimetype */}
-                              <div className="flex-shrink-0">
-                                {(() => {
-                                  const mimetype = media.metadata?.mimetype || ''
-                                  if (mimetype.includes('pdf')) {
-                                    return <FileText className="w-8 h-8 text-red-500" />
-                                  } else if (mimetype.includes('word') || mimetype.includes('document')) {
-                                    return <FileText className="w-8 h-8 text-blue-500" />
-                                  } else if (mimetype.includes('sheet') || mimetype.includes('excel')) {
-                                    return <FileSpreadsheet className="w-8 h-8 text-green-500" />
-                                  } else if (mimetype.includes('zip') || mimetype.includes('rar') || mimetype.includes('archive')) {
-                                    return <Archive className="w-8 h-8 text-yellow-600" />
-                                  } else if (mimetype.includes('video')) {
-                                    return <Video className="w-8 h-8 text-purple-500" />
-                                  } else if (mimetype.includes('audio')) {
-                                    return <Music className="w-8 h-8 text-pink-500" />
-                                  } else {
-                                    return <File className="w-8 h-8 text-gray-500" />
-                                  }
-                                })()}
+                                  onClick={() => {
+                                    // Có thể thêm function để mở ảnh full size
+                                    // openImageModal(media.url ?? message.body?.media?.url);
+                                  }}
+                                />
                               </div>
+                            ))}
+                          </div>
+                        )}
 
-                              {/* File info */}
-                              <div className="flex-1 min-w-0">
-                                <div className="text-sm font-medium text-gray-900 truncate">
-                                  {media.metadata?.filename || 'Unknown file'}
+                        {/* Hiển thị files dạng danh sách */}
+                        {files.length > 0 && (
+                          <div className="space-y-1">
+                            {files.map((media, index) => (
+                              <div
+                                key={`file-${index}`}
+                                className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg border border-gray-200 transition-colors duration-200"
+                              >
+                                {/* File icon dựa trên mimetype */}
+                                <div className="flex-shrink-0">
+                                  {(() => {
+                                    const mimetype = media.metadata?.mimetype || ''
+                                    if (mimetype.includes('pdf')) {
+                                      return <FileText className="w-8 h-8 text-red-500" />
+                                    } else if (mimetype.includes('word') || mimetype.includes('document')) {
+                                      return <FileText className="w-8 h-8 text-blue-500" />
+                                    } else if (mimetype.includes('sheet') || mimetype.includes('excel')) {
+                                      return <FileSpreadsheet className="w-8 h-8 text-green-500" />
+                                    } else if (mimetype.includes('zip') || mimetype.includes('rar') || mimetype.includes('archive')) {
+                                      return <Archive className="w-8 h-8 text-yellow-600" />
+                                    } else if (mimetype.includes('video')) {
+                                      return <Video className="w-8 h-8 text-purple-500" />
+                                    } else if (mimetype.includes('audio')) {
+                                      return <Music className="w-8 h-8 text-pink-500" />
+                                    } else {
+                                      return <File className="w-8 h-8 text-gray-500" />
+                                    }
+                                  })()}
                                 </div>
-                                <div className="text-xs text-gray-500 flex items-center gap-2">
-                                  <span>{formatFileSize(media.metadata?.size)}</span>
-                                  {/* {media.metadata?.mimetype && (
+
+                                {/* File info */}
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-sm font-medium text-gray-900 truncate">
+                                    {media.metadata?.filename || 'Unknown file'}
+                                  </div>
+                                  <div className="text-xs text-gray-500 flex items-center gap-2">
+                                    <span>{formatFileSize(media.metadata?.size)}</span>
+                                    {/* {media.metadata?.mimetype && (
                                     <span className="text-gray-400">•</span>
                                   )}
                                   {media.metadata?.mimetype && (
                                     <span>{media.metadata.mimetype.split('/')[1]?.toUpperCase()}</span>
                                   )} */}
+                                  </div>
                                 </div>
+
+                                {/* Download icon */}
+                                <div className="flex-shrink-0">
+                                  <button
+                                    onClick={() =>
+                                      handleDownload(media.secure_url, media.metadata?.filename || 'file.jpg')
+                                    }
+                                  >
+                                    <Download className="w-4 h-4 text-gray-400 cursor-pointer" />
+                                  </button>
+
+
+                                </div>
+
+                                {/* Pin icon nếu message được pin */}
+                                {message.isPinned && (
+                                  <Pin className="w-3 h-3 text-yellow-500" />
+                                )}
                               </div>
+                            ))}
+                          </div>
+                        )}
 
-                              {/* Download icon */}
-                              <div className="flex-shrink-0">
-                                <button
-                                  onClick={() =>
-                                    handleDownload(media.secure_url, media.metadata?.filename || 'file.jpg')
-                                  }
-                                >
-                                  <Download className="w-4 h-4 text-gray-400 cursor-pointer" />
-                                </button>
-
-
-                              </div>
-
-                              {/* Pin icon nếu message được pin */}
-                              {message.isPinned && (
-                                <Pin className="w-3 h-3 text-yellow-500" />
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Hiển thị audio */}
-                      {audios.length > 0 && (
-                        <div className="space-y-2">
-                          {audios.map((media, index) => (
-                            <div
-                              key={`audio-${index}`}
-                              className={`flex items-center gap-2 p-2 max-w-xs 
-          ${message.isOwn ? 'ml-auto bg-blue-100 text-black rounded-l-lg rounded-tr-lg'
-                                  : 'mr-auto bg-gray-100 text-black rounded-r-lg rounded-tl-lg'} 
+                        {/* Hiển thị audio */}
+                        {audios.length > 0 && (
+                          <div className="space-y-2">
+                            {audios.map((media, index) => (
+                              <div
+                                key={`audio-${index}`}
+                                className={`flex items-center gap-2 p-2 max-w-xs rounded-sm
+          ${message.isOwn ? 'ml-auto bg-primary/10 border border-primary rounded-l-lg rounded-tr-lg'
+                                : 'mr-auto bg-gray-100 text-black rounded-r-lg rounded-tl-lg'} 
           shadow-sm`}
-                            >
-                              {/* Audio player mở rộng đúng flex */}
-                              <audio controls className="flex-1 min-w-0">
-                                <source src={media.url} type={media.metadata?.mimetype || 'audio/webm'} />
-                                Your browser does not support the audio element.
-                              </audio>
+                              >
+                                {/* Audio player mở rộng đúng flex */}
+                                <audio controls className="flex-1 min-w-0">
+                                  <source src={media.url} type={media.metadata?.mimetype || 'audio/webm'} />
+                                  Your browser does not support the audio element.
+                                </audio>
 
-                              {/* Icon Pin nếu có */}
-                              {message.isPinned && (
-                                <Pin className="w-4 h-4 text-yellow-500 shrink-0" />
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                                {/* Icon Pin nếu có */}
+                                {message.isPinned && (
+                                  <Pin className="w-4 h-4 text-yellow-500 shrink-0" />
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
 
-                    </>
-                  )
-                })()}
-              </div>
-
-              {/* Reactions - hiển thị bên ngoài container media */}
-              {Array.isArray(message.reactions) && message.reactions.length > 0 && (
-                <div className="flex gap-1 mt-2 flex-wrap">
-                  {message.reactions.map((reaction, i) => (
-                    <Badge key={i} variant="secondary" className="text-xs">
-                      {reaction.emoji} {reaction.count}
-                    </Badge>
-                  ))}
+                      </>
+                    )
+                  })()}
                 </div>
-              )}
-            </>
-          )
-        ) : (
-          // Nếu là text thì render bubble
-          <div
-            className={`
+              </>
+            )
+          ) : (
+            // Nếu là text thì render bubble
+            <div
+              className={`
       relative p-3 rounded-sm
       ${isOwn
-                ? 'bg-primary/10 border border-primary rounded-br-sm'
-                : 'bg-secondary text-secondary-foreground rounded-bl-sm'
-              }
+              ? 'bg-primary/10 border border-primary rounded-br-sm'
+              : 'bg-secondary text-secondary-foreground rounded-bl-sm'
+            }
     `}
-          >
-            {message.isPinned && (
-              <Pin className="absolute top-1 right-1 w-3 h-3 text-yellow-500" />
-            )}
+            >
+              {message.isPinned && (
+                <Pin className="absolute top-1 right-1 w-3 h-3 text-yellow-500" />
+              )}
 
-            <p className="text-sm whitespace-pre-wrap break-words">
-              {message.text ?? message.body?.text ?? ''}
-            </p>
+              <p className="text-sm whitespace-pre-wrap break-words">
+                {message.text ?? message.body?.text ?? ''}
+              </p>
 
-            {Array.isArray(message.reactions) && message.reactions.length > 0 && (
-              <div className="flex gap-1 mt-1">
-                {message.reactions.map((reaction, i) => (
-                  <Badge key={i} variant="secondary" className="text-xs">
-                    {reaction.emoji} {reaction.count}
-                  </Badge>
-                ))}
+            </div>
+          )}
+
+          {Array.isArray(message.reactions) && message.reactions.length > 0 && (() => {
+            const { topEmojis, userEmojiMap } = processReactions(message.reactions)
+
+            return (
+              <div className="absolute -bottom-2 right-2 cursor-pointer shadow-sm rounded-full border">
+                <Badge variant="secondary" className="text-xs flex gap-1">
+                  {/* Hiển thị tất cả emoji */}
+                  {topEmojis.map(reaction => reaction.emoji).join(' ')} {message.reactions.length}
+                </Badge>
               </div>
-            )}
-          </div>
-        )}
+            )
+          })()}
+        </div>
 
         {/* Time + status */}
         {showMeta && (
-          <div className={`flex items-center gap-1 mt-1 text-xs text-gray-500 ${isOwn ? 'justify-end' : 'justify-start'}`}>
+          <div className={`flex items-center gap-1 mt-2 text-xs text-gray-500 ${isOwn ? 'justify-end' : 'justify-start'}`}>
             <span>{formatTime(message.createdAt || message.timestamp)}</span>
             <StatusIcon />
           </div>

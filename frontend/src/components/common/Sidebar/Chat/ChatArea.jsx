@@ -19,6 +19,8 @@ import { useCallInvite } from '@/hooks/useCallInvite' // Import hook mới
 import CreateGroupDialog from '../../Modal/CreateGroupModel'
 import { fi } from 'date-fns/locale'
 import { submitFriendRequestAPI, updateFriendRequestStatusAPI } from '@/apis'
+import EmojiPicker from 'emoji-picker-react'
+import { useTheme } from '@/components/theme-provider'
 
 export function ChatArea({
   mode = 'direct',
@@ -40,8 +42,13 @@ export function ChatArea({
   const [isOpen, setIsOpen] = useState(false)
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
+  const pickerRef = useRef(null)
   const fileRef = useRef(null)
   const imageRef = useRef(null)
+
+  // Lấy theme hiện tại (sáng tối)
+  const { theme, systemTheme } = useTheme()
+  const currentTheme = theme === "system" ? systemTheme : theme
 
   // trạng thái yêu cầu kết bạn (ưu tiên sync từ API friendship)
   const [friendReq, setFriendReq] = useState({
@@ -241,6 +248,46 @@ export function ChatArea({
       handleSendMessage()
     }
   }
+
+  // Hàm chọn emoji
+  const handleEmojiClick = (emojiData) => {
+    const emoji = emojiData.emoji
+    const input = inputRef.current
+
+    if (input) {
+      const start = input.selectionStart || 0
+      const end = input.selectionEnd || 0
+
+      // Chèn emoji vào vị trí con trỏ
+      const newText =
+        messageText.substring(0, start) + emoji + messageText.substring(end)
+
+      setMessageText(newText)
+
+      // Đưa con trỏ vào sau emoji
+      setTimeout(() => {
+        input.focus()
+        input.setSelectionRange(start + emoji.length, start + emoji.length)
+      }, 0)
+    }
+  }
+
+  // Đóng picker khi click ra ngoài
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (
+        pickerRef.current &&
+        !pickerRef.current.contains(e.target) &&
+        !(e.target).closest("button") // tránh click nút icon cũng bị đóng
+      ) {
+        setShowEmojiPicker(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside)
+    }
+  }, [])
 
   // Dùng useLayoutEffect để scroll sau khi DOM cập nhật
   useLayoutEffect(() => {
@@ -561,6 +608,14 @@ export function ChatArea({
               >
                 <Smile className="w-4 h-4" />
               </Button>
+
+              {/* Emoji Picker */}
+              {showEmojiPicker && (
+                <div ref={pickerRef} className="absolute bottom-12 right-0 z-50">
+                  <EmojiPicker theme={currentTheme === "dark" ? "dark" : "light"} onEmojiClick={handleEmojiClick}/>
+                </div>
+              )}
+
             </div>
 
             {(messageText.trim() || sending) ? (
@@ -594,7 +649,7 @@ export function ChatArea({
 
           {/* Nếu đã có audioUrl, hiển thị audio player và nút download */}
           {audioUrl && (
-            <div className="flex items-center space-x-2 p-2 bg-gray-100 rounded-md">
+            <div className="flex items-center space-x-2 p-2 bg-background rounded-md">
               {/* Nút hủy ghi âm */}
               <Button
                 onClick={() => {
@@ -609,7 +664,7 @@ export function ChatArea({
               <audio
                 src={audioUrl}
                 controls
-                className="flex-1 outline-none"
+                className="flex-1 h-8 outline-none"
               />
 
               {/* Nút gửi ghi âm */}
