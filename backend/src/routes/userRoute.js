@@ -6,5 +6,6 @@ const router = express.Router()
 
 router.get('/search', userController.searchUser)
 router.get('/findUser', authMiddleware, userController.searchUserById)
+router.post('/display', userController.getDisplayUsers)
 
 export const userRoute = router

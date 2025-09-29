@@ -22,6 +22,24 @@ const searchUser = async (req, res, next) => {
     }
 }
 
+const getDisplayUsers = async (req, res, next) => {
+    try {
+        let userIds = req.body.userIds
+        const users = await userService.getDisplayUsers(userIds)
+        if (users.length !== 0) {
+            res.json(users)
+        }
+        else {
+            res.status(404).json({
+                message: "No users found"
+            })
+        }
+    }
+    catch (error) {
+        next(error)
+    }
+}
+
 const selectedUser = async (req, res, next) => {
     try {
         let userId = req.params.userId
@@ -106,6 +124,7 @@ const searchUserById = async (req, res, next) => {
 
 export const userController = {
     searchUser,
+    getDisplayUsers,
     searchUserById,
     selectedUser
 }

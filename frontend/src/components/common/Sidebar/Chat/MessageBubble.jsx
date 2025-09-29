@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Pin, Reply, MoreHorizontal, Heart, Clock, Check, CheckCheck, FileText, FileSpreadsheet, Archive, Video, Music, File, Download,
   Smile
@@ -7,6 +7,10 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import ReactionButton from './ReactionButton'
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { get } from 'react-hook-form'
+import { getDisplayUsers } from '@/apis'
 
 function processReactions(reactions) {
   const emojiCountMap = {}
@@ -17,10 +21,11 @@ function processReactions(reactions) {
     emojiCountMap[emoji] = (emojiCountMap[emoji] || 0) + 1
 
     // Gán emoji cho user
-    if (!userEmojiMap[userId]) userEmojiMap[userId] = []
-    if (!userEmojiMap[userId].includes(emoji)) {
-      userEmojiMap[userId].push(emoji)
+    if (!userEmojiMap[userId]) userEmojiMap[userId] = { emoji: [], count: 0 }
+    if (!userEmojiMap[userId].emoji.includes(emoji)) {
+      userEmojiMap[userId].emoji.push(emoji)
     }
+    userEmojiMap[userId].count += 1
   })
 
   // Sắp xếp emoji theo số lượng dùng nhiều nhất và lấy 3 cái
@@ -29,7 +34,7 @@ function processReactions(reactions) {
     .slice(0, 3)
     .map(([emoji, count]) => ({ emoji, count }))
 
-  return { topEmojis, userEmojiMap }
+  return { topEmojis, userEmojiMap, emojiCountMap }
 }
 
 function pickSender(conversation, message, contact) {
@@ -82,6 +87,35 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
   const [hovered, setHovered] = useState(false)
   const isOwn = !!message?.isOwn
   const isGroup = conversation?.type === 'group'
+  const [open, setOpen] = useState(false)
+  const { topEmojis, userEmojiMap, emojiCountMap } = useMemo(
+    () => processReactions(message.reactions || []),
+    [message.reactions]
+  )
+
+  const [usersData, setUsersData] = useState({}) // userId -> user info
+  useEffect(() => {
+    const userIds = Object.keys(userEmojiMap)
+
+    // Load tất cả user info cùng lúc
+    async function fetchUsers() {
+      try {
+        const users = await getDisplayUsers(userIds)
+        const userMap = {}
+        users.forEach(u => {
+          userMap[u.id || u._id] = u
+        })
+        setUsersData(userMap)
+      } catch (err) {
+        console.error('Failed to fetch users for reactions', err)
+      }
+    }
+    if (userIds.length) {
+      fetchUsers()
+    } else {
+      setUsersData({})
+    }
+  }, [userEmojiMap])
 
   const formatFileSize = (bytes) => {
     if (!bytes) return '0 B'
@@ -140,7 +174,7 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
 
   return (
     <div
-      className={`flex gap-2 mb-3 ${isOwn ? 'justify-end' : 'justify-start'}`}
+      className={`flex gap-2 ${message.reactions.length > 0 ? 'mb-4' : 'mb-2'} ${isOwn ? 'justify-end' : 'justify-start'}`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -356,10 +390,9 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
           )}
 
           {Array.isArray(message.reactions) && message.reactions.length > 0 && (() => {
-            const { topEmojis, userEmojiMap } = processReactions(message.reactions)
 
             return (
-              <div className="absolute -bottom-2 right-2 cursor-pointer shadow-sm rounded-full border">
+              <div className="absolute -bottom-2 right-2 cursor-pointer shadow-sm rounded-full border" onClick={() => setOpen(true)}>
                 <Badge variant="secondary" className="text-xs flex gap-1">
                   {/* Hiển thị tất cả emoji */}
                   {topEmojis.map(reaction => reaction.emoji).join(' ')} {message.reactions.length}
@@ -368,6 +401,105 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
             )
           })()}
         </div>
+
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogContent className="sm:max-w-[400px] max-h-[60vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="text-center">Reactions</DialogTitle>
+            </DialogHeader>
+
+            <div className='w-full max-w-md'>
+              <Tabs defaultValue='explore' className='gap-4'>
+                <TabsList className='bg-background rounded-none border-b p-0'>
+                  {
+                    console.log('userEmojiMap', userEmojiMap)
+                  }
+                  <TabsTrigger
+                    value='all'
+                    className='bg-background data-[state=active]:border-primary data-[state=active]:text-primary dark:data-[state=active]:border-primary h-full rounded-none border-0 border-b-2 border-transparent data-[state=active]:shadow-none'
+                  >
+                    All {message.reactions.length}
+                  </TabsTrigger>
+                  {Object.entries(emojiCountMap).map(([key, value]) => (
+                    <TabsTrigger
+                      key={key}
+                      value={key}
+                      className='bg-background data-[state=active]:border-primary data-[state=active]:text-primary dark:data-[state=active]:border-primary h-full rounded-none border-0 border-b-2 border-transparent data-[state=active]:shadow-none'
+                    >
+                      {key} {value}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+
+                <TabsContent value='all'>
+                  <div className='space-y-4 mt-2'>
+                    {Object.entries(userEmojiMap).map(([userId, value]) => (
+                      <div key={userId} className='flex items-center gap-2'>
+                        <Avatar className='w-8 h-8'>
+                          <AvatarImage
+                            src={usersData[userId]?.avatarUrl}
+                          />
+                          <AvatarFallback>
+                            {(usersData[userId]?.fullName || usersData[userId]?.username || 'User')}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className='font-medium flex-1 min-w-0 text-sm'>
+                          {usersData[userId]?.fullName || usersData[userId]?.username || 'User'}
+                        </span>
+                        <span className='text-sm'>{value.emoji.join(' ')}</span>
+                        <span className='text-sm'>{value.count}</span>
+                      </div>
+                    ))}
+                  </div>
+                </TabsContent>
+
+                {(() => {
+                  const reaction = message.reactions || []
+                  if (reaction.length === 0) return null
+                  const emojiUserMap = {}
+
+                  reaction.forEach(({ userId, emoji }) => {
+                    if (!emojiUserMap[emoji]) emojiUserMap[emoji] = [{ userId, count: 0 }]
+                    if (!emojiUserMap[emoji].some(u => u.userId === userId)) {
+                      emojiUserMap[emoji].push({ userId, count: 0 })
+                    }
+                    const userEntry = emojiUserMap[emoji].find(u => u.userId === userId)
+                    if (userEntry) {
+                      userEntry.count += 1
+                    }
+                  })
+
+                  // Trả về JSX cho từng tab emoji
+                  return Object.entries(emojiUserMap).map(([emoji, users]) => (
+                    <TabsContent key={emoji} value={emoji}>
+                      <div className='space-y-4 mt-2'>
+                        {users.map(({ userId, count }) => (
+                          <div key={userId} className='flex items-center gap-2'>
+                            <Avatar className='w-8 h-8'>
+                              <AvatarImage src={usersData[userId]?.avatarUrl} />
+                              <AvatarFallback>
+                                {usersData[userId]?.fullName || usersData[userId]?.username || 'User'}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className='font-medium flex-1 min-w-0 text-sm'>
+                              {usersData[userId]?.fullName || usersData[userId]?.username || 'User'}
+                            </span>
+                            <span className='text-sm'>{emoji}</span>
+                            <span className='text-sm'>{count}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </TabsContent>
+                  ))
+                })()}
+              </Tabs>
+            </div>
+
+            <DialogFooter className="mt-2">
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
 
         {/* Time + status */}
         {showMeta && (

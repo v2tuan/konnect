@@ -72,6 +72,13 @@ export const findUserById = async (userId) => {
   return response.data
 }
 
+export const getDisplayUsers = async (userIds) => {
+  const response = await authorizeAxiosInstance.post(`${API_ROOT}/api/display`, {
+    userIds
+  })
+  return response.data
+}
+
 /* ======================== CONVERSATION APIs ======================== */
 
 /**
