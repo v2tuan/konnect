@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react'
 import {
-  Pin, Reply, MoreHorizontal, Heart, Clock, Check, CheckCheck, FileText, FileSpreadsheet, Archive, Video, Music, File, Download
+  Pin, Reply, MoreHorizontal, Heart, Clock, Check, CheckCheck, FileText, FileSpreadsheet, Archive, Video, Music, File, Download,
+  Smile
 } from 'lucide-react'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import ReactionButton from './ReactionButton'
 
 function pickSender(conversation, message, contact) {
   if (message?.sender) {
@@ -139,7 +141,7 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
         {/* Action bar nổi hai bên bubble */}
         <div
           className={`
-            pointer-events-auto absolute top-1/2 -translate-y-1/2
+            z-[999] pointer-events-auto absolute top-1/2 -translate-y-1/2
             ${isOwn ? '-left-22' : '-right-22'}
             opacity-0 transition-opacity duration-150
             ${hovered ? 'opacity-100' : 'opacity-0'}
@@ -149,9 +151,9 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
           <Button size="sm" variant="ghost" className="h-6 w-6 p-0">
             <Reply className="w-3 h-3" />
           </Button>
-          <Button size="sm" variant="ghost" className="h-6 w-6 p-0">
-            <Heart className="w-3 h-3" />
-          </Button>
+
+          <ReactionButton />
+
           <Button size="sm" variant="ghost" className="h-6 w-6 p-0">
             <MoreHorizontal className="w-3 h-3" />
           </Button>
@@ -174,10 +176,10 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                       {images.length > 0 && (
                         <div className={`
             ${images.length === 1 ? 'flex justify-center' :
-                            images.length === 2 ? 'grid grid-cols-2 gap-2' :
-                              images.length <= 4 ? 'grid grid-cols-2 gap-2 max-w-md' :
-                                'grid grid-cols-3 gap-2 max-w-lg'
-                          }
+                          images.length === 2 ? 'grid grid-cols-2 gap-2' :
+                            images.length <= 4 ? 'grid grid-cols-2 gap-2 max-w-md' :
+                              'grid grid-cols-3 gap-2 max-w-lg'
+                        }
           `}>
                           {images.map((media, index) => (
                             <div key={`image-${index}`} className="relative">
@@ -190,10 +192,10 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                                 className={`
                     rounded-lg shadow-md object-cover
                     ${images.length === 1 ? 'max-w-sm max-h-96 w-full' :
-                                    images.length === 2 ? 'w-full h-32 sm:h-40' :
-                                      images.length <= 4 ? 'w-full h-24 sm:h-32' :
-                                        'w-full h-20 sm:h-24'
-                                  }
+                              images.length === 2 ? 'w-full h-32 sm:h-40' :
+                                images.length <= 4 ? 'w-full h-24 sm:h-32' :
+                                  'w-full h-20 sm:h-24'
+                            }
                     hover:shadow-lg transition-shadow duration-200 cursor-pointer
                   `}
                                 onClick={() => {
@@ -280,9 +282,9 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                           {audios.map((media, index) => (
                             <div
                               key={`audio-${index}`}
-                              className={`flex items-center gap-2 p-2 max-w-xs 
-          ${message.isOwn ? 'ml-auto bg-blue-100 text-black rounded-l-lg rounded-tr-lg'
-                                  : 'mr-auto bg-gray-100 text-black rounded-r-lg rounded-tl-lg'} 
+                              className={`flex items-center gap-2 p-2 max-w-xs rounded-sm
+          ${message.isOwn ? 'ml-auto bg-primary/10 border border-primary rounded-l-lg rounded-tr-lg'
+                              : 'mr-auto bg-gray-100 text-black rounded-r-lg rounded-tl-lg'} 
           shadow-sm`}
                             >
                               {/* Audio player mở rộng đúng flex */}
@@ -323,9 +325,9 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
             className={`
       relative p-3 rounded-sm
       ${isOwn
-                ? 'bg-primary/10 border border-primary rounded-br-sm'
-                : 'bg-secondary text-secondary-foreground rounded-bl-sm'
-              }
+            ? 'bg-primary/10 border border-primary rounded-br-sm'
+            : 'bg-secondary text-secondary-foreground rounded-bl-sm'
+          }
     `}
           >
             {message.isPinned && (
