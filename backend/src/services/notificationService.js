@@ -1,14 +1,16 @@
+// services/notificationService.js
 import Notification from "../models/notifications";
 import ConversationMember from "../models/conversation_members";
 import Block from "../models/blocks";
+import {presence as presenceSingleton} from "../sockets/presence";
 
-/** Helpers (nội bộ) */
+const presence = presenceSingleton ?? {isOnline: () => false, isViewing: () => false};
+
 const isBlocked = async (receiverId, senderId) => {
   try {
     const bl = await Block.findOne({userId: receiverId, blockedUserId: senderId}).lean();
     return !!bl;
   } catch (e) {
-    // nếu DB lỗi, fallback coi như không block để không chặn flow chính (tuỳ bạn muốn throw)
     console.error("[notification][isBlocked] error:", e.message);
     return false;
   }
@@ -20,41 +22,28 @@ const safeCreate = async (notif) => {
     return doc.toJSON();
   } catch (e) {
     console.error("[notification][create] failed:", e.message);
-    throw e; // giữ hành vi fail-fast cho tầng gọi trên nếu muốn bắt
+    throw e;
   }
 };
 
-// Upsert 1 read-receipt / (receiver, conversation, reader) để không spam
 const upsertReadReceipt = async ({
-                                   receiverId,
-                                   senderId, // readerId
-                                   conversationId,
-                                   lastReadSeq,
-                                   lastReadMessageId,
-                                   title,
-                                   content,
-                                   extra = {},
+                                   receiverId, senderId, conversationId, lastReadSeq, lastReadMessageId, title, content, extra = {},
                                  }) => {
   try {
     if (await isBlocked(receiverId, senderId)) return null;
-
     const doc = await Notification.findOneAndUpdate(
       {receiverId, senderId, conversationId, type: "message_read"},
       {
         $set: {
-          title,
-          content,
+          title, content,
           lastReadSeq: lastReadSeq ?? null,
           lastReadMessageId: lastReadMessageId ?? null,
-          extra,
-          status: "unread",
-          updatedAt: new Date(),
+          extra, status: "unread", updatedAt: new Date(),
         },
         $setOnInsert: {type: "message_read", createdAt: new Date()},
       },
       {new: true, upsert: true}
     ).lean();
-
     return doc;
   } catch (e) {
     console.error("[notification][upsertReadReceipt] failed:", e.message);
@@ -62,72 +51,54 @@ const upsertReadReceipt = async ({
   }
 };
 
-/** ===== Public APIs (giống style userService) ===== */
-
 const create = async ({
-                        receiverId,
-                        senderId,
-                        type,
-                        title = "",
-                        content = "",
-                        conversationId = null,
-                        messageId = null,
-                        extra = {},
+                        receiverId, senderId, type, title = "", content = "", conversationId = null, messageId = null, extra = {},
                       }) => {
   try {
     if (await isBlocked(receiverId, senderId)) return null;
     return await safeCreate({
-      receiverId,
-      senderId,
-      type,
-      title,
-      content,
-      conversationId,
-      messageId,
-      extra,
-      status: "unread",
+      receiverId, senderId, type, title, content, conversationId, messageId, extra, status: "unread",
     });
-  } catch (e) {
-    throw e;
-  }
+  } catch (e) { throw e; }
 };
 
-// 1) Có tin nhắn mới → thông báo tới các thành viên khác
-const notifyMessage = async ({conversationId, message, senderId, senderName}) => {
+// ⭐ Có tin nhắn mới → tạo notification (trừ khi người nhận đang xem phòng)
+const notifyMessage = async ({conversationId, message, senderId, senderName, senderAvatar}) => {
   try {
-    let content = "";
-    switch (message.type) {
-      case "text":
-        content = message.body?.text || "Tin nhắn mới";
-        break;
-      case "image":
-        content = "Đã gửi một ảnh";
-        break;
-      case "file":
-        content = "Đã gửi một tệp";
-        break;
-      default:
-        content = "Tin nhắn mới";
-    }
+    // content ngắn gọn
+    let content = "Tin nhắn mới";
+    if (message.type === "text") {
+      const raw = message.body?.text || "";
+      content = raw.length > 120 ? raw.slice(0, 120) + "…" : raw || "Tin nhắn mới";
+    } else if (message.type === "image") content = "Đã gửi một ảnh";
+    else if (message.type === "file")  content = "Đã gửi một tệp";
+    else if (message.type === "audio") content = "Đã gửi một audio";
 
     const members = await ConversationMember.find({conversation: conversationId})
-    .select("userId")
-    .lean();
+    .select("userId").lean();
 
     const tasks = members
-    .filter((m) => String(m.userId) !== String(senderId))
-    .map((m) =>
-      create({
-        receiverId: m.userId,
+    .filter(m => String(m.userId) !== String(senderId))
+    .filter(m => !(presence.isOnline(m.userId) && presence.isViewing(m.userId, conversationId)))
+    .map(m => safeCreate({
+      receiverId: m.userId,
+      senderId,
+      type: "message",
+      title: senderName || "Tin nhắn mới",
+      content,
+      conversationId,
+      messageId: message._id,
+      extra: {
+        seq: message.seq,
+        type: message.type,
+        textPreview: message.body?.text || "",
         senderId,
-        type: "message",
-        title: senderName || "Tin nhắn mới",
-        content,
-        conversationId,
-        messageId: message._id,
-        extra: {seq: message.seq, senderId, conversationId},
-      })
-    );
+        senderName: senderName || null,
+        senderAvatar: senderAvatar || null,
+        conversationId
+      },
+      status: "unread",
+    }));
 
     const created = await Promise.all(tasks);
     return created.filter(Boolean);
@@ -137,18 +108,13 @@ const notifyMessage = async ({conversationId, message, senderId, senderName}) =>
   }
 };
 
-// 2) Ai đó đã đọc tới (read-receipt) → thông báo cho các thành viên khác
+// Read receipt (upsert để khỏi spam)
 const notifyMessageRead = async ({
-                                   conversationId,
-                                   readerId,
-                                   readerName,
-                                   lastReadSeq = null,
-                                   lastReadMessageId = null,
+                                   conversationId, readerId, readerName, lastReadSeq = null, lastReadMessageId = null,
                                  }) => {
   try {
     const members = await ConversationMember.find({conversation: conversationId})
-    .select("userId")
-    .lean();
+    .select("userId").lean();
 
     const title = "Đã đọc tin nhắn";
     const content = lastReadSeq
@@ -156,19 +122,17 @@ const notifyMessageRead = async ({
       : `${readerName || "Ai đó"} đã xem tin nhắn`;
 
     const tasks = members
-    .filter((m) => String(m.userId) !== String(readerId))
-    .map((m) =>
-      upsertReadReceipt({
-        receiverId: m.userId,
-        senderId: readerId,
-        conversationId,
-        lastReadSeq,
-        lastReadMessageId,
-        title,
-        content,
-        extra: {readerId, lastReadSeq, lastReadMessageId, conversationId},
-      })
-    );
+    .filter(m => String(m.userId) !== String(readerId))
+    .map(m => upsertReadReceipt({
+      receiverId: m.userId,
+      senderId: readerId,
+      conversationId,
+      lastReadSeq,
+      lastReadMessageId,
+      title,
+      content,
+      extra: {readerId, lastReadSeq, lastReadMessageId, conversationId},
+    }));
 
     const upserts = await Promise.all(tasks);
     return upserts.filter(Boolean);
@@ -178,7 +142,6 @@ const notifyMessageRead = async ({
   }
 };
 
-// 3) List / mark read (khay thông báo)
 const list = async ({userId, cursor = null, limit = 20, onlyUnread = false, type = null, conversationId = null}) => {
   try {
     const q = {receiverId: userId};
@@ -186,7 +149,6 @@ const list = async ({userId, cursor = null, limit = 20, onlyUnread = false, type
     if (type) q.type = type;
     if (conversationId) q.conversationId = conversationId;
     if (cursor) q._id = {$lt: cursor};
-
     return await Notification.find(q).sort({_id: -1}).limit(Math.min(Number(limit) || 20, 100)).lean();
   } catch (e) {
     console.error("[notification][list] failed:", e.message);
@@ -213,7 +175,6 @@ const markAllAsRead = async ({userId, type = null, conversationId = null}) => {
     const q = {receiverId: userId, status: "unread"};
     if (type) q.type = type;
     if (conversationId) q.conversationId = conversationId;
-
     const res = await Notification.updateMany(q, {
       $set: {status: "read", readAt: new Date(), updatedAt: new Date()},
     });

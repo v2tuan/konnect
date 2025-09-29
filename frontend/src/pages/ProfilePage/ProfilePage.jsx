@@ -9,7 +9,6 @@ function ProfilePage() {
       <SidebarProvider>
         <AppSidebar/>
         <div className='w-full'>
-          <NavBar/>
           <Settings />
         </div>
       </SidebarProvider>

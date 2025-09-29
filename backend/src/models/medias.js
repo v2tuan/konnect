@@ -1,31 +1,45 @@
-import mongoose from "mongoose";
+// src/models/media.js
+import mongoose from "mongoose"
 
-let mediaSchema = new mongoose.Schema({
+const { Schema, model, models } = mongoose
+
+const MediaSchema = new Schema(
+  {
     uploaderId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-        required: true
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      index: true
     },
     conversationId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'Conversation',
-        required: true
+      type: Schema.Types.ObjectId,
+      ref: "Conversation",
+      required: true,
+      index: true
     },
     type: {
-        type: String,
-        // enum: ['image', 'file'],
-        // required: true
+      type: String,
+      enum: ["image", "file", "audio", "video"], // tùy bạn mở rộng
+      required: true
     },
-    url: {
-        type: String,
-        required: true
-    },
-    metadata: { // Thông tin thêm về file
-        filename: String,
-        size: Number, // Kích thước file tính theo bytes
-        mimetype: String // loại MIME (image/png, application/pdf, ...).
+    url: { type: String, required: true },
+    metadata: {
+      filename: String,
+      size: Number,
+      mimetype: String,
+      width: Number,
+      height: Number,
+      duration: Number // với audio/video nếu có
     },
     uploadedAt: { type: Date, default: Date.now }
-});
-let Media = mongoose.model('Media', mediaSchema);
-export default Media;
+  },
+  {
+    versionKey: false,
+    timestamps: false,
+    collection: "medias" // đặt rõ tên collection cho nhất quán
+  }
+)
+
+// Hot-reload safe
+export const Media = models.Media || model("Media", MediaSchema)
+export default Media

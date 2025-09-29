@@ -1,9 +1,10 @@
 "use client"
 
-import { AppSidebar } from "@/components/common/Sidebar/app-sidebar"
-import { SidebarProvider } from "@/components/ui/sidebar"
 import * as React from "react"
 import { Outlet, useLocation, useNavigate } from "react-router-dom"
+import { SidebarProvider } from "@/components/ui/sidebar"
+import { AppSidebar } from "@/components/common/Sidebar/app-sidebar"
+import NotificationsBridge from "@/components/common/Notification/NotificationsBridge.jsx"
 
 export default function MainLayout() {
   const navigate = useNavigate()
@@ -15,40 +16,38 @@ export default function MainLayout() {
   const [selectedChat, setSelectedChat] = React.useState(null)
   const [contacts, setContacts] = React.useState([])
 
-  // Lấy contactTab từ URL thay vì local state
-  const getContactTabFromURL = () => {
-    const pathSegments = location.pathname.split('/').filter(Boolean)
-    if (pathSegments[0] === 'contacts') {
-      return pathSegments[1] || 'friends' // Default to 'friends' if no subtab
-    }
-    return 'friends' // Default fallback
-  }
+  // Lấy contactTab từ URL
+  const contactTab = React.useMemo(() => {
+    const segs = location.pathname.split("/").filter(Boolean)
+    return segs[0] === "contacts" ? (segs[1] || "friends") : "friends"
+  }, [location.pathname])
 
-  const contactTab = getContactTabFromURL()
-
-  // Handler để thay đổi contact tab thông qua routing
-  const handleContactTabChange = (tab) => {
+  // Điều hướng tab contact qua URL
+  const handleContactTabChange = React.useCallback((tab) => {
     navigate(`/contacts/${tab}`)
-  }
+  }, [navigate])
 
-  //cloud state
+  // Cloud tab
   const [cloudTab, setCloudTab] = React.useState("cloud")
 
-  const openChatWithContact = (contact) => {
+  const openChatWithContact = React.useCallback((contact) => {
     if (!contact?.id) return
-    let existing = chats.find((c) => c.contact?.id === contact.id)
-    if (!existing) {
-      existing = { id: `new-${contact.id}`, contact, messages: [], unreadCount: 0, lastMessage: null }
-      setChats((prev) => [existing, ...prev])
-    }
-    setSelectedChat(existing)
-    setCurrentView("chat")
-  }
+    setChats((prev) => {
+      let existing = prev.find((c) => c.contact?.id === contact.id)
+      if (!existing) {
+        existing = { id: `new-${contact.id}`, contact, messages: [], unreadCount: 0, lastMessage: null }
+        prev = [existing, ...prev]
+      }
+      setSelectedChat(existing)
+      setCurrentView("chat")
+      return prev
+    })
+  }, [])
 
-  const handleSendMessage = (text) => {
+  const handleSendMessage = React.useCallback((text) => {
     setChats((prev) =>
       prev.map((c) =>
-        c.id === selectedChat.id
+        c.id === selectedChat?.id
           ? {
             ...c,
             messages: [
@@ -72,9 +71,10 @@ export default function MainLayout() {
           : c
       )
     )
-  }
+  }, [selectedChat?.id])
 
-  const chatState = {
+  // Gom state + handlers, tránh đổi reference mỗi render
+  const chatState = React.useMemo(() => ({
     chats,
     setChats,
     contacts,
@@ -85,12 +85,11 @@ export default function MainLayout() {
     onViewChange: setCurrentView,
     onContactSelect: openChatWithContact,
     onSendMessage: handleSendMessage
-  }
+  }), [chats, contacts, selectedChat, currentView, openChatWithContact, handleSendMessage])
 
   return (
     <SidebarProvider>
       <div className="flex h-screen w-full">
-        {/* Sidebar luôn hiện và tự mở pane giữa theo route (/chats|/contacts) */}
         <AppSidebar
           chatState={chatState}
           contactTab={contactTab}
@@ -99,11 +98,20 @@ export default function MainLayout() {
           onCloudTabChange={setCloudTab}
         />
 
-        {/* Main content area = NavBar + Outlet */}
+        {/* ✅ Bridge để lắng nghe socket + render toast ở mọi page trong vùng protected */}
+        <NotificationsBridge />
+
         <div className="flex-1 flex flex-col min-w-0">
           <div className="flex-1 min-h-0">
-            {/* Truyền state xuống page qua Outlet context */}
-            <Outlet context={{ chatState, contactTab, setContactTab: handleContactTabChange, cloudTab, setCloudTab }} />
+            <Outlet
+              context={{
+                chatState,
+                contactTab,
+                setContactTab: handleContactTabChange,
+                cloudTab,
+                setCloudTab
+              }}
+            />
           </div>
         </div>
       </div>

@@ -1,31 +1,32 @@
 /* eslint-disable no-empty */
+import { useEffect, useRef, useState, useCallback } from 'react'
+import { useDispatch, useSelector } from 'react-redux'
+import { useNavigate, useParams } from 'react-router-dom'
+
 import { getConversationByUserId, getConversations, searchUserByUsername } from '@/apis'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { selectCurrentUser, upsertUsers } from '@/redux/user/userSlice'
-import { formatTimeAgo, pickPeerStatus } from '@/utils/helper'
-import { MessageCircle, Phone, Search, Users, Video } from 'lucide-react'
-import { useEffect, useRef, useState, useCallback } from 'react'
-import { useDispatch, useSelector } from 'react-redux'
-import { useNavigate, useParams } from 'react-router-dom'
 import { SkeletonConversation } from '../Skeleton/SkeletonConversation'
+
+import { selectCurrentUser, upsertUsers } from '@/redux/user/userSlice'
+import { formatTimeAgo, pickPeerStatus, extractId } from '@/utils/helper'
+import { MessageCircle } from 'lucide-react'
 import { usePresenceText } from '@/hooks/use-relative-time'
-import { extractId } from '@/utils/helper'
-import { API_ROOT } from '@/utils/constant'
-import { io } from 'socket.io-client'
+import { useUnreadStore } from '@/store/useUnreadStore'
+
+// 🔌 socket chung
+import { connectSocket, getSocket } from '@/lib/socket'
 
 /* ========================= Helpers ========================= */
 
 const glyphs = (s) => Array.from(String(s ?? ''))
 
-// cắt N ký tự (safe emoji)
 const cut = (s, n) => {
   const g = glyphs(s)
   return g.length <= n ? s : g.slice(0, n).join('') + '…'
 }
 
-// Lấy N từ đầu, M ký tự/từ, và tối đa K ký tự toàn chuỗi
 const previewWords = (raw = '', wordLimit = 8, maxTokenLen = 10, maxTotalLen = 40) => {
   const text = String(raw || '').trim()
   if (!text) return ''
@@ -59,21 +60,29 @@ const buildConvFromSocket = (payload) => {
     },
     lastMessage: msg
       ? {
-          _id: msg._id || msg.id,
-          textPreview: msg.body?.text ?? msg.text ?? '',
-          senderId: msg.senderId || msg.sender?._id || msg.sender?.id,
-          sender: msg.sender,
-          createdAt: msg.createdAt || Date.now()
-        }
+        _id: msg._id || msg.id,
+        textPreview: msg.body?.text ?? msg.text ?? '',
+        senderId: msg.senderId || msg.sender?._id || msg.sender?.id,
+        sender: msg.sender,
+        createdAt: msg.createdAt || Date.now()
+      }
       : null
   }
 }
 
 /* ===================== Item component ====================== */
 
-function ConversationListItem({ conversation, usersById, isActive, onClick, getLastMessageText }) {
+function ConversationListItem({
+                                conversation,
+                                usersById,
+                                isActive,
+                                unread = 0,
+                                onClick,
+                                lastMessageText
+                              }) {
   const id = extractId(conversation)
-  const status = conversation.direct
+
+  const status = conversation.type === 'direct'
     ? pickPeerStatus(conversation, usersById)
     : { isOnline: false, lastActiveAt: null }
 
@@ -96,6 +105,10 @@ function ConversationListItem({ conversation, usersById, isActive, onClick, getL
         ? 'bg-status-away bg-amber-400'
         : 'bg-status-offline bg-zinc-400'
 
+  const previewText = unread > 0
+    ? `${unread > 99 ? '99+' : unread} tin nhắn mới`
+    : lastMessageText
+
   return (
     <div
       key={id}
@@ -105,25 +118,33 @@ function ConversationListItem({ conversation, usersById, isActive, onClick, getL
       <div className="flex items-center gap-3">
         <div className="relative">
           <Avatar className="w-12 h-12">
-            <AvatarImage src={conversation.conversationAvatarUrl} />
+            <AvatarImage src={conversation.conversationAvatarUrl}/>
             <AvatarFallback>{conversation.displayName?.[0]}</AvatarFallback>
           </Avatar>
 
           {conversation.type === 'direct' && (
             <div
-              className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${presenceDotClass}`}
-            />
+              className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${presenceDotClass}`}/>
           )}
         </div>
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between mb-1">
-            <h3 className="font-medium truncate">{conversation.displayName}</h3>
+            <h3 className={`truncate ${unread > 0 ? 'font-semibold text-foreground' : 'font-medium'}`}>
+              {conversation.displayName}
+            </h3>
+
+            {unread > 0 && (
+              <span
+                className="ml-2 shrink-0 min-w-5 h-5 px-2 rounded-full text-[10px] leading-5 bg-primary text-primary-foreground text-center">
+                {unread > 99 ? '99+' : unread}
+              </span>
+            )}
           </div>
 
           <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground truncate">
-              {getLastMessageText(conversation)}
+            <p className={`text-sm truncate ${unread > 0 ? 'text-foreground' : 'text-muted-foreground'}`}>
+              {previewText}
             </p>
             {conversation.lastMessage?.createdAt && (
               <span className="ml-3 shrink-0 text-xs text-muted-foreground">
@@ -161,17 +182,20 @@ export function ChatSidebar({ currentView, onViewChange }) {
   const dispatch = useDispatch()
   const usersById = useSelector((state) => state.user.usersById || {})
 
-  // Socket & room joined
-  const socketRef = useRef(null)
+  // unread state
+  const unreadMap = useUnreadStore(s => s.map)
+  const setUnread = useUnreadStore(s => s.setUnread)
+
+  // refs
   const joinedRef = useRef(new Set())
+  const listenersAttachedRef = useRef(false)
 
   // Scroll/Observer refs
   const scrollContainerRef = useRef(null)
   const loadMoreRef = useRef(null)
   const observerRef = useRef(null)
 
-  /* =============== Helpers =============== */
-
+  /* ---------- Helpers cho LastMessageText ---------- */
   const getLastMessageText = useCallback(
     (conv) => {
       const lm = conv.lastMessage
@@ -212,12 +236,11 @@ export function ChatSidebar({ currentView, onViewChange }) {
         const newConversations = conversations?.data || []
 
         setConversationList(prev => (isAppend ? [...prev, ...newConversations] : newConversations))
-
         setHasMore(newConversations.length === limit)
 
         const peers = newConversations
-          .map((c) => c?.direct?.otherUser)
-          .filter(Boolean)
+        .map((c) => c?.direct?.otherUser)
+        .filter(Boolean)
         if (peers.length) dispatch(upsertUsers(peers))
 
         if (page === 1) setInitialLoaded(true)
@@ -316,15 +339,24 @@ export function ChatSidebar({ currentView, onViewChange }) {
     }
   }, [searchQuery, onViewChange])
 
-  /* =============== Socket wiring =============== */
+  /* =============== Socket wiring (dùng socket chung) =============== */
 
+  // 1) đảm bảo kết nối socket khi đã có currentUser
   useEffect(() => {
-    if (!initialLoaded || socketRef.current) return
+    if (!currentUser?._id) return
+    connectSocket(currentUser._id) // no-op nếu đã kết nối
+  }, [currentUser?._id])
 
-    const s = io(API_ROOT, { withCredentials: true })
-    socketRef.current = s
+  // 2) gắn listener một lần + join rooms mỗi lần connect
+  useEffect(() => {
+    if (!initialLoaded || !currentUser?._id) return
+    const s = getSocket()
+    if (!s) return
 
-    s.on('connect', () => {
+    if (listenersAttachedRef.current) return
+    listenersAttachedRef.current = true
+
+    const joinAllRooms = () => {
       try {
         (conversationList || []).forEach(c => {
           const id = extractId(c)
@@ -334,7 +366,11 @@ export function ChatSidebar({ currentView, onViewChange }) {
           }
         })
       } catch {}
-    })
+    }
+
+    const onConnect = () => {
+      joinAllRooms()
+    }
 
     const onNewMessage = (payload) => {
       const convId = extractId(
@@ -343,13 +379,14 @@ export function ChatSidebar({ currentView, onViewChange }) {
       if (!convId) return
       const msg = payload?.message || payload
 
+      // Cập nhật lastMessage & đẩy conv lên đầu
       setConversationList(prev => {
         const idx = prev.findIndex(c => extractId(c) === convId)
         if (idx === -1) {
           const draft = buildConvFromSocket(payload)
           try {
-            if (socketRef.current && !joinedRef.current.has(convId)) {
-              socketRef.current.emit('conversation:join', { conversationId: convId })
+            if (!joinedRef.current.has(convId)) {
+              s.emit('conversation:join', { conversationId: convId })
               joinedRef.current.add(convId)
             }
           } catch {}
@@ -371,6 +408,16 @@ export function ChatSidebar({ currentView, onViewChange }) {
         next.splice(idx, 1)
         return [updated, ...next]
       })
+
+      // ⭐ Tăng unread nếu: không phải phòng đang mở & không phải mình gửi
+      const myId = String(currentUser?._id || '')
+      const senderId = String((msg.senderId && msg.senderId._id) || msg.senderId || '')
+      const isMine = myId && senderId && myId === senderId
+
+      if (convId !== activeIdFromURL && !isMine) {
+        const curr = useUnreadStore.getState().map?.[convId] || 0
+        setUnread(convId, curr + 1)
+      }
     }
 
     const onConversationCreated = (payload) => {
@@ -383,11 +430,11 @@ export function ChatSidebar({ currentView, onViewChange }) {
       const isUserInConversation =
         conversation.type === 'group'
           ? conversation.group?.members?.some(
-              (m) => String(m._id || m.id) === String(currentUserId)
-            )
+            (m) => String(m._id || m.id) === String(currentUserId)
+          )
           : conversation.type === 'direct' &&
-            (String(conversation.direct?.otherUser?._id) === String(currentUserId) ||
-              String(conversation.direct?.user?._id) === String(currentUserId))
+          (String(conversation.direct?.otherUser?._id) === String(currentUserId) ||
+            String(conversation.direct?.user?._id) === String(currentUserId))
 
       if (!isUserInConversation) return
 
@@ -404,8 +451,8 @@ export function ChatSidebar({ currentView, onViewChange }) {
         }
 
         try {
-          if (socketRef.current && !joinedRef.current.has(convId)) {
-            socketRef.current.emit('conversation:join', { conversationId: convId })
+          if (!joinedRef.current.has(convId)) {
+            s.emit('conversation:join', { conversationId: convId })
             joinedRef.current.add(convId)
           }
         } catch {}
@@ -421,36 +468,38 @@ export function ChatSidebar({ currentView, onViewChange }) {
       onConversationCreated(payload)
     }
 
+    s.on('connect', onConnect)
     s.on('message:new', onNewMessage)
     s.on('conversation:created', onConversationCreated)
     s.on('conversation:member:added', onAddedToConversation)
 
     return () => {
+      s.off('connect', onConnect)
       s.off('message:new', onNewMessage)
       s.off('conversation:created', onConversationCreated)
       s.off('conversation:member:added', onAddedToConversation)
-      s.disconnect()
-      socketRef.current = null
-      joinedRef.current.clear()
+      listenersAttachedRef.current = false
     }
-  }, [initialLoaded, currentUser?._id, conversationList])
+  }, [initialLoaded, currentUser?._id, conversationList, activeIdFromURL, setUnread])
 
-  // Đảm bảo join đủ room khi list thay đổi
+  // 3) Khi danh sách hội thoại đổi → đảm bảo đã join đủ (kể cả đang online)
   useEffect(() => {
-    if (!socketRef.current) return
+    const s = getSocket()
+    if (!s) return
     try {
       (conversationList || []).forEach(c => {
         const id = extractId(c)
         if (id && !joinedRef.current.has(id)) {
-          socketRef.current.emit('conversation:join', { conversationId: id })
+          s.emit('conversation:join', { conversationId: id })
           joinedRef.current.add(id)
         }
       })
     } catch {}
   }, [conversationList])
 
-  // Lắng nghe sự kiện local
+  // Lắng nghe event local (khi tạo hội thoại mới local)
   useEffect(() => {
+    const s = getSocket()
     const onLocalCreated = (e) => {
       const conversation = e?.detail?.conversation
       if (!conversation) return
@@ -471,8 +520,8 @@ export function ChatSidebar({ currentView, onViewChange }) {
         }
 
         try {
-          if (socketRef.current && !joinedRef.current.has(convId)) {
-            socketRef.current.emit('conversation:join', { conversationId: convId })
+          if (s && !joinedRef.current.has(convId)) {
+            s.emit('conversation:join', { conversationId: convId })
             joinedRef.current.add(convId)
           }
         } catch {}
@@ -492,6 +541,7 @@ export function ChatSidebar({ currentView, onViewChange }) {
       const id = extractId(conversation?.data)
       if (!id) return
       onViewChange?.('chat')
+      useUnreadStore.getState().setUnread(id, 0)
       navigate(`/chats/${id}`)
     } catch {}
   }
@@ -500,6 +550,7 @@ export function ChatSidebar({ currentView, onViewChange }) {
     const id = extractId(conv)
     if (!id) return
     onViewChange?.('chat')
+    useUnreadStore.getState().setUnread(id, 0)
     navigate(`/chats/${id}`)
   }
 
@@ -513,7 +564,9 @@ export function ChatSidebar({ currentView, onViewChange }) {
       {/* Header: Search */}
       <div className="p-4 border-b border-border">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4" />
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4" viewBox="0 0 24 24" fill="none">
+            <path d="M21 21l-4.3-4.3m1.8-4.7a7 7 0 11-14 0 7 7 0 0114 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
           <Input
             placeholder="Tìm kiếm bạn bè, tin nhắn..."
             onChange={(e) => {
@@ -534,8 +587,7 @@ export function ChatSidebar({ currentView, onViewChange }) {
             onClick={() => onViewChange?.('chat')}
             className="flex-1"
           >
-            <MessageCircle className="w-4 h-4 mr-2" />
-            Chat
+            <span className="mr-2">💬</span> Chat
           </Button>
           <Button
             variant={currentView === 'contacts' ? 'default' : 'ghost'}
@@ -543,8 +595,7 @@ export function ChatSidebar({ currentView, onViewChange }) {
             onClick={() => onViewChange?.('priority')}
             className="flex-1"
           >
-            <Users className="w-4 h-4 mr-2" />
-            Bạn bè
+            <span className="mr-2">👥</span> Bạn bè
           </Button>
         </div>
       </div>
@@ -573,12 +624,10 @@ export function ChatSidebar({ currentView, onViewChange }) {
                 onClick={() => handleClickUser(user.id || user._id)}
               >
                 <div className="flex items-center gap-3">
-                  <div className="relative">
-                    <Avatar className="w-12 h-12">
-                      <AvatarImage src={user.avatarUrl} />
-                      <AvatarFallback>{user.username?.[0]}</AvatarFallback>
-                    </Avatar>
-                  </div>
+                  <Avatar className="w-12 h-12">
+                    <AvatarImage src={user.avatarUrl}/>
+                    <AvatarFallback>{user.username?.[0]}</AvatarFallback>
+                  </Avatar>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-1">
                       <h3 className="font-medium truncate">{user.username}</h3>
@@ -598,7 +647,6 @@ export function ChatSidebar({ currentView, onViewChange }) {
       <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
         {isChatView && (
           <div className="space-y-1 p-2">
-            {/* Initial loading skeleton */}
             {loadingConvs && conversationList.length === 0 ? (
               <>
                 <SkeletonConversation />
@@ -607,23 +655,23 @@ export function ChatSidebar({ currentView, onViewChange }) {
               </>
             ) : (
               <>
-                {/* Render conversation list */}
                 {conversationList.map((conversation) => {
                   const id = extractId(conversation)
                   const isActive = activeIdFromURL === id
+                  const unread = unreadMap[id] || 0
                   return (
                     <ConversationListItem
                       key={id}
                       conversation={conversation}
                       usersById={usersById}
                       isActive={isActive}
-                      getLastMessageText={getLastMessageText}
+                      unread={unread}
+                      lastMessageText={getLastMessageText(conversation)}
                       onClick={() => handleClickConversation(conversation)}
                     />
                   )
                 })}
 
-                {/* Load more trigger element */}
                 {hasMore && (
                   <div ref={loadMoreRef} className="flex justify-center py-4">
                     {loadingMore ? (
@@ -639,7 +687,6 @@ export function ChatSidebar({ currentView, onViewChange }) {
                   </div>
                 )}
 
-                {/* Empty state */}
                 {!loadingConvs && conversationList.length === 0 && (
                   <div className="text-center py-8 text-muted-foreground">
                     <MessageCircle className="w-12 h-12 mx-auto mb-2 opacity-50" />
@@ -656,12 +703,10 @@ export function ChatSidebar({ currentView, onViewChange }) {
       <div className="p-4 border-t border-border">
         <div className="flex gap-2">
           <Button variant="outline" size="sm" className="flex-1">
-            <Phone className="w-4 h-4 mr-2" />
-            Cuộc gọi
+            📞 Cuộc gọi
           </Button>
           <Button variant="outline" size="sm" className="flex-1">
-            <Video className="w-4 h-4 mr-2" />
-            Video
+            🎥 Video
           </Button>
         </div>
       </div>

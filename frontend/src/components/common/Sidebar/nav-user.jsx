@@ -29,12 +29,29 @@ import {
   SidebarMenuItem,
   useSidebar
 } from "@/components/ui/sidebar"
-import { useSelector } from "react-redux"
-import { selectCurrentUser } from "@/redux/user/userSlice"
+import { useDispatch, useSelector } from "react-redux"
+import { clearCurrentUser, logoutUserAPI, selectCurrentUser } from "@/redux/user/userSlice"
+import { useNavigate } from "react-router-dom"
 
 export function NavUser() {
   const { isMobile } = useSidebar()
   const user = useSelector(selectCurrentUser)
+  const navigate = useNavigate()
+  const dispatch = useDispatch()
+
+  const handleAccountClick = () => {
+    navigate("/settings/account")
+  }
+
+  const handleLogoutClick = async () => {
+    try {
+      await dispatch(logoutUserAPI()).unwrap()
+      dispatch(clearCurrentUser())
+      navigate("/login") // sau khi logout thì quay về trang login
+    } catch (err) {
+      console.error("Logout failed:", err)
+    }
+  }
   return (
     <SidebarMenu>
       <SidebarMenuItem>
@@ -82,7 +99,7 @@ export function NavUser() {
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={handleAccountClick}>
                 <BadgeCheck />
                 Account
               </DropdownMenuItem>
@@ -96,7 +113,7 @@ export function NavUser() {
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={handleLogoutClick}>
               <LogOut />
               Log out
             </DropdownMenuItem>

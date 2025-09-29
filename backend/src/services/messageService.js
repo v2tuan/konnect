@@ -8,7 +8,7 @@ import ConversationMember from "~/models/conversation_members";
 import { CloudinaryProvider } from '~/providers/CloudinaryProvider'
 import Media from '~/models/medias'
 import { mediaService } from './mediaService'
-
+import User from "~/models/user"
 function toPublicMessage(m) {
   return {
     _id: m._id,
@@ -24,11 +24,14 @@ function toPublicMessage(m) {
 }
 
 async function assertCanAccessConversation(userId, convo) {
-  if (!convo) throw Object.assign(new Error('Conversation not found'), { status: 404 })
-
-  if (convo.type === 'cloud') {
+  if (!convo) {
+    const err = new Error("Conversation not found")
+    err.status = 404
+    throw err
+  }
+  if (convo.type === "cloud") {
     if (String(convo.cloud?.ownerId) !== String(userId)) {
-      const err = new Error('Forbidden')
+      const err = new Error("Forbidden")
       err.status = 403
       throw err
     }
@@ -36,88 +39,86 @@ async function assertCanAccessConversation(userId, convo) {
 }
 
 /**
- * Xử lý gửi tin nhắn trong hội thoại
+ * Gửi tin nhắn (text / image / file / audio)
  * @param {Object} params
- * @param {string} params.userId - ID của người gửi
- * @param {string} params.conversationId - ID hội thoại
- * @param {"text"|"image"|"file"|"audio"} params.type - Loại tin nhắn
- * @param {string} [params.text] - Nội dung text (nếu type = "text")
- * @param {Object} params.io - Socket.io instance để emit realtime
+ * @param {string} params.userId
+ * @param {string} params.conversationId
+ * @param {"text"|"image"|"file"|"audio"} params.type
+ * @param {string} [params.text]
+ * @param {any} [params.file]  // có thể là req.file hoặc req.files
+ * @param {import("socket.io").Server} params.io
  */
 async function sendMessage({ userId, conversationId, type, text, file, io }) {
-  // 1. Lấy hội thoại để kiểm tra quyền truy cập
+  // 1) Kiểm tra quyền
   const conversation = await Conversation.findById(conversationId).lean()
   await assertCanAccessConversation(userId, conversation)
 
-  // 2. Tăng messageSeq (số thứ tự tin nhắn) một cách atomic để tránh race condition
-  const conversationAfterInc = await Conversation.findOneAndUpdate(
+  // 2) Tăng seq atomically
+  const updatedConvo = await Conversation.findOneAndUpdate(
     { _id: conversationId },
     { $inc: { messageSeq: 1 } },
     { new: true, lean: true }
   )
-
-  if (!conversationAfterInc) {
-    const error = new Error(`Conversation not found when incrementing: ${conversationId}`)
-    error.status = 404
-    throw error
+  if (!updatedConvo) {
+    const err = new Error(`Conversation not found when incrementing: ${conversationId}`)
+    err.status = 404
+    throw err
   }
-
-  const messageSeq = conversationAfterInc.messageSeq
+  const seq = updatedConvo.messageSeq
   const now = new Date()
 
-  let newMediaDoc = null
-  // 3. Tạo bản ghi message mới
-  let newMediaDocs = []
-  if (['image', 'file', 'audio'].includes(type) && file) {
-    const files = file || []
-    const uploadResults = await mediaService.uploadMultiple(files, conversationId)
-    // console.log('Upload results:', uploadResults)
+  // 3) Upload & lưu media (nếu có)
+  let mediaDocs = []
+  if (["image", "file", "audio", "video"].includes(type) && file) {
+    // normalize về mảng
+    const files = Array.isArray(file)
+      ? file
+      : (file?.length ? Array.from(file) : (file ? [file] : []))
 
-    const promises = uploadResults.map((result, index) => {
-      const media = {
-        conversationId: new mongoose.Types.ObjectId(conversationId),
-        uploaderId: new mongoose.Types.ObjectId(userId),
-        type,
-        url: result.url, // URL truy cập file
-        metadata: result.metadata, // thông tin thêm về file
-        uploadedAt: now
-      }
-
-      // Trả về promise lưu vào DB
-      return Media.create(media)
-    })
-
-    // Đợi tất cả media được lưu
-    newMediaDocs = await Promise.all(promises)
-
-    // console.log('Uploaded media:', newMediaDocs)
+    if (files.length) {
+      const uploaded = await mediaService.uploadMultiple(files, conversationId)
+      // Lưu vào Media collection
+      mediaDocs = await Promise.all(
+        uploaded.map((u) =>
+          Media.create({
+            conversationId: new mongoose.Types.ObjectId(conversationId),
+            uploaderId: new mongoose.Types.ObjectId(userId),
+            type,
+            url: u.url,
+            metadata: u.metadata,
+            uploadedAt: now
+          })
+        )
+      )
+    }
   }
 
-  let newMessage = await Message.create({
+  // 4) Tạo message
+  let msg = await Message.create({
     conversationId: new mongoose.Types.ObjectId(conversationId),
-    seq: messageSeq,
+    seq,
     senderId: new mongoose.Types.ObjectId(userId),
-    media: Array.isArray(newMediaDocs) ? newMediaDocs.map(m => m._id) : [], // danh sách media
+    media: mediaDocs.map((m) => m._id),
     type,
     body: {
-      text: type === 'text' ? text : `Đã gửi/nhận một tin nhắn ${type}` // chỉ lưu text nếu type = text
+      text: type === "text" ? (text || "") : `Đã gửi/nhận một tin nhắn ${type}`
     },
     createdAt: now
   })
 
-  // populate sau khi create
-  newMessage = await newMessage.populate('media');
+  // populate media sau khi create
+  msg = await msg.populate("media")
 
-  // 4. Cập nhật thông tin lastMessage của hội thoại
+  // 5) Cập nhật lastMessage cho conversation
   await Conversation.updateOne(
     { _id: conversationId },
     {
       $set: {
         lastMessage: {
-          seq: messageSeq,
-          messageId: newMessage._id,
+          seq,
+          messageId: msg._id,
           type,
-          textPreview: type === 'text' ? (text || '').slice(0, 160) : '',
+          textPreview: type === "text" ? (text || "").slice(0, 160) : "",
           senderId: userId,
           createdAt: now
         },
@@ -126,134 +127,113 @@ async function sendMessage({ userId, conversationId, type, text, file, io }) {
     }
   )
 
-  // Payload chung để emit
-  const payload = {
-    conversationId,
-    message: toPublicMessage(newMessage)
+  const payload = { conversationId, message: toPublicMessage(msg) }
+
+  // 6) Emit "message:new" cho room
+  if (io) {
+    io.to(`conversation:${conversationId}`).emit("message:new", payload)
   }
 
-  // 5. Emit tin nhắn mới vào room hội thoại
+  // 7) Emit badge:update cho các thành viên khác
   if (io) {
-    io.to(`conversation:${conversationId}`).emit('message:new', payload)
-  }
-
-  // 6. Emit badge cập nhật số tin chưa đọc cho các thành viên khác
-  if (io) {
-    const otherMembers = await ConversationMember.find({
+    const members = await ConversationMember.find({
       conversation: conversationId,
       userId: { $ne: userId }
     })
-      .select('userId lastReadMessageSeq')
-      .lean()
+    .select("userId lastReadMessageSeq")
+    .lean()
 
-    otherMembers.forEach(member => {
-      const unreadCount = Math.max(0, messageSeq - (member.lastReadMessageSeq || 0))
-      io.to(`user:${member.userId}`).emit('badge:update', {
-        conversationId,
-        unread: unreadCount
-      })
+    members.forEach((m) => {
+      const unread = Math.max(0, seq - (m.lastReadMessageSeq || 0))
+      io.to(`user:${m.userId}`).emit("badge:update", { conversationId, unread })
     })
   }
 
-  // 7. Tạo notification và emit tới user nhận
+  // 8) Notification (kèm tên / avatar người gửi) + emit notification:new
   try {
-    const notifications = await notificationService.notifyMessage({
+    const sender = await User.findById(userId)
+    .select("fullName username avatarUrl")
+    .lean()
+    const senderName = sender?.fullName || sender?.username || "Người dùng"
+    const senderAvatar = sender?.avatarUrl || ""
+
+    const notifs = await notificationService.notifyMessage({
       conversationId,
-      message: newMessage.toJSON ? newMessage.toJSON() : newMessage,
-      senderId: userId
+      message: msg.toJSON ? msg.toJSON() : msg,
+      senderId: userId,
+      senderName,
+      senderAvatar
     })
 
-    if (io && Array.isArray(notifications)) {
-      notifications.forEach(notification => {
-        if (!notification) return
-        io.to(`user:${notification.receiverId}`).emit('notification:new', notification)
+    if (io && Array.isArray(notifs)) {
+      notifs.forEach((n) => {
+        if (!n) return
+        io.to(`user:${n.receiverId}`).emit("notification:new", n)
       })
     }
-  } catch (err) {
-    console.error('[messageService][notifyMessage] failed:', err.message)
+  } catch (e) {
+    console.error("[messageService][notifyMessage] failed:", e.message)
   }
 
   return { ok: true, ...payload }
 }
 
 async function setReaction({ userId, messageId, emoji, io }) {
-  if (!mongoose.isValidObjectId(messageId)) {
-    throw new Error("Invalid messageId")
-  }
-  if (typeof emoji !== 'string' || !emoji) {
-    throw new Error("Invalid emoji")
-  }
-  const message = await (await (await Message.findById(messageId)).populate('conversationId')).populate('media')
-  if (!message) {
-    throw new Error("Message not found")
-  }
-  const convo = await Conversation.findById(message.conversationId).lean()
-  if (!convo) {
-    throw new Error('Conversation not found')
-  }
+  if (!mongoose.isValidObjectId(messageId)) throw new Error("Invalid messageId")
+  if (typeof emoji !== 'string' || !emoji) throw new Error("Invalid emoji")
+
+  const message = await Message.findById(messageId)
+  .populate('conversationId')
+  .populate('media')
+  if (!message) throw new Error("Message not found")
+
+  const convoId = message.conversationId?._id || message.conversationId
+  const convo = await Conversation.findById(convoId).lean()
+  if (!convo) throw new Error('Conversation not found')
   await assertCanAccessConversation(userId, convo)
-  // Cập nhật reaction
+
   message.reactions.push({ userId, emoji })
   await message.save()
 
-  // Payload chung để emit
   const payload = {
-    conversationId: message.conversationId._id,
+    conversationId: convoId,
     message: toPublicMessage(message)
   }
 
-  // Emit tin nhắn mới vào room hội thoại
-  if (io) {
-    io.to(`conversation:${message.conversationId._id}`).emit('message:new', payload)
-  }
+  if (io) io.to(`conversation:${convoId}`).emit('message:new', payload)
   return { ok: true, messageId, reactions: message.reactions }
 }
 
 async function listMessages({ userId, conversationId, limit = 30, beforeSeq }) {
-  try {
-    if (!mongoose.isValidObjectId(conversationId)) {
-      throw new Error("Invalid conversationId")
-    }
+  if (!mongoose.isValidObjectId(conversationId)) throw new Error("Invalid conversationId")
 
-    const convo = await Conversation.findById(conversationId).lean()
-    if (!convo) {
-      throw new Error('Conversation not found')
-    }
-    await assertCanAccessConversation(userId, convo)
+  const convo = await Conversation.findById(conversationId).lean()
+  if (!convo) throw new Error("Conversation not found")
+  await assertCanAccessConversation(userId, convo)
 
-    const q = { conversationId: new mongoose.Types.ObjectId(conversationId) }
-    if (beforeSeq != null) {
-      const n = Number(beforeSeq)
-      if (Number.isFinite(n)) q.seq = { $lt: n }
-    }
-
-    const _limit = Math.min(Number(limit) || 30, MAX_LIMIT_MESSAGE)
-
-    // đảo ngược tin nhắn, mới nhất xếp trước
-    const docs = await Message
-      .find(q)
-      .populate('media')
-      .sort({ seq: -1 })
-      .limit(_limit)
-      .lean()
-
-    const items = docs.reverse()
-
-    return items.map(m => ({
-      _id: m._id,
-      conversationId: m.conversationId,
-      seq: m.seq,
-      senderId: m.senderId,
-      type: m.type,
-      body: m.body,
-      media: m.media,
-      reactions: m.reactions || [],
-      recalled: m.recalled,
-      createdAt: m.createdAt
-    }))
-  } catch (error) {
-    throw new Error(error)
+  const q = { conversationId: new mongoose.Types.ObjectId(conversationId) }
+  if (beforeSeq != null) {
+    const n = Number(beforeSeq)
+    if (Number.isFinite(n)) q.seq = { $lt: n }
   }
+
+  const _limit = Math.min(Number(limit) || 30, MAX_LIMIT_MESSAGE)
+
+  const docs = await Message.find(q).populate("media").sort({ seq: -1 }).limit(_limit).lean()
+  const items = docs.reverse()
+
+  return items.map(m => ({
+    _id: m._id,
+    conversationId: m.conversationId,
+    seq: m.seq,
+    senderId: m.senderId,
+    type: m.type,
+    body: m.body,
+    media: m.media,
+    reactions: m.reactions || [],
+    recalled: m.recalled,
+    createdAt: m.createdAt
+  }))
 }
 
 export const messageService = {

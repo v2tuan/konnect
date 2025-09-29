@@ -143,14 +143,15 @@ export function ChatArea({
   const { ringing, startCall, cancelCaller, setOnOpenCall } = useCallInvite(currentUser?._id)
 
   useEffect(() => {
-    setOnOpenCall((conversationId, mode, acceptedAt) => {
-      console.log('[ChatArea] Opening call modal:', { conversationId, mode, acceptedAt })
+    setOnOpenCall((conversationId, mode, acceptedAt, callId) => { // THÊM callId param
+      console.log('[ChatArea] Opening call modal:', { conversationId, mode, acceptedAt, callId })
 
-      // Mở CallModal
+      // Mở CallModal với callId
       setCall({
         conversationId: conversationId,
         mode: mode,
-        startedAt: acceptedAt
+        startedAt: acceptedAt,
+        callId: callId
       })
     })
   }, [setOnOpenCall])
@@ -448,6 +449,7 @@ export function ChatArea({
         <div className="flex-1 min-h-0 overflow-y-auto relative py-4">
           {/* === STICKY BANNER TRÊN CÙNG (dựa friendship.status) === */}
           {shouldShowFriendBanner && (
+
             <div className="sticky top-0 z-20 border-b">
               <div className="pointer-events-none absolute -bottom-6 left-0 right-0 h-6 from-card to-transparent" />
               <div className="flex items-center justify-between w-full p-3 bg-card">
@@ -851,6 +853,7 @@ export function ChatArea({
           currentUserId={currentUser?._id}
           initialMode={call.mode}
           callStartedAt={call.acceptedAt}
+          callId={call.callId} // TRUYỀN callId
         />
       )}
     </div>
