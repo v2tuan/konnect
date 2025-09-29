@@ -4,14 +4,27 @@ import { Button } from '@/components/ui/button'
 import { Mic, MicOff, Video as VideoIcon, VideoOff, MonitorUp, PhoneOff } from 'lucide-react'
 import { useWebRTCGroup } from '@/hooks/use-call'
 
-export default function CallModal({ open, onOpenChange, conversationId, currentUserId, initialMode = 'audio', callStartedAt }) {
+export default function CallModal({ 
+  open, 
+  onOpenChange, 
+  conversationId, 
+  currentUserId, 
+  initialMode = 'audio', 
+  callStartedAt,
+  callId // THÊM callId prop
+}) {
   const {
     mode, peerIds,
     getLocalStream, getRemoteStream,
     toggleMute, toggleCamera,
     switchToVideo, switchToAudio,
     shareScreen
-  } = useWebRTCGroup({ roomId: conversationId, currentUserId, initialMode })
+  } = useWebRTCGroup({ 
+    roomId: conversationId, 
+    currentUserId, 
+    initialMode,
+    callId // TRUYỀN callId xuống hook
+  })
 
   const localVideoRef = useRef(null)
   const localAudioRef = useRef(null)
@@ -29,14 +42,16 @@ export default function CallModal({ open, onOpenChange, conversationId, currentU
   const renderTile = (id) => {
     const isLocal = id === 'local'
     const stream = isLocal ? getLocalStream() : getRemoteStream(id)
-    const hasVideo = stream?.getVideoTracks?.().length > 0
+    const hasVideo = stream?.getVideoTracks?.().some(track => track.enabled) || false
 
     return (
       <div key={id} className="relative bg-black rounded-md overflow-hidden">
         {hasVideo ? (
           <video
             ref={isLocal ? localVideoRef : (el) => { if (el && stream) el.srcObject = stream }}
-            autoPlay playsInline muted={isLocal}
+            autoPlay 
+            playsInline 
+            muted={isLocal}
             className="w-full h-full object-cover"
           />
         ) : (
@@ -49,7 +64,6 @@ export default function CallModal({ open, onOpenChange, conversationId, currentU
       </div>
     )
   }
-
 
   const [elapsed, setElapsed] = useState('00:00')
 
@@ -72,7 +86,7 @@ export default function CallModal({ open, onOpenChange, conversationId, currentU
       const diff = Math.max(0, Math.floor((Date.now() - start) / 1000))
       setElapsed(fmt(diff))
     }, 1000)
-    // tick ngay lần đầu
+    
     const first = Math.max(0, Math.floor((Date.now() - start) / 1000))
     setElapsed(fmt(first))
 
@@ -101,11 +115,11 @@ export default function CallModal({ open, onOpenChange, conversationId, currentU
         <div className="flex items-center justify-center gap-2 mt-4">
           {mode === 'audio' ? (
             <Button onClick={async () => { await switchToVideo(); setCamOn(true) }}>
-              <VideoIcon className="w-4 h-4 mr-2" /> Swith to Video
+              <VideoIcon className="w-4 h-4 mr-2" /> Switch to Video
             </Button>
           ) : (
             <Button variant="secondary" onClick={async () => { await switchToAudio(); setCamOn(false) }}>
-              <Mic className="w-4 h-4 mr-2" /> Swith to Audio
+              <Mic className="w-4 h-4 mr-2" /> Switch to Audio
             </Button>
           )}
 
@@ -129,7 +143,7 @@ export default function CallModal({ open, onOpenChange, conversationId, currentU
         </div>
 
         <div className="text-center text-xs text-muted-foreground mt-2">
-          MODE: <b>{mode.toUpperCase()}</b> • member in room: <b>{tiles.length}</b>
+          MODE: <b>{mode.toUpperCase()}</b> • members in room: <b>{tiles.length}</b>
         </div>
       </DialogContent>
     </Dialog>

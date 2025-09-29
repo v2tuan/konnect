@@ -143,14 +143,15 @@ export function ChatArea({
   const { ringing, startCall, cancelCaller, setOnOpenCall } = useCallInvite(currentUser?._id)
 
   useEffect(() => {
-    setOnOpenCall((conversationId, mode, acceptedAt) => {
-      console.log('[ChatArea] Opening call modal:', { conversationId, mode, acceptedAt })
+    setOnOpenCall((conversationId, mode, acceptedAt, callId) => { // THÊM callId param
+      console.log('[ChatArea] Opening call modal:', { conversationId, mode, acceptedAt, callId })
 
-      // Mở CallModal
+      // Mở CallModal với callId
       setCall({
         conversationId: conversationId,
         mode: mode,
-        startedAt: acceptedAt
+        startedAt: acceptedAt,
+        callId: callId
       })
     })
   }, [setOnOpenCall])
@@ -851,6 +852,7 @@ export function ChatArea({
           currentUserId={currentUser?._id}
           initialMode={call.mode}
           callStartedAt={call.acceptedAt}
+          callId={call.callId} // TRUYỀN callId
         />
       )}
     </div>

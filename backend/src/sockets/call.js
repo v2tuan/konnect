@@ -11,28 +11,40 @@ export function registerCallSignaling(io, authMiddleware) {
       console.log('[WEBRTC] joined', userRoom)
     }
 
-    // ===== WEBRTC SIGNALING (existing) =====
-    socket.on('join-call', ({ roomId, userId }) => {
-      socket.data = { roomId, userId }
-      socket.join(roomId)
+    // ===== WEBRTC SIGNALING - SỬA LOGIC JOIN-CALL =====
+    socket.on('join-call', ({ roomId, userId, callId }) => {
+      // SỬA: Sử dụng callId thay vì chỉ conversationId để tạo room riêng biệt
+      const actualRoomId = callId || roomId
+      socket.data = { roomId: actualRoomId, userId, callId }
+      socket.join(actualRoomId)
 
-      const peers = [...(nsp.adapter.rooms.get(roomId) || [])].filter(id => id !== socket.id)
+      console.log(`[WEBRTC] ${userId} joined call room: ${actualRoomId}`)
+
+      // Lấy peers hiện tại trong room này (loại trừ chính socket này)
+      const peers = [...(nsp.adapter.rooms.get(actualRoomId) || [])]
+        .filter(id => id !== socket.id)
+      
+      console.log(`[WEBRTC] Current peers in ${actualRoomId}:`, peers.length)
+
       socket.emit('peers-in-room', { peers })
-      socket.to(roomId).emit('peer-joined', { peerId: socket.id, userId })
+      socket.to(actualRoomId).emit('peer-joined', { peerId: socket.id, userId })
     })
 
-    socket.on('leave-call', ({ roomId }) => {
-      socket.leave(roomId)
-      socket.to(roomId).emit('peer-left', { peerId: socket.id })
+    socket.on('leave-call', ({ roomId, callId }) => {
+      const actualRoomId = callId || roomId
+      socket.leave(actualRoomId)
+      socket.to(actualRoomId).emit('peer-left', { peerId: socket.id })
+      console.log(`[WEBRTC] User left call room: ${actualRoomId}`)
     })
 
+    // ===== WEBRTC SIGNALING (existing) =====
     socket.on('rtc-offer', ({ to, sdp, from }) => nsp.to(to).emit('rtc-offer', { from, sdp }))
     socket.on('rtc-answer', ({ to, sdp, from }) => nsp.to(to).emit('rtc-answer', { from, sdp }))
     socket.on('rtc-ice', ({ to, candidate, from }) => nsp.to(to).emit('rtc-ice', { from, candidate }))
 
     // ===== CALL INVITE SYSTEM =====
     
-    // 1. Caller gửi invite
+    // 1. Caller gửi invite - THÊM callId vào payload
     socket.on('call:invite', (payload = {}) => {
       try {
         const {
@@ -44,14 +56,14 @@ export function registerCallSignaling(io, authMiddleware) {
         } = payload
 
         const targets = (toUserIds || []).map(String).filter(Boolean)
-        if (!conversationId || !mode || targets.length === 0) {
+        if (!conversationId || !mode || targets.length === 0 || !callId) {
           console.warn('[WEBRTC] invalid call:invite payload', payload)
           return
         }
 
-        console.log('[WEBRTC] invite ->', targets, 'conv:', conversationId, 'by:', authedUserId)
+        console.log('[WEBRTC] invite ->', targets, 'conv:', conversationId, 'callId:', callId, 'by:', authedUserId)
         
-        // Emit đúng event name: call:ringing
+        // Emit với callId để callee có thể join đúng room
         targets.forEach(uid => {
           nsp.to(`user:${uid}`).emit('call:ringing', {
             callId,
@@ -73,7 +85,6 @@ export function registerCallSignaling(io, authMiddleware) {
         
         console.log('[WEBRTC] cancel ->', targets, 'by:', authedUserId)
         
-        // Emit đúng event name: call:canceled (không phải call:cancelled)
         targets.forEach(uid => {
           nsp.to(`user:${uid}`).emit('call:canceled', { callId })
         })
@@ -120,7 +131,6 @@ export function registerCallSignaling(io, authMiddleware) {
         
         console.log('[WEBRTC] decline by:', fromUserId, 'to:', toUserId, 'callId:', callId)
         
-        // Thông báo cho caller (toUserId)
         if (toUserId) {
           nsp.to(`user:${String(toUserId)}`).emit('call:declined', { callId })
         }
@@ -131,7 +141,10 @@ export function registerCallSignaling(io, authMiddleware) {
 
     socket.on('disconnect', () => {
       const roomId = socket.data?.roomId
-      if (roomId) socket.to(roomId).emit('peer-left', { peerId: socket.id })
+      if (roomId) {
+        socket.to(roomId).emit('peer-left', { peerId: socket.id })
+        console.log(`[WEBRTC] User disconnected from room: ${roomId}`)
+      }
     })
   })
 
