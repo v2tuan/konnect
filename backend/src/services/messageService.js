@@ -183,7 +183,7 @@ async function setReaction({ userId, messageId, emoji, io }) {
   if (typeof emoji !== 'string' || !emoji) {
     throw new Error("Invalid emoji")
   }
-  const message = await (await Message.findById(messageId)).populate('conversationId')
+  const message = await (await (await Message.findById(messageId)).populate('conversationId')).populate('media')
   if (!message) {
     throw new Error("Message not found")
   }
