@@ -7,7 +7,7 @@ import { notificationService } from '~/services/notificationService'
 import ConversationMember from "~/models/conversation_members";
 import { CloudinaryProvider } from '~/providers/CloudinaryProvider'
 import Media from '~/models/medias'
-import { mediaService } from './mediaService
+import { mediaService } from './mediaService'
 import User from "~/models/user"
 function toPublicMessage(m) {
   return {
@@ -179,42 +179,33 @@ async function sendMessage({ userId, conversationId, type, text, file, io }) {
 }
 
 async function setReaction({ userId, messageId, emoji, io }) {
-  if (!mongoose.isValidObjectId(messageId)) {
-    throw new Error("Invalid messageId")
-  }
-  if (typeof emoji !== 'string' || !emoji) {
-    throw new Error("Invalid emoji")
-  }
-  const message = await (await (await Message.findById(messageId)).populate('conversationId')).populate('media')
-  if (!message) {
-    throw new Error("Message not found")
-  }
-  const convo = await Conversation.findById(message.conversationId).lean()
-  if (!convo) {
-    throw new Error('Conversation not found')
-  }
+  if (!mongoose.isValidObjectId(messageId)) throw new Error("Invalid messageId")
+  if (typeof emoji !== 'string' || !emoji) throw new Error("Invalid emoji")
+
+  const message = await Message.findById(messageId)
+  .populate('conversationId')
+  .populate('media')
+  if (!message) throw new Error("Message not found")
+
+  const convoId = message.conversationId?._id || message.conversationId
+  const convo = await Conversation.findById(convoId).lean()
+  if (!convo) throw new Error('Conversation not found')
   await assertCanAccessConversation(userId, convo)
-  // Cập nhật reaction
+
   message.reactions.push({ userId, emoji })
   await message.save()
 
-  // Payload chung để emit
   const payload = {
-    conversationId: message.conversationId._id,
+    conversationId: convoId,
     message: toPublicMessage(message)
   }
 
-  // Emit tin nhắn mới vào room hội thoại
-  if (io) {
-    io.to(`conversation:${message.conversationId._id}`).emit('message:new', payload)
-  }
+  if (io) io.to(`conversation:${convoId}`).emit('message:new', payload)
   return { ok: true, messageId, reactions: message.reactions }
 }
 
 async function listMessages({ userId, conversationId, limit = 30, beforeSeq }) {
-  if (!mongoose.isValidObjectId(conversationId)) {
-    throw new Error("Invalid conversationId")
-  }
+  if (!mongoose.isValidObjectId(conversationId)) throw new Error("Invalid conversationId")
 
   const convo = await Conversation.findById(conversationId).lean()
   if (!convo) throw new Error("Conversation not found")
@@ -228,29 +219,21 @@ async function listMessages({ userId, conversationId, limit = 30, beforeSeq }) {
 
   const _limit = Math.min(Number(limit) || 30, MAX_LIMIT_MESSAGE)
 
-  const docs = await Message.find(q)
-  .populate("media")
-  .sort({ seq: -1 })
-  .limit(_limit)
-  .lean()
-
+  const docs = await Message.find(q).populate("media").sort({ seq: -1 }).limit(_limit).lean()
   const items = docs.reverse()
 
-    return items.map(m => ({
-      _id: m._id,
-      conversationId: m.conversationId,
-      seq: m.seq,
-      senderId: m.senderId,
-      type: m.type,
-      body: m.body,
-      media: m.media,
-      reactions: m.reactions || [],
-      recalled: m.recalled,
-      createdAt: m.createdAt
-    }))
-  } catch (error) {
-    throw new Error(error)
-  }
+  return items.map(m => ({
+    _id: m._id,
+    conversationId: m.conversationId,
+    seq: m.seq,
+    senderId: m.senderId,
+    type: m.type,
+    body: m.body,
+    media: m.media,
+    reactions: m.reactions || [],
+    recalled: m.recalled,
+    createdAt: m.createdAt
+  }))
 }
 
 export const messageService = {
