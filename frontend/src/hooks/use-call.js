@@ -4,35 +4,40 @@ import { getWebRTCSocket } from '@/lib/socket'
 const ICE = { iceServers: [{ urls: ['stun:stun.l.google.com:19302'] }] }
 
 export function useWebRTCGroup({ roomId, currentUserId, initialMode = 'video', callId }) {
-  const [mode, setMode] = useState(initialMode) // 'audio' | 'video'
-  const [peerIds, setPeerIds] = useState([]) // danh sách socketId trong phòng
+  const [mode, setMode] = useState(initialMode)
+  const [peerIds, setPeerIds] = useState([])
+  const [peerModes, setPeerModes] = useState(new Map()) // Track mode của từng peer
+
   const localStreamRef = useRef(null)
-  const pcsRef = useRef(new Map()) // peerId -> RTCPeerConnection
-  const remoteStreamsRef = useRef(new Map()) // peerId -> MediaStream
+  const pcsRef = useRef(new Map())
+  const remoteStreamsRef = useRef(new Map())
   const socketRef = useRef(null)
   const peerIdsRef = useRef([])
 
   const ensureLocalStream = async (target = mode) => {
     const needVideo = target === 'video'
+
+    // Stop existing stream nếu mode thay đổi
     if (localStreamRef.current) {
-      // Kiểm tra xem stream hiện tại có đúng loại không
-      const tracks = localStreamRef.current.getVideoTracks()
-      if (needVideo && tracks.length === 0) {
-        // Cần video nhưng không có video track
+      const hasVideo = localStreamRef.current.getVideoTracks().length > 0
+      if ((needVideo && !hasVideo) || (!needVideo && hasVideo)) {
         localStreamRef.current.getTracks().forEach(t => t.stop())
         localStreamRef.current = null
-      } else if (!needVideo && tracks.length > 0) {
-        // Không cần video nhưng có video track
-        tracks.forEach(t => t.stop())
       }
     }
 
     if (!localStreamRef.current) {
-      const s = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: needVideo ? { width: 640, height: 480 } : false
-      })
-      localStreamRef.current = s
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+          video: needVideo ? { width: 640, height: 480 } : false
+        })
+        localStreamRef.current = stream
+        console.log('[WebRTC] Created new local stream:', { hasVideo: needVideo, tracks: stream.getTracks().length })
+      } catch (err) {
+        console.error('[WebRTC] Failed to get user media:', err)
+        throw err
+      }
     }
     return localStreamRef.current
   }
@@ -48,17 +53,15 @@ export function useWebRTCGroup({ roomId, currentUserId, initialMode = 'video', c
     const pc = new RTCPeerConnection(ICE)
     pcsRef.current.set(peerId, pc)
 
-    // Xử lý remote stream
     pc.ontrack = (e) => {
-      console.log('[WebRTC] Received remote track from', peerId, e.streams[0])
+      console.log('[WebRTC] Received remote track from', peerId, 'kind:', e.track.kind)
       const remoteStream = e.streams[0]
       remoteStreamsRef.current.set(peerId, remoteStream)
 
-      // Force re-render để cập nhật video
+      // Force re-render
       setPeerIds(prev => [...prev])
     }
 
-    // Xử lý ICE candidates
     pc.onicecandidate = (e) => {
       if (e.candidate) {
         socketRef.current?.emit('rtc-ice', {
@@ -79,16 +82,42 @@ export function useWebRTCGroup({ roomId, currentUserId, initialMode = 'video', c
     const stream = localStreamRef.current
     if (!stream) return
 
-    // Xóa tất cả senders cũ
+    // Xóa tất cả senders cũ trước
     pc.getSenders().forEach(sender => {
-      if (sender.track) pc.removeTrack(sender)
+      pc.removeTrack(sender)
     })
 
     // Thêm tracks mới
     stream.getTracks().forEach(track => {
-      console.log('[WebRTC] Adding local track:', track.kind, track.label)
+      console.log('[WebRTC] Adding local track to PC:', track.kind, track.label)
       pc.addTrack(track, stream)
     })
+  }
+
+  // Renegotiate tất cả connections khi local stream thay đổi
+  const renegotiateAllConnections = async () => {
+    console.log('[WebRTC] Renegotiating all connections...')
+
+    for (const [peerId, pc] of pcsRef.current) {
+      try {
+        // Cập nhật tracks
+        addLocalTracksTo(pc)
+
+        // Tạo offer mới
+        const offer = await pc.createOffer()
+        await pc.setLocalDescription(offer)
+
+        socketRef.current?.emit('rtc-offer', {
+          to: peerId,
+          sdp: offer,
+          from: socketRef.current.id
+        })
+
+        console.log('[WebRTC] Sent renegotiation offer to', peerId)
+      } catch (err) {
+        console.error('[WebRTC] Error renegotiating with', peerId, err)
+      }
+    }
   }
 
   // Khi có peer mới join
@@ -99,7 +128,6 @@ export function useWebRTCGroup({ roomId, currentUserId, initialMode = 'video', c
       if (!pcsRef.current.has(peerId)) {
         const pc = createPC(peerId)
 
-        // Tạo offer cho peer mới
         try {
           const offer = await pc.createOffer()
           await pc.setLocalDescription(offer)
@@ -125,11 +153,10 @@ export function useWebRTCGroup({ roomId, currentUserId, initialMode = 'video', c
       await ensureLocalStream(initialMode)
       console.log('[WebRTC] Joining call with callId:', callId || roomId)
 
-      // SỬA: Truyền callId để backend tạo room riêng biệt
       socket.emit('join-call', {
         roomId,
         userId: currentUserId,
-        callId: callId || `${roomId}:${Date.now()}` // Fallback nếu không có callId
+        callId: callId || `${roomId}:${Date.now()}`
       })
     }
 
@@ -151,13 +178,27 @@ export function useWebRTCGroup({ roomId, currentUserId, initialMode = 'video', c
       setPeerIds(prev => prev.filter(p => p !== peerId))
       peerIdsRef.current = peerIdsRef.current.filter(p => p !== peerId)
 
-      // Cleanup connection
+      // Cleanup
       const pc = pcsRef.current.get(peerId)
       if (pc) {
         pc.close()
         pcsRef.current.delete(peerId)
       }
       remoteStreamsRef.current.delete(peerId)
+      setPeerModes(prev => {
+        const newMap = new Map(prev)
+        newMap.delete(peerId)
+        return newMap
+      })
+    }
+
+    // ===== THÊM: Xử lý mode change từ peer =====
+    const onPeerModeChanged = ({ peerId, mode: peerMode }) => {
+      console.log('[WebRTC] Peer', peerId, 'changed mode to:', peerMode)
+      setPeerModes(prev => new Map(prev.set(peerId, peerMode)))
+
+      // Force re-render để cập nhật UI
+      setPeerIds(prev => [...prev])
     }
 
     const onRtcOffer = async ({ from, sdp }) => {
@@ -207,6 +248,7 @@ export function useWebRTCGroup({ roomId, currentUserId, initialMode = 'video', c
     socket.on('peers-in-room', onPeersInRoom)
     socket.on('peer-joined', onPeerJoined)
     socket.on('peer-left', onPeerLeft)
+    socket.on('peer-mode-changed', onPeerModeChanged) // THÊM
     socket.on('rtc-offer', onRtcOffer)
     socket.on('rtc-answer', onRtcAnswer)
     socket.on('rtc-ice', onRtcIce)
@@ -214,21 +256,17 @@ export function useWebRTCGroup({ roomId, currentUserId, initialMode = 'video', c
     join()
 
     return () => {
-      // Cleanup
       socket.off('peers-in-room', onPeersInRoom)
       socket.off('peer-joined', onPeerJoined)
       socket.off('peer-left', onPeerLeft)
+      socket.off('peer-mode-changed', onPeerModeChanged) // THÊM
       socket.off('rtc-offer', onRtcOffer)
       socket.off('rtc-answer', onRtcAnswer)
       socket.off('rtc-ice', onRtcIce)
 
-      // Leave call
       socket.emit('leave-call', { roomId, callId })
-
-      // Stop local stream
       stopLocal()
 
-      // Close all peer connections
       pcsRef.current.forEach(pc => pc.close())
       pcsRef.current.clear()
       remoteStreamsRef.current.clear()
@@ -238,6 +276,7 @@ export function useWebRTCGroup({ roomId, currentUserId, initialMode = 'video', c
   // Controls
   const getLocalStream = () => localStreamRef.current || null
   const getRemoteStream = (peerId) => remoteStreamsRef.current.get(peerId) || null
+  const getPeerMode = (peerId) => peerModes.get(peerId) || 'audio' // Lấy mode của peer
 
   const toggleMute = () => {
     const stream = localStreamRef.current
@@ -264,27 +303,53 @@ export function useWebRTCGroup({ roomId, currentUserId, initialMode = 'video', c
   }
 
   const switchToVideo = async () => {
-    setMode('video')
-    const newStream = await ensureLocalStream('video')
+    try {
+      console.log('[WebRTC] Switching to video mode')
+      setMode('video')
 
-    // Cập nhật tracks cho tất cả peer connections
-    pcsRef.current.forEach(pc => {
-      addLocalTracksTo(pc)
-    })
+      // Tạo stream video mới
+      const newStream = await ensureLocalStream('video')
 
-    return newStream
+      // Renegotiate tất cả connections
+      await renegotiateAllConnections()
+
+      // Thông báo mode change cho peers
+      socketRef.current?.emit('mode-changed', {
+        mode: 'video',
+        callId,
+        roomId
+      })
+
+      return newStream
+    } catch (err) {
+      console.error('[WebRTC] Error switching to video:', err)
+      throw err
+    }
   }
 
   const switchToAudio = async () => {
-    setMode('audio')
-    const newStream = await ensureLocalStream('audio')
+    try {
+      console.log('[WebRTC] Switching to audio mode')
+      setMode('audio')
 
-    // Cập nhật tracks cho tất cả peer connections
-    pcsRef.current.forEach(pc => {
-      addLocalTracksTo(pc)
-    })
+      // Tạo stream audio mới
+      const newStream = await ensureLocalStream('audio')
 
-    return newStream
+      // Renegotiate tất cả connections
+      await renegotiateAllConnections()
+
+      // Thông báo mode change cho peers
+      socketRef.current?.emit('mode-changed', {
+        mode: 'audio',
+        callId,
+        roomId
+      })
+
+      return newStream
+    } catch (err) {
+      console.error('[WebRTC] Error switching to audio:', err)
+      throw err
+    }
   }
 
   const shareScreen = async () => {
@@ -292,7 +357,7 @@ export function useWebRTCGroup({ roomId, currentUserId, initialMode = 'video', c
       const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true })
       const videoTrack = screenStream.getVideoTracks()[0]
 
-      // Thay thế video track hiện tại
+      // Replace video track cho tất cả connections
       pcsRef.current.forEach(pc => {
         const sender = pc.getSenders().find(s => s.track?.kind === 'video')
         if (sender) {
@@ -300,7 +365,6 @@ export function useWebRTCGroup({ roomId, currentUserId, initialMode = 'video', c
         }
       })
 
-      // Khi stop sharing screen, quay lại camera
       videoTrack.onended = () => {
         switchToVideo()
       }
@@ -314,6 +378,7 @@ export function useWebRTCGroup({ roomId, currentUserId, initialMode = 'video', c
     peerIds,
     getLocalStream,
     getRemoteStream,
+    getPeerMode, // THÊM
     toggleMute,
     toggleCamera,
     switchToVideo,

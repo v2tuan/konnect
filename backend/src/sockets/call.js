@@ -11,16 +11,14 @@ export function registerCallSignaling(io, authMiddleware) {
       console.log('[WEBRTC] joined', userRoom)
     }
 
-    // ===== WEBRTC SIGNALING - SỬA LOGIC JOIN-CALL =====
+    // ===== WEBRTC SIGNALING =====
     socket.on('join-call', ({ roomId, userId, callId }) => {
-      // SỬA: Sử dụng callId thay vì chỉ conversationId để tạo room riêng biệt
       const actualRoomId = callId || roomId
       socket.data = { roomId: actualRoomId, userId, callId }
       socket.join(actualRoomId)
 
       console.log(`[WEBRTC] ${userId} joined call room: ${actualRoomId}`)
 
-      // Lấy peers hiện tại trong room này (loại trừ chính socket này)
       const peers = [...(nsp.adapter.rooms.get(actualRoomId) || [])]
         .filter(id => id !== socket.id)
       
@@ -37,14 +35,24 @@ export function registerCallSignaling(io, authMiddleware) {
       console.log(`[WEBRTC] User left call room: ${actualRoomId}`)
     })
 
+    // ===== THÊM: SYNC MODE GIỮA PEERS =====
+    socket.on('mode-changed', ({ mode, callId, roomId }) => {
+      const actualRoomId = callId || roomId
+      console.log(`[WEBRTC] Mode changed to ${mode} by ${socket.id} in room ${actualRoomId}`)
+      
+      // Broadcast tới tất cả peers khác trong room
+      socket.to(actualRoomId).emit('peer-mode-changed', {
+        peerId: socket.id,
+        mode: mode
+      })
+    })
+
     // ===== WEBRTC SIGNALING (existing) =====
     socket.on('rtc-offer', ({ to, sdp, from }) => nsp.to(to).emit('rtc-offer', { from, sdp }))
     socket.on('rtc-answer', ({ to, sdp, from }) => nsp.to(to).emit('rtc-answer', { from, sdp }))
     socket.on('rtc-ice', ({ to, candidate, from }) => nsp.to(to).emit('rtc-ice', { from, candidate }))
 
-    // ===== CALL INVITE SYSTEM =====
-    
-    // 1. Caller gửi invite - THÊM callId vào payload
+    // ===== CALL INVITE SYSTEM (existing) =====
     socket.on('call:invite', (payload = {}) => {
       try {
         const {
@@ -63,7 +71,6 @@ export function registerCallSignaling(io, authMiddleware) {
 
         console.log('[WEBRTC] invite ->', targets, 'conv:', conversationId, 'callId:', callId, 'by:', authedUserId)
         
-        // Emit với callId để callee có thể join đúng room
         targets.forEach(uid => {
           nsp.to(`user:${uid}`).emit('call:ringing', {
             callId,
@@ -77,7 +84,6 @@ export function registerCallSignaling(io, authMiddleware) {
       }
     })
 
-    // 2. Caller hủy cuộc gọi
     socket.on('call:cancel', (payload = {}) => {
       try {
         const { callId, toUserIds = [] } = payload
@@ -93,7 +99,6 @@ export function registerCallSignaling(io, authMiddleware) {
       }
     })
 
-    // 3. Callee accept cuộc gọi  
     socket.on('call:accept', (payload = {}) => {
       try {
         const { callId, conversationId, mode, fromUserId, toUserId } = payload
@@ -102,7 +107,6 @@ export function registerCallSignaling(io, authMiddleware) {
         
         const acceptedAt = new Date().toISOString()
         
-        // Thông báo cho caller (toUserId)
         if (toUserId) {
           nsp.to(`user:${String(toUserId)}`).emit('call:accepted', {
             callId,
@@ -112,7 +116,6 @@ export function registerCallSignaling(io, authMiddleware) {
           })
         }
         
-        // Thông báo cho chính callee (fromUserId) 
         nsp.to(`user:${String(fromUserId)}`).emit('call:accepted', {
           callId,
           conversationId,
@@ -124,7 +127,6 @@ export function registerCallSignaling(io, authMiddleware) {
       }
     })
 
-    // 4. Callee decline cuộc gọi
     socket.on('call:decline', (payload = {}) => {
       try {
         const { callId, fromUserId, toUserId } = payload

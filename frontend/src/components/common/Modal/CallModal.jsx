@@ -11,11 +11,11 @@ export default function CallModal({
   currentUserId, 
   initialMode = 'audio', 
   callStartedAt,
-  callId // THÊM callId prop
+  callId
 }) {
   const {
     mode, peerIds,
-    getLocalStream, getRemoteStream,
+    getLocalStream, getRemoteStream, getPeerMode, // THÊM getPeerMode
     toggleMute, toggleCamera,
     switchToVideo, switchToAudio,
     shareScreen
@@ -23,7 +23,7 @@ export default function CallModal({
     roomId: conversationId, 
     currentUserId, 
     initialMode,
-    callId // TRUYỀN callId xuống hook
+    callId
   })
 
   const localVideoRef = useRef(null)
@@ -32,9 +32,15 @@ export default function CallModal({
   useEffect(() => {
     const s = getLocalStream()
     if (!s) return
-    const hasVideo = s.getVideoTracks().length > 0
-    if (hasVideo && localVideoRef.current) localVideoRef.current.srcObject = s
-    if (localAudioRef.current) localAudioRef.current.srcObject = s
+    
+    const hasVideo = s.getVideoTracks().some(t => t.enabled)
+    
+    if (hasVideo && localVideoRef.current) {
+      localVideoRef.current.srcObject = s
+    }
+    if (localAudioRef.current) {
+      localAudioRef.current.srcObject = s
+    }
   }, [getLocalStream, mode])
 
   const tiles = useMemo(() => ['local', ...peerIds].slice(0, 4), [peerIds])
@@ -42,25 +48,62 @@ export default function CallModal({
   const renderTile = (id) => {
     const isLocal = id === 'local'
     const stream = isLocal ? getLocalStream() : getRemoteStream(id)
+    const currentMode = isLocal ? mode : getPeerMode(id) // SỬA: Lấy mode riêng của từng peer
+    
+    // Check video tracks enabled
     const hasVideo = stream?.getVideoTracks?.().some(track => track.enabled) || false
+    const isVideoMode = currentMode === 'video' && hasVideo
+
+    console.log(`[CallModal] Rendering tile ${id}:`, { 
+      hasStream: !!stream, 
+      hasVideo, 
+      currentMode, 
+      isVideoMode,
+      tracks: stream?.getTracks?.().length || 0
+    })
 
     return (
       <div key={id} className="relative bg-black rounded-md overflow-hidden">
-        {hasVideo ? (
+        {isVideoMode ? (
           <video
-            ref={isLocal ? localVideoRef : (el) => { if (el && stream) el.srcObject = stream }}
-            autoPlay 
-            playsInline 
+            ref={el => {
+              if (isLocal) {
+                localVideoRef.current = el;
+              } else if (el && stream && el.srcObject !== stream) {
+                el.srcObject = stream;
+              }
+            }}
+            autoPlay
+            playsInline
             muted={isLocal}
             className="w-full h-full object-cover"
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-white/70">
-            {isLocal ? 'You (audio)' : `Peer ${id.slice(0, 5)}… (audio)`}
+          <div className="w-full h-full flex flex-col items-center justify-center text-white/70">
+            <div className="text-lg font-medium">
+              {isLocal ? 'You' : `Peer ${id.slice(0, 5)}…`}
+            </div>
+            <div className="text-sm opacity-60">Audio Mode</div>
           </div>
         )}
-        {!isLocal && <audio autoPlay ref={(el) => { if (el && stream) el.srcObject = stream }} />}
-        {isLocal && mode === 'audio' && <audio autoPlay muted ref={localAudioRef} />}
+        
+        {/* Audio element cho remote peer */}
+        {!isLocal && (
+          <audio 
+            autoPlay 
+            ref={(el) => { 
+              if (el && stream && el.srcObject !== stream) {
+                console.log(`[CallModal] Setting audio srcObject for ${id}`)
+                el.srcObject = stream 
+              }
+            }} 
+          />
+        )}
+        
+        {/* Audio element cho local nếu audio mode */}
+        {isLocal && currentMode === 'audio' && (
+          <audio autoPlay muted ref={localAudioRef} />
+        )}
       </div>
     )
   }
@@ -114,11 +157,17 @@ export default function CallModal({
 
         <div className="flex items-center justify-center gap-2 mt-4">
           {mode === 'audio' ? (
-            <Button onClick={async () => { await switchToVideo(); setCamOn(true) }}>
+            <Button onClick={async () => { 
+              await switchToVideo(); 
+              setCamOn(true) 
+            }}>
               <VideoIcon className="w-4 h-4 mr-2" /> Switch to Video
             </Button>
           ) : (
-            <Button variant="secondary" onClick={async () => { await switchToAudio(); setCamOn(false) }}>
+            <Button variant="secondary" onClick={async () => { 
+              await switchToAudio(); 
+              setCamOn(false) 
+            }}>
               <Mic className="w-4 h-4 mr-2" /> Switch to Audio
             </Button>
           )}
