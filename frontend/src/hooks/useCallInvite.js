@@ -69,8 +69,8 @@ export function useCallInvite(currentUserId) {
 
       // Mở modal WebRTC
       if (typeof onOpenCallRef.current === 'function') {
-        console.log('[useCallInvite] Opening call modal:', { conversationId, mode, acceptedAt })
-        onOpenCallRef.current(conversationId, mode, acceptedAt)
+        console.log('[useCallInvite] Opening call modal:', { conversationId, mode, acceptedAt, callId })
+        onOpenCallRef.current(conversationId, mode, acceptedAt, callId)
       } else {
         console.warn('[useCallInvite] onOpenCallRef not set!')
       }
