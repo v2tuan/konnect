@@ -1,12 +1,19 @@
 import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Smile, X } from "lucide-react"
+import { setReaction } from "@/apis"
 
 const defaultReactions = ["👍", "❤️", "😂", "😮", "😢", "😡"]
 
-export default function ReactionButton() {
+export default function ReactionButton({messageId}) {
   const popupRef = useRef(null)
   const containerRef = useRef(null)
+
+  const handleReactionClick = async (emoji) => {
+    console.log(`Clicked: ${emoji} for message ${messageId}`)
+    // Gọi API để gửi reaction
+    await setReaction(messageId, emoji)
+  }
 
   useEffect(() => {
     if (popupRef.current && containerRef.current) {
@@ -75,9 +82,7 @@ export default function ReactionButton() {
               <button
                 key={emoji}
                 className="text-xl hover:scale-135 transition-transform"
-                onClick={() => {
-                  console.log(`Clicked: ${emoji}`)
-                }}
+                onClick={() => handleReactionClick(emoji)}
               >
                 {emoji}
               </button>

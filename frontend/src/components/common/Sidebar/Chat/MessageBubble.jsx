@@ -8,6 +8,30 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import ReactionButton from './ReactionButton'
 
+function processReactions(reactions) {
+  const emojiCountMap = {}
+  const userEmojiMap = {}
+
+  reactions.forEach(({ userId, emoji }) => {
+    // Đếm emoji
+    emojiCountMap[emoji] = (emojiCountMap[emoji] || 0) + 1
+
+    // Gán emoji cho user
+    if (!userEmojiMap[userId]) userEmojiMap[userId] = []
+    if (!userEmojiMap[userId].includes(emoji)) {
+      userEmojiMap[userId].push(emoji)
+    }
+  })
+
+  // Sắp xếp emoji theo số lượng dùng nhiều nhất và lấy 3 cái
+  const topEmojis = Object.entries(emojiCountMap)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([emoji, count]) => ({ emoji, count }))
+
+  return { topEmojis, userEmojiMap }
+}
+
 function pickSender(conversation, message, contact) {
   if (message?.sender) {
     const s = message.sender
@@ -152,7 +176,7 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
             <Reply className="w-3 h-3" />
           </Button>
 
-          <ReactionButton />
+          <ReactionButton messageId={message.id}/>
 
           <Button size="sm" variant="ghost" className="h-6 w-6 p-0">
             <MoreHorizontal className="w-3 h-3" />
@@ -176,10 +200,10 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                       {images.length > 0 && (
                         <div className={`
             ${images.length === 1 ? 'flex justify-center' :
-                          images.length === 2 ? 'grid grid-cols-2 gap-2' :
-                            images.length <= 4 ? 'grid grid-cols-2 gap-2 max-w-md' :
-                              'grid grid-cols-3 gap-2 max-w-lg'
-                        }
+                            images.length === 2 ? 'grid grid-cols-2 gap-2' :
+                              images.length <= 4 ? 'grid grid-cols-2 gap-2 max-w-md' :
+                                'grid grid-cols-3 gap-2 max-w-lg'
+                          }
           `}>
                           {images.map((media, index) => (
                             <div key={`image-${index}`} className="relative">
@@ -192,10 +216,10 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                                 className={`
                     rounded-lg shadow-md object-cover
                     ${images.length === 1 ? 'max-w-sm max-h-96 w-full' :
-                              images.length === 2 ? 'w-full h-32 sm:h-40' :
-                                images.length <= 4 ? 'w-full h-24 sm:h-32' :
-                                  'w-full h-20 sm:h-24'
-                            }
+                                    images.length === 2 ? 'w-full h-32 sm:h-40' :
+                                      images.length <= 4 ? 'w-full h-24 sm:h-32' :
+                                        'w-full h-20 sm:h-24'
+                                  }
                     hover:shadow-lg transition-shadow duration-200 cursor-pointer
                   `}
                                 onClick={() => {
@@ -284,7 +308,7 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                               key={`audio-${index}`}
                               className={`flex items-center gap-2 p-2 max-w-xs rounded-sm
           ${message.isOwn ? 'ml-auto bg-primary/10 border border-primary rounded-l-lg rounded-tr-lg'
-                              : 'mr-auto bg-gray-100 text-black rounded-r-lg rounded-tl-lg'} 
+                                  : 'mr-auto bg-gray-100 text-black rounded-r-lg rounded-tl-lg'} 
           shadow-sm`}
                             >
                               {/* Audio player mở rộng đúng flex */}
@@ -325,9 +349,9 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
             className={`
       relative p-3 rounded-sm
       ${isOwn
-            ? 'bg-primary/10 border border-primary rounded-br-sm'
-            : 'bg-secondary text-secondary-foreground rounded-bl-sm'
-          }
+                ? 'bg-primary/10 border border-primary rounded-br-sm'
+                : 'bg-secondary text-secondary-foreground rounded-bl-sm'
+              }
     `}
           >
             {message.isPinned && (
@@ -338,15 +362,23 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
               {message.text ?? message.body?.text ?? ''}
             </p>
 
-            {Array.isArray(message.reactions) && message.reactions.length > 0 && (
-              <div className="flex gap-1 mt-1">
-                {message.reactions.map((reaction, i) => (
-                  <Badge key={i} variant="secondary" className="text-xs">
-                    {reaction.emoji} {reaction.count}
-                  </Badge>
-                ))}
-              </div>
-            )}
+            {
+              Array.isArray(message.reactions) && message.reactions.length > 0 && (() => {
+                const { topEmojis, userEmojiMap } = processReactions(message.reactions)
+
+                return (
+                  <>
+                    <div className="flex gap-1 mt-2 flex-wrap cursor-pointer">
+                      <Badge variant="secondary" className="text-xs">
+                        {topEmojis.map(reaction => `${reaction.emoji}`).join(' ')} {message.reactions.length}
+                      </Badge>
+                    </div>
+
+                  </>
+                )
+              })()
+            }
+
           </div>
         )}
 

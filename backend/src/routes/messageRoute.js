@@ -11,4 +11,7 @@ Router.route('/:conversationId')
 Router.route('/')
   .post(authMiddleware,multerUploadMiddleware.upload.array('file', 10), messageController.sendMessage)
 
+Router.route('/reaction')
+  .post(authMiddleware, messageController.setReaction)
+
 export const messageRoutes = Router
