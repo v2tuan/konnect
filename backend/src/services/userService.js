@@ -1,3 +1,4 @@
+import { get } from "mongoose"
 import FriendShip from "~/models/friendships"
 import User from "~/models/user"
 
@@ -13,6 +14,20 @@ const searchByUsername = async (username) => {
     }
     catch (error) {
         throw error
+    }
+}
+
+const getDisplayUsers = async (userIds) => {
+    try {
+        let users = await User.find({
+            _id: { $in: userIds }
+        }).select('status avatarUrl fullName username dateOfBirth bio id')
+        console.log('getDisplayUsers', users)
+        console.log('userIds', userIds)
+        return users
+    }
+    catch (e) {
+        throw e
     }
 }
 
@@ -56,6 +71,7 @@ const findById = async (userId, currentUserId) => {
 
 export const userService = {
     searchByUsername,
+    getDisplayUsers,
     findById,
     markUserStatus
 }
