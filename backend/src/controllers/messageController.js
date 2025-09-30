@@ -104,8 +104,56 @@ const listMessages = async(req, res, next) => {
     next(error)
   }
 }
+
+const deleteMessages = async (req, res, next) => {
+  try {
+    const userId = req.userId
+    const { conversationId } = req.params
+    const { messageId, action } = req.body
+
+    if (!conversationId) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ 
+        message: 'conversationId is required' 
+      })
+    }
+
+    if (!messageId) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ 
+        message: 'messageId is required' 
+      })
+    }
+
+    // Nếu action là recall
+    if (action === "recall") {
+      const result = await messageService.recallMessage({
+        userId,
+        messageId,
+        io: req.io
+      })
+      return res.status(StatusCodes.OK).json(result)
+    }
+
+    // Nếu action là delete (chỉ ẩn với người thực hiện)
+    if (action === "delete") {
+      const result = await messageService.deleteMessage({
+        userId,
+        messageId,
+        io: req.io
+      })
+      return res.status(StatusCodes.OK).json(result)
+    }
+
+    return res.status(StatusCodes.BAD_REQUEST).json({ 
+      message: "Invalid action. Use 'recall' or 'delete'" 
+    })
+  } catch (error) {
+    next(error)
+  }
+}
+
 export const messageController = {
   sendMessage,
   listMessages,
-  setReaction
+  setReaction,
+  deleteMessages
 }

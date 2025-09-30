@@ -39,6 +39,12 @@ let messageSchema = new mongoose.Schema({
         type: Boolean,
         default: false
     },
+    deletedFor: [
+    {
+        userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        deletedAt: { type: Date, default: Date.now }
+    }
+    ],
     createdAt: {
         type: Date,
         default: Date.now
