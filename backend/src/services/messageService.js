@@ -9,7 +9,34 @@ import { CloudinaryProvider } from '~/providers/CloudinaryProvider'
 import Media from '~/models/medias'
 import { mediaService } from './mediaService'
 import User from "~/models/user"
-function toPublicMessage(m) {
+function toPublicMessage(m, currentUserId = null) {
+  // Kiểm tra xem user hiện tại có delete tin nhắn này không
+  const isDeletedForCurrentUser = currentUserId && m.deletedFor?.some(
+    del => String(del.userId) === String(currentUserId)
+  );
+
+  // Nếu tin nhắn bị delete cho user hiện tại, return null
+  if (isDeletedForCurrentUser) {
+    return null;
+  }
+
+  // Nếu tin nhắn bị recall, thay đổi nội dung
+  if (m.recalled) {
+    return {
+      _id: m._id,
+      conversationId: m.conversationId,
+      seq: m.seq,
+      type: 'text', // Chuyển về text
+      body: { text: 'Message was recall' },
+      media: [], // Xóa media
+      reactions: [], // Xóa reactions
+      senderId: m.senderId,
+      recalled: true,
+      createdAt: m.createdAt
+    };
+  }
+
+  // Tin nhắn bình thường
   return {
     _id: m._id,
     conversationId: m.conversationId,
@@ -19,8 +46,9 @@ function toPublicMessage(m) {
     media: m.media,
     reactions: m.reactions || [],
     senderId: m.senderId,
+    recalled: false,
     createdAt: m.createdAt
-  }
+  };
 }
 
 async function assertCanAccessConversation(userId, convo) {
@@ -211,10 +239,30 @@ async function listMessages({ userId, conversationId, limit = 30, beforeSeq }) {
   if (!convo) throw new Error("Conversation not found")
   await assertCanAccessConversation(userId, convo)
 
+  // Kiểm tra conversation member để lấy deletedAtSeq
+  const member = await ConversationMember.findOne({
+    conversation: conversationId,
+    userId: userId
+  }).lean()
+
+  if (!member) throw new Error("You are not a member of this conversation")
+
   const q = { conversationId: new mongoose.Types.ObjectId(conversationId) }
+  
+  // Nếu user đã delete conversation, chỉ lấy tin nhắn sau thời điểm delete
+  if (member.deletedAtSeq !== null) {
+    q.seq = { $gt: member.deletedAtSeq }
+  }
+  
   if (beforeSeq != null) {
     const n = Number(beforeSeq)
-    if (Number.isFinite(n)) q.seq = { $lt: n }
+    if (Number.isFinite(n)) {
+      if (q.seq) {
+        q.seq = { ...q.seq, $lt: n }
+      } else {
+        q.seq = { $lt: n }
+      }
+    }
   }
 
   const _limit = Math.min(Number(limit) || 30, MAX_LIMIT_MESSAGE)
@@ -222,23 +270,148 @@ async function listMessages({ userId, conversationId, limit = 30, beforeSeq }) {
   const docs = await Message.find(q).populate("media").sort({ seq: -1 }).limit(_limit).lean()
   const items = docs.reverse()
 
-  return items.map(m => ({
-    _id: m._id,
-    conversationId: m.conversationId,
-    seq: m.seq,
-    senderId: m.senderId,
-    type: m.type,
-    body: m.body,
-    media: m.media,
-    reactions: m.reactions || [],
-    recalled: m.recalled,
-    createdAt: m.createdAt
-  }))
+  // Lọc tin nhắn và áp dụng logic hiển thị cho user hiện tại
+  const filteredItems = items
+    .map(m => toPublicMessage(m, userId))
+    .filter(m => m !== null)
+
+  return filteredItems
+}
+
+async function recallMessage({ userId, messageId, io }) {
+  if (!mongoose.isValidObjectId(messageId)) {
+    const err = new Error("Invalid messageId")
+    err.status = 400
+    throw err
+  }
+
+  // Tìm message
+  const message = await Message.findById(messageId).populate('media')
+  if (!message) {
+    const err = new Error("Message not found")
+    err.status = 404
+    throw err
+  }
+
+  // Kiểm tra quyền truy cập conversation
+  const convo = await Conversation.findById(message.conversationId).lean()
+  await assertCanAccessConversation(userId, convo)
+
+  // Chỉ cho phép người gửi thu hồi tin nhắn của chính mình
+  if (String(message.senderId) !== String(userId)) {
+    const err = new Error("You can only recall your own messages")
+    err.status = 403
+    throw err
+  }
+
+  // Kiểm tra tin nhắn đã được thu hồi chưa
+  if (message.recalled) {
+    const err = new Error("Message already recalled")
+    err.status = 409
+    throw err
+  }
+
+  // Cập nhật trạng thái recalled
+  message.recalled = true
+  await message.save()
+
+  // Populate lại để có đầy đủ thông tin
+  await message.populate('media')
+
+  // Tạo payload để gửi qua socket
+  const payload = {
+    conversationId: message.conversationId,
+    message: toPublicMessage(message)
+  }
+
+  // Emit event thu hồi tin nhắn cho tất cả members trong conversation
+  if (io) {
+    io.to(`conversation:${message.conversationId}`).emit("message:recalled", payload)
+  }
+
+  // Cập nhật lastMessage nếu cần
+  const conversation = await Conversation.findById(message.conversationId)
+  if (conversation.lastMessage && String(conversation.lastMessage.messageId) === String(messageId)) {
+    await Conversation.updateOne(
+      { _id: message.conversationId },
+      {
+        $set: {
+          'lastMessage.textPreview': 'Message was recall',
+          'lastMessage.type': 'text',
+          updatedAt: new Date()
+        }
+      }
+    )
+  }
+
+  return { 
+    ok: true, 
+    messageId,
+    message: toPublicMessage(message)
+  }
+}
+
+async function deleteMessage({ userId, messageId, io }) {
+  if (!mongoose.isValidObjectId(messageId)) {
+    const err = new Error("Invalid messageId")
+    err.status = 400
+    throw err
+  }
+
+  // Tìm message
+  const message = await Message.findById(messageId)
+  if (!message) {
+    const err = new Error("Message not found")
+    err.status = 404
+    throw err
+  }
+
+  // Kiểm tra quyền truy cập conversation
+  const convo = await Conversation.findById(message.conversationId).lean()
+  await assertCanAccessConversation(userId, convo)
+
+  // Kiểm tra xem user đã delete tin nhắn này chưa
+  const alreadyDeleted = message.deletedFor.some(
+    del => String(del.userId) === String(userId)
+  )
+
+  if (alreadyDeleted) {
+    const err = new Error("Message already deleted for this user")
+    err.status = 409
+    throw err
+  }
+
+  // Thêm user vào danh sách deletedFor
+  message.deletedFor.push({
+    userId: new mongoose.Types.ObjectId(userId),
+    deletedAt: new Date()
+  })
+
+  await message.save()
+
+  // Emit event delete cho chỉ user hiện tại
+  if (io) {
+    const userSocketId = await getUserSocketId(userId) // Bạn cần implement function này
+    if (userSocketId) {
+      io.to(userSocketId).emit("message:deleted", {
+        conversationId: message.conversationId,
+        messageId: messageId
+      })
+    }
+  }
+
+  return { 
+    ok: true, 
+    messageId,
+    action: 'deleted'
+  }
 }
 
 export const messageService = {
   sendMessage,
   listMessages,
   assertCanAccessConversation,
-  setReaction
+  setReaction,
+  recallMessage,
+  deleteMessage
 }

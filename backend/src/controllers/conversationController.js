@@ -129,6 +129,44 @@ const listConversationMedia = async (req, res, next) => {
   }
 };
 
+const handleConversationActions = async (req, res, next) => {
+  try {
+    const userId = req.userId
+    const conversationId = req.params.conversationId
+    const { action } = req.body // "delete" hoặc "leave"
+
+    if (!userId) {
+      return res.status(StatusCodes.UNAUTHORIZED).json({
+        message: 'Unauthorized'
+      })
+    }
+
+    if (!action) {
+      return res.status(StatusCodes.BAD_REQUEST).json({
+        message: 'action is required. Use "delete" or "leave"'
+      })
+    }
+
+    // Handle delete conversation
+    if (action === "delete") {
+      const result = await conversationService.deleteConversation(userId, conversationId)
+      return res.status(StatusCodes.OK).json(result)
+    }
+
+    // Handle leave group
+    if (action === "leave") {
+      const result = await conversationService.leaveGroup(userId, conversationId, req.io)
+      return res.status(StatusCodes.OK).json(result)
+    }
+
+    return res.status(StatusCodes.BAD_REQUEST).json({
+      message: 'Invalid action. Use "delete" or "leave"'
+    })
+
+  } catch (error) {
+    next(error)
+  }
+}
 
 export const conversationController = {
   createConversation,
@@ -136,5 +174,6 @@ export const conversationController = {
   fetchConversationDetail,
   readToLatest,
   getUnreadSummary,
-  listConversationMedia
+  listConversationMedia,
+  handleConversationActions
 }

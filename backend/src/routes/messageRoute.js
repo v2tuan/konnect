@@ -7,6 +7,7 @@ const Router = express.Router()
 
 Router.route('/:conversationId')
   .get(authMiddleware, messageController.listMessages)
+  .delete(authMiddleware, messageController.deleteMessages)
 
 Router.route('/')
   .post(authMiddleware,multerUploadMiddleware.upload.array('file', 10), messageController.sendMessage)
