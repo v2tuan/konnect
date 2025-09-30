@@ -178,10 +178,13 @@ const getConversation = async (page = 1, limit = 20, userId) => {
   const skipVal = (p - 1) * l
   const uid = toOid(userId)
 
-  const total = await ConversationMember.countDocuments({ userId: uid })
+  const total = await ConversationMember.countDocuments({  
+    userId: uid,
+    deletedAt: null  
+  })
 
   const pipeline = [
-    { $match: { userId: uid } },
+    { $match: { userId: uid, deletedAt: null } },
 
     // Join sang conversation
     {
@@ -544,9 +547,164 @@ const getUnreadSummary = async (userId) => {
   return { items, totalConversations, totalMessages }
 }
 
+const deleteConversation = async (userId, conversationId) => {
+  if (!mongoose.isValidObjectId(conversationId)) {
+    const err = new Error('Invalid conversationId')
+    err.status = 400
+    throw err
+  }
+
+  // Tìm conversation member
+  const member = await ConversationMember.findOne({
+    conversation: conversationId,
+    userId: userId
+  })
+
+  if (!member) {
+    const err = new Error('You are not a member of this conversation')
+    err.status = 403
+    throw err
+  }
+
+  // Lấy conversation để check type
+  const conversation = await Conversation.findById(conversationId).lean()
+  if (!conversation) {
+    const err = new Error('Conversation not found')
+    err.status = 404
+    throw err
+  }
+
+  // Lấy messageSeq hiện tại để làm mốc
+  const currentSeq = conversation.messageSeq || 0
+
+  // Soft delete conversation cho user này
+  member.deletedAt = new Date()
+  member.deletedAtSeq = currentSeq
+  await member.save()
+
+  // Cập nhật tất cả tin nhắn trong conversation này - thêm user vào deletedFor
+  await Message.updateMany(
+    { conversationId: conversationId },
+    {
+      $addToSet: {
+        deletedFor: {
+          userId: new mongoose.Types.ObjectId(userId),
+          deletedAt: new Date()
+        }
+      }
+    }
+  )
+
+  return {
+    ok: true,
+    message: 'Conversation deleted successfully'
+  }
+}
+
+const leaveGroup = async (userId, conversationId, io) => {
+  if (!mongoose.isValidObjectId(conversationId)) {
+    const err = new Error('Invalid conversationId')
+    err.status = 400
+    throw err
+  }
+
+  // Tìm conversation
+  const conversation = await Conversation.findById(conversationId).lean()
+  if (!conversation) {
+    const err = new Error('Conversation not found')
+    err.status = 404
+    throw err
+  }
+
+  // Chỉ cho phép leave group
+  if (conversation.type !== 'group') {
+    const err = new Error('You can only leave group conversations')
+    err.status = 400
+    throw err
+  }
+
+  // Tìm member record
+  const member = await ConversationMember.findOne({
+    conversation: conversationId,
+    userId: userId
+  })
+
+  if (!member) {
+    const err = new Error('You are not a member of this group')
+    err.status = 403
+    throw err
+  }
+
+  // Lấy thông tin user để thông báo
+  const user = await User.findById(userId).select('fullName username avatarUrl').lean()
+  const userName = user?.fullName || user?.username || 'Someone'
+
+  // Hard delete khỏi conversation_members
+  await ConversationMember.deleteOne({
+    conversation: conversationId,
+    userId: userId
+  })
+
+  // Tạo tin nhắn thông báo
+  const notificationMessage = await Message.create({
+    conversationId: new mongoose.Types.ObjectId(conversationId),
+    seq: conversation.messageSeq + 1,
+    senderId: new mongoose.Types.ObjectId(userId),
+    type: 'notification',
+    body: {
+      text: `${userName} đã rời khỏi nhóm`
+    },
+    createdAt: new Date()
+  })
+
+  // Cập nhật messageSeq của conversation
+  await Conversation.updateOne(
+    { _id: conversationId },
+    {
+      $inc: { messageSeq: 1 },
+      $set: {
+        lastMessage: {
+          seq: conversation.messageSeq + 1,
+          messageId: notificationMessage._id,
+          type: 'notification',
+          textPreview: `${userName} đã rời khỏi nhóm`,
+          senderId: userId,
+          createdAt: new Date()
+        },
+        updatedAt: new Date()
+      }
+    }
+  )
+
+  // Emit notification cho các thành viên còn lại
+  if (io) {
+    io.to(`conversation:${conversationId}`).emit('member:left', {
+      conversationId,
+      userId,
+      userName,
+      message: {
+        _id: notificationMessage._id,
+        conversationId,
+        seq: conversation.messageSeq + 1,
+        type: 'notification',
+        body: { text: `${userName} đã rời khỏi nhóm` },
+        senderId: userId,
+        createdAt: notificationMessage.createdAt
+      }
+    })
+  }
+
+  return {
+    ok: true,
+    message: 'Left group successfully'
+  }
+}
+
 export const conversationService = {
   createConversation,
   getConversation,
   fetchConversationDetail,
-  getUnreadSummary
+  getUnreadSummary,
+  deleteConversation,
+  leaveGroup
 }

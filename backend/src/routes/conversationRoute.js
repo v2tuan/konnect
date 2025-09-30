@@ -13,6 +13,8 @@ route.patch("/:id/read-to-latest", authMiddleware, conversationController.readTo
 
 route.route('/chats/:conversationId')
 .get(authMiddleware, conversationController.fetchConversationDetail)
+.delete(authMiddleware, conversationController.handleConversationActions)
+
 route.get("/unreads/summary", authMiddleware, conversationController.getUnreadSummary)
 route.get('/:id/media', authMiddleware, conversationController.listConversationMedia);   // <-- mới
 

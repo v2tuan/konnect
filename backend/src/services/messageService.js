@@ -239,15 +239,33 @@ async function listMessages({ userId, conversationId, limit = 30, beforeSeq }) {
   if (!convo) throw new Error("Conversation not found")
   await assertCanAccessConversation(userId, convo)
 
+  // Kiểm tra conversation member để lấy deletedAtSeq
+  const member = await ConversationMember.findOne({
+    conversation: conversationId,
+    userId: userId
+  }).lean()
+
+  if (!member) throw new Error("You are not a member of this conversation")
+
   const q = { conversationId: new mongoose.Types.ObjectId(conversationId) }
+  
+  // Nếu user đã delete conversation, chỉ lấy tin nhắn sau thời điểm delete
+  if (member.deletedAtSeq !== null) {
+    q.seq = { $gt: member.deletedAtSeq }
+  }
+  
   if (beforeSeq != null) {
     const n = Number(beforeSeq)
     if (Number.isFinite(n)) {
-      q.seq = { $lt: n }
+      if (q.seq) {
+        q.seq = { ...q.seq, $lt: n }
+      } else {
+        q.seq = { $lt: n }
+      }
     }
   }
 
-  const _limit = Math.min(Number(limit) || 30, MAX_LIMIT_MESSAGE) // Giả sử MAX_LIMIT_MESSAGE = 100
+  const _limit = Math.min(Number(limit) || 30, MAX_LIMIT_MESSAGE)
 
   const docs = await Message.find(q).populate("media").sort({ seq: -1 }).limit(_limit).lean()
   const items = docs.reverse()
@@ -255,7 +273,7 @@ async function listMessages({ userId, conversationId, limit = 30, beforeSeq }) {
   // Lọc tin nhắn và áp dụng logic hiển thị cho user hiện tại
   const filteredItems = items
     .map(m => toPublicMessage(m, userId))
-    .filter(m => m !== null) // Loại bỏ tin nhắn đã bị delete
+    .filter(m => m !== null)
 
   return filteredItems
 }
