@@ -154,7 +154,15 @@ async function sendMessage({ userId, conversationId, type, text, file, io }) {
       }
     }
   )
+  await ConversationMember.updateOne(
+    { conversation: conversationId, userId },
+    { $max: { lastReadMessageSeq: seq } }  // không bao giờ lùi tiến độ
+  );
 
+// Emit badge = 0 cho CHÍNH người gửi (để các tab tự xóa badge ngay)
+  if (io) {
+    io.to(`user:${userId}`).emit("badge:update", { conversationId, unread: 0 });
+  }
   const payload = { conversationId, message: toPublicMessage(msg) }
 
   // 6) Emit "message:new" cho room
