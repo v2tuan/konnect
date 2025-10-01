@@ -239,7 +239,7 @@ async function listMessages({ userId, conversationId, limit = 30, beforeSeq }) {
   if (!convo) throw new Error("Conversation not found")
   await assertCanAccessConversation(userId, convo)
 
-  // Kiểm tra conversation member để lấy deletedAtSeq
+  // Debug: Kiểm tra conversation member
   const member = await ConversationMember.findOne({
     conversation: conversationId,
     userId: userId
@@ -249,25 +249,22 @@ async function listMessages({ userId, conversationId, limit = 30, beforeSeq }) {
 
   const q = { conversationId: new mongoose.Types.ObjectId(conversationId) }
   
-  // Nếu user đã delete conversation, chỉ lấy tin nhắn sau thời điểm delete
-  if (member.deletedAtSeq !== null) {
-    q.seq = { $gt: member.deletedAtSeq }
-  }
+  // Tạm thời comment phần này để test
+  // if (member.deletedAtSeq !== null) {
+  //   q.seq = { $gt: member.deletedAtSeq }
+  // }
   
   if (beforeSeq != null) {
     const n = Number(beforeSeq)
     if (Number.isFinite(n)) {
-      if (q.seq) {
-        q.seq = { ...q.seq, $lt: n }
-      } else {
-        q.seq = { $lt: n }
-      }
+      q.seq = { $lt: n }
     }
   }
 
   const _limit = Math.min(Number(limit) || 30, MAX_LIMIT_MESSAGE)
 
   const docs = await Message.find(q).populate("media").sort({ seq: -1 }).limit(_limit).lean()
+
   const items = docs.reverse()
 
   // Lọc tin nhắn và áp dụng logic hiển thị cho user hiện tại

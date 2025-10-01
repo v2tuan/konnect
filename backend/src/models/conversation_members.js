@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 
-const conversationMemberSchema = new mongoose.Schema({
+let conversationMemberSchema = new mongoose.Schema({
   conversation: { type: mongoose.Schema.Types.ObjectId, ref: "Conversation", required: true, index: true },
   userId:       { type: mongoose.Schema.Types.ObjectId, ref: "User",         required: true, index: true },
   nickname: String,
@@ -8,11 +8,28 @@ const conversationMemberSchema = new mongoose.Schema({
   joinedAt: { type: Date, default: Date.now },
   lastReadMessageSeq: { type: Number, default: 0 },
 
-  // 🔕 Thêm cấu hình thông báo theo từng thành viên
+  // ?? Th�m c?u h�nh th�ng b�o theo t?ng th�nh vi�n
   notifications: {
     muted: { type: Boolean, default: false },
-    // null = vĩnh viễn; nếu có ngày thì hết mute khi now >= mutedUntil
+    // null = vinh vi?n; n?u c� ng�y th� h?t mute khi now >= mutedUntil
     mutedUntil: { type: Date, default: null }
+  },
+
+  deletedAt: {
+    type: Date,
+    default: null
+  },
+  deletedAtSeq: {
+    type: Number,
+    default: null
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now
+  },
+  updatedAt: {
+    type: Date,
+    default: Date.now
   }
 });
 
