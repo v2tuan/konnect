@@ -155,12 +155,12 @@ export const setReaction = async (messageId, emoji) => {
 }
 
 export const fetchConversationDetail = async (conversationId, params = {}) => {
-  const response = await authorizeAxiosInstance.get(`${API_ROOT}/api/conversation/chats/${conversationId}`, {params})
+  const response = await authorizeAxiosInstance.get(`${API_ROOT}/api/conversation/chats/${conversationId}`, { params })
   return response.data
 }
 
-export const getFriendRequestsAPI = async ({params = {}}) => {
-  const response = await authorizeAxiosInstance.get(`${API_ROOT}/api/contacts/friends/requests`, {params})
+export const getFriendRequestsAPI = async ({ params = {} }) => {
+  const response = await authorizeAxiosInstance.get(`${API_ROOT}/api/contacts/friends/requests`, { params })
   return response.data
 }
 
@@ -185,5 +185,12 @@ export const getFriendsAPI = async (params = {}) => {
     `${API_ROOT}/api/contacts/friends`,
     { params }
   )
+  return response.data
+}
+
+export const deleteConversationAPI = async (conversationId) => {
+  const response = await authorizeAxiosInstance.delete(`${API_ROOT}/api/conversation/chats/${conversationId}`, {
+    data: { action: 'delete' }
+  })
   return response.data
 }
