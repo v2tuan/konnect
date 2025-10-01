@@ -268,20 +268,35 @@ export function ChatSidebar({ currentView, onViewChange }) {
   //option for conversation (pin or delete)
   const handleDeleteConversation = async (conversationId) => {
     try {
-      // Hiển thị confirmation dialog
-      const confirmed = window.confirm('Bạn có chắc chắn muốn xóa lịch sử cuộc trò chuyện này? Hành động này không thể hoàn tác.')
+    // Hiển thị confirmation dialog
+      const confirmed = window.confirm('Bạn có chắc chắn muốn xóa lịch sử cuộc trở chuyện này? Hành động này không thể hoàn tác.')
 
       if (!confirmed) return
 
       await deleteConversationAPI(conversationId, { action: 'delete' })
 
-      // Cập nhật UI - xóa conversation khỏi danh sách
-      setConversationList(prev => prev.filter(conv => conv._id !== conversationId))
+      // Cập nhật UI - xóa conversation khỏi danh sách NGAY LẬP TỨC
+      setConversationList(prev => {
+        console.log('Before filter:', prev.length) // Debug log
+        const filtered = prev.filter(conv => {
+          const convId = extractId(conv)
+          const shouldKeep = convId !== conversationId
+          if (!shouldKeep) {
+            console.log('Removing conversation:', convId) // Debug log
+          }
+          return shouldKeep
+        })
+        console.log('After filter:', filtered.length) // Debug log
+        return filtered
+      })
+
+      // Xóa unread count cho conversation này
+      setUnread(conversationId, 0)
 
       toast.success('Đã xóa cuộc trò chuyện thành công')
 
       // Nếu đang xem conversation này, chuyển về trang chính
-      if (window.location.pathname.includes(conversationId)) {
+      if (activeIdFromURL === conversationId) {
         navigate('/')
       }
 
