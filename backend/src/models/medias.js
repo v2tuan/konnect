@@ -39,6 +39,9 @@ const MediaSchema = new Schema(
     collection: "medias" // đặt rõ tên collection cho nhất quán
   }
 )
+// các index truy vấn phổ biến
+MediaSchema.index({ conversationId: 1, type: 1, uploadedAt: -1 });
+MediaSchema.index({ "metadata.filename": "text" }, { name: "media_filename_text" });
 
 // Hot-reload safe
 export const Media = models.Media || model("Media", MediaSchema)

@@ -17,6 +17,7 @@ route.route('/chats/:conversationId')
 
 route.get("/unreads/summary", authMiddleware, conversationController.getUnreadSummary)
 route.get('/:id/media', authMiddleware, conversationController.listConversationMedia);   // <-- mới
+route.patch("/:id/notifications", authMiddleware, conversationController.updateNotifications);
 
 
 export const conversationRoutes = route
