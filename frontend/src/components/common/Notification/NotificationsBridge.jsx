@@ -5,6 +5,7 @@ import { useSelector } from "react-redux"
 import { toast } from "react-toastify"
 import { useUnreadStore } from "@/store/useUnreadStore"
 import { getSocket, connectSocket } from "@/lib/socket"
+import { useMuteStore } from "@/store/useMuteStore"
 
 // audio unlock
 let pingAudio
@@ -61,6 +62,7 @@ export default function NotificationsBridge() {
   const currentUser = useSelector(s => s.user.currentUser)
   const usersById = useSelector(s => s.user.usersById || {})
   const setUnread = useUnreadStore(s => s.setUnread)
+  const isMuted = useMuteStore(s => s.isMuted)
 
   const attachedRef = useRef(false)
   const dedupeRef = useRef(new Set())
@@ -126,7 +128,8 @@ export default function NotificationsBridge() {
       // bump badge
       const curr = (useUnreadStore.getState().map?.[convId]) || 0
       setUnread(convId, curr + 1)
-
+      // 🔕 muted => không phát âm thanh / không show toast
+      if (isMuted(convId)) return;
       // render data
       const { name, avatar } = deriveSenderMeta({ notif, msg, usersById })
       let preview = "Tin nhắn mới"

@@ -7,6 +7,7 @@ import { messageService } from "./messageService";
 import { contactService } from "./contactService";
 import { mediaService } from "./mediaService";
 import { cloudinaryProvider } from "~/providers/CloudinaryProvider_v2";
+import Media from "~/models/medias";
 
 async function markFriendshipOnConversation(meId, convObj) {
   try {
@@ -699,12 +700,142 @@ const leaveGroup = async (userId, conversationId, io) => {
     message: 'Left group successfully'
   }
 }
+async function assertIsMember(userId, conversationId) {
+  const cm = await ConversationMember.findOne({ userId, conversation: conversationId, deletedAt: null }).lean();
+  if (!cm) {
+    const err = new Error("You are not a member of this conversation");
+    err.status = 403;
+    throw err;
+  }
+}
 
+async function listConversationMedia({ userId, conversationId, type, page, limit, q }) {
+  if (!mongoose.isValidObjectId(conversationId)) {
+    const err = new Error("Invalid conversationId");
+    err.status = 400;
+    throw err;
+  }
+
+  // phải là thành viên
+  await assertIsMember(userId, conversationId);
+
+  const p = Math.max(1, Number(page) || 1);
+  const l = Math.max(1, Math.min(50, Number(limit) || 24));
+  const skip = (p - 1) * l;
+
+  const filter = { conversationId: new mongoose.Types.ObjectId(conversationId) };
+  if (type && ["image", "video", "audio", "file"].includes(type)) {
+    filter.type = type;
+  }
+  // search theo filename (tuỳ chọn)
+  if (q && q.trim()) {
+    filter.$text = { $search: q.trim() };
+  }
+
+  const [items, total] = await Promise.all([
+    Media.find(filter, {
+      url: 1,
+      type: 1,
+      uploadedAt: 1,
+      uploaderId: 1,
+      metadata: 1
+    })
+    .sort({ uploadedAt: -1, _id: -1 })
+    .skip(skip)
+    .limit(l)
+    .lean(),
+    Media.countDocuments(filter)
+  ]);
+
+  const hasMore = p * l < total;
+
+  // quick preview: 6 ảnh/video mới nhất để gắn vào “Ảnh/Video”
+  const quickPreview = await Media.find(
+    { conversationId, type: { $in: ["image", "video"] } },
+    { url: 1, type: 1, uploadedAt: 1, metadata: 1 }
+  )
+  .sort({ uploadedAt: -1, _id: -1 })
+  .limit(6)
+  .lean();
+
+  // summary: đếm theo type (để render badge tab)
+  const byTypeAgg = await Media.aggregate([
+    { $match: { conversationId: new mongoose.Types.ObjectId(conversationId) } },
+    { $group: { _id: "$type", count: { $sum: 1 } } }
+  ]);
+  const summary = byTypeAgg.reduce((acc, it) => (acc[it._id] = it.count, acc), {});
+
+  return {
+    page: p,
+    limit: l,
+    total,
+    hasMore,
+    items,
+    quickPreview,
+    summary // { image: n, video: n, audio: n, file: n }
+  };
+}
+
+const ALLOWED_HOURS = [2, 4, 8, 12, 24];
+
+function calcMutedUntil(duration) {
+  if (duration === "forever") return null;
+  const h = Number(duration);
+  if (!ALLOWED_HOURS.includes(h)) {
+    const err = new Error("Invalid duration");
+    err.status = 400;
+    throw err;
+  }
+  const d = new Date();
+  d.setHours(d.getHours() + h);
+  return d;
+}
+
+async function updateNotificationSettings({ userId, conversationId, muted, duration }) {
+  if (!mongoose.isValidObjectId(conversationId)) {
+    const err = new Error("Invalid conversationId");
+    err.status = 400;
+    throw err;
+  }
+  const cm = await ConversationMember.findOne({ conversation: conversationId, userId });
+  if (!cm) {
+    const err = new Error("Not a member");
+    err.status = 404;
+    throw err;
+  }
+
+  if (muted) {
+    cm.notifications.muted = true;
+    cm.notifications.mutedUntil = calcMutedUntil(duration); // null nếu "forever"
+  } else {
+    cm.notifications.muted = false;
+    cm.notifications.mutedUntil = null;
+  }
+  await cm.save();
+
+  return {
+    conversationId,
+    muted: cm.notifications.muted,
+    mutedUntil: cm.notifications.mutedUntil
+  };
+}
+
+async function isMemberMutedNow({ userId, conversationId }) {
+  const cm = await ConversationMember.findOne({ conversation: conversationId, userId })
+  .select("notifications")
+  .lean();
+  if (!cm?.notifications?.muted) return false;
+  const until = cm.notifications.mutedUntil;
+  return !until || new Date(until) > new Date();
+}
 export const conversationService = {
+  listConversationMedia,
   createConversation,
   getConversation,
   fetchConversationDetail,
   getUnreadSummary,
   deleteConversation,
-  leaveGroup
+  leaveGroup,
+  updateNotificationSettings,
+  isMemberMutedNow
 }
