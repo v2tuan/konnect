@@ -111,10 +111,16 @@ function ConversationListItem({
         ? 'bg-status-away bg-amber-400'
         : 'bg-status-offline bg-zinc-400'
 
-  const previewText = unread > 0
-    ? `${unread > 99 ? '99+' : unread} tin nhắn mới`
-    : lastMessageText
+  const getPreviewText = () => {
+    if (unread > 0) {
+      return `${unread > 99 ? '99+' : unread} tin nhắn mới`
+    }
+    const text = lastMessageText || 'Chưa có tin nhắn'
+    // Sử dụng helper previewWords: wordLimit=6, maxTokenLen=15, maxTotalLen=35
+    return previewWords(text, 6, 15, 35)
+  }
 
+  const previewText = getPreviewText()
   return (
     <div
       onClick={onClick}
