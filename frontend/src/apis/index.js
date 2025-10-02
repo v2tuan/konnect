@@ -228,3 +228,10 @@ export const deleteConversationAPI = async (conversationId) => {
   })
   return response.data
 }
+
+export const leaveGroupAPI = async (conversationId) => {
+  const response = await authorizeAxiosInstance.delete(`${API_ROOT}/api/conversation/chats/${conversationId}`, {
+    data: { action: 'leave' }
+  })
+  return response.data
+}

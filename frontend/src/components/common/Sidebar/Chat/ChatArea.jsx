@@ -1,31 +1,35 @@
 // src/components/chat/ChatArea.jsx
-import { useState, useRef, useEffect, useLayoutEffect } from 'react'
-import {
-  Phone, Video, MoreHorizontal, Search as SearchIcon, UserPlus,
-  Image, Smile, Mic, Send, Paperclip
-} from 'lucide-react'
-import { Bell, Pin, ExternalLink, Shield, EyeOff, TriangleAlert, Trash, X, LoaderCircle } from 'lucide-react'
-import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion"
+import { submitFriendRequestAPI, updateFriendRequestStatusAPI } from '@/apis'
+import { muteConversation, unmuteConversation } from "@/apis/index.js"
+import { useTheme } from '@/components/theme-provider'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
-import { Switch } from "@/components/ui/switch"
-import { MessageBubble } from './MessageBubble'
-import { formatChip, groupByDay, pickPeerStatus } from '@/utils/helper'
 import { usePresenceText } from '@/hooks/use-relative-time'
-import { useSelector } from 'react-redux'
-import { selectCurrentUser } from '@/redux/user/userSlice'
-import CallModal from '../../Modal/CallModal'
 import { useCallInvite } from '@/hooks/useCallInvite'
-import CreateGroupDialog from '../../Modal/CreateGroupModel'
-import { submitFriendRequestAPI, updateFriendRequestStatusAPI } from '@/apis'
-import EmojiPicker from 'emoji-picker-react'
-import { useTheme } from '@/components/theme-provider'
-import { muteConversation, unmuteConversation } from "@/apis/index.js"
+import { selectCurrentUser } from '@/redux/user/userSlice'
 import { useMuteStore } from "@/store/useMuteStore"
+import { formatChip, groupByDay, pickPeerStatus } from '@/utils/helper'
+import EmojiPicker from 'emoji-picker-react'
+import {
+  Image,
+  LoaderCircle,
+  Mic,
+  MoreHorizontal,
+  Paperclip,
+  Phone,
+  Search as SearchIcon,
+  Send,
+  Smile,
+  UserPlus,
+  Video,
+  X
+} from 'lucide-react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useSelector } from 'react-redux'
+import CallModal from '../../Modal/CallModal'
+import { MessageBubble } from './MessageBubble'
 // ✅ NEW: import panel media
-import ConversationMediaPanel from './ConversationMediaPanel'
-import MuteMenu from "@/components/common/Sidebar/Chat/MuteMenu.jsx"
 import ChatSidebarRight from './ChatSIdebarRight'
 
 export function ChatArea({
@@ -549,7 +553,7 @@ export function ChatArea({
       </div>
 
       {/* Slide Panel */}
-      <ChatSidebarRight conversation={conversation} isOpen={isOpen}/>
+      <ChatSidebarRight conversation={conversation} isOpen={isOpen} />
 
       {ringing && (
         <div className="fixed left-1/2 -translate-x-1/2 bottom-4 z-50 bg-card border rounded-xl shadow-lg px-4 py-3 flex items-center gap-3">

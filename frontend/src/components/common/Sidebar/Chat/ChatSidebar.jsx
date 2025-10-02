@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate, useParams } from 'react-router-dom'
 
-import { deleteConversationAPI, getConversationByUserId, getConversations, searchUserByUsername } from '@/apis'
+import { deleteConversationAPI, getConversationByUserId, getConversations, leaveGroupAPI, searchUserByUsername } from '@/apis'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -82,6 +82,7 @@ function ConversationListItem({
   onClick,
   lastMessageText,
   onDelete,
+  onLeave,
   onPin,
   isPinned = false
 }) {
@@ -139,7 +140,9 @@ function ConversationListItem({
             </h3>
             <ConversationMenu
               conversationId={id}
+              conversationType={conversation.type}
               onDelete={onDelete}
+              onLeave={onLeave}
               onPin={onPin}
               isPinned={isPinned}
             />
@@ -269,7 +272,7 @@ export function ChatSidebar({ currentView, onViewChange }) {
   const handleDeleteConversation = async (conversationId) => {
     try {
     // Hiển thị confirmation dialog
-      const confirmed = window.confirm('Bạn có chắc chắn muốn xóa lịch sử cuộc trở chuyện này? Hành động này không thể hoàn tác.')
+      const confirmed = window.confirm('Bạn có chắc chắn muốn xóa lịch sử cuộc trò chuyện này? Hành động này không thể hoàn tác.')
 
       if (!confirmed) return
 
@@ -328,6 +331,70 @@ export function ChatSidebar({ currentView, onViewChange }) {
       toast.error(error.message || 'Có lỗi xảy ra')
     }
   }
+
+  const handleLeaveGroup = async (conversationId) => {
+    try {
+      const confirmed = window.confirm('Bạn có chắc chắn muốn rời khỏi nhóm này?')
+
+      if (!confirmed) return
+
+      // TODO: Implement leave group API
+      await leaveGroupAPI(conversationId, { action: 'leave' })
+
+      // Xóa conversation khỏi danh sách
+      setConversationList(prev => prev.filter(conv => extractId(conv) !== conversationId))
+
+      // Xóa unread count
+      setUnread(conversationId, 0)
+
+      toast.success('Đã rời khỏi nhóm thành công')
+
+      // Nếu đang xem conversation này, chuyển về trang chính
+      if (activeIdFromURL === conversationId) {
+        navigate('/')
+      }
+
+    } catch (error) {
+      console.error('Error leaving group:', error)
+      toast.error(error.message || 'Có lỗi xảy ra khi rời nhóm')
+    }
+  }
+
+  //useEffect để lắng nghe event từ ChatSidebarRight
+  useEffect(() => {
+    const handleConversationDeletedFromOtherComponent = (event) => {
+      const { conversationId } = event.detail
+
+      // Cập nhật UI - xóa conversation khỏi danh sách
+      setConversationList(prev => {
+        console.log('External delete - Before filter:', prev.length)
+        const filtered = prev.filter(conv => {
+          const convId = extractId(conv)
+          const shouldKeep = convId !== conversationId
+          if (!shouldKeep) {
+            console.log('External delete - Removing conversation:', convId)
+          }
+          return shouldKeep
+        })
+        console.log('External delete - After filter:', filtered.length)
+        return filtered
+      })
+
+      // Xóa unread count
+      setUnread(conversationId, 0)
+
+      // Nếu đang xem conversation này, chuyển về trang chính
+      if (activeIdFromURL === conversationId) {
+        navigate('/')
+      }
+    }
+
+    window.addEventListener('conversation:deleted', handleConversationDeletedFromOtherComponent)
+
+    return () => {
+      window.removeEventListener('conversation:deleted', handleConversationDeletedFromOtherComponent)
+    }
+  }, [activeIdFromURL, navigate, setUnread])
 
   // Initial load
   useEffect(() => {
@@ -743,6 +810,7 @@ export function ChatSidebar({ currentView, onViewChange }) {
                       lastMessageText={getLastMessageText(conversation)}
                       onClick={() => handleClickConversation(conversation)}
                       onDelete={handleDeleteConversation}
+                      onLeave={handleLeaveGroup}
                       onPin={handlePinConversation}
                       isPinned={conversation.isPinned}
                     />
