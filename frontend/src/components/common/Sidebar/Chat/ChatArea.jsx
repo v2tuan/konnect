@@ -21,22 +21,23 @@ import CreateGroupDialog from '../../Modal/CreateGroupModel'
 import { submitFriendRequestAPI, updateFriendRequestStatusAPI } from '@/apis'
 import EmojiPicker from 'emoji-picker-react'
 import { useTheme } from '@/components/theme-provider'
-import { muteConversation, unmuteConversation } from "@/apis/index.js";
-import { useMuteStore } from "@/store/useMuteStore";
+import { muteConversation, unmuteConversation } from "@/apis/index.js"
+import { useMuteStore } from "@/store/useMuteStore"
 // ✅ NEW: import panel media
 import ConversationMediaPanel from './ConversationMediaPanel'
-import MuteMenu from "@/components/common/Sidebar/Chat/MuteMenu.jsx";
+import MuteMenu from "@/components/common/Sidebar/Chat/MuteMenu.jsx"
+import ChatSidebarRight from './ChatSIdebarRight'
 
 export function ChatArea({
-                           mode = 'direct',
-                           conversation = {},
-                           messages = [],
-                           onSendMessage,
-                           sending,
-                           onStartTyping,
-                           onStopTyping,
-                           othersTyping = false
-                         }) {
+  mode = 'direct',
+  conversation = {},
+  messages = [],
+  onSendMessage,
+  sending,
+  onStartTyping,
+  onStopTyping,
+  othersTyping = false
+}) {
   const [messageText, setMessageText] = useState('')
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
@@ -158,8 +159,8 @@ export function ChatArea({
   const toUserIds = isDirect
     ? [otherUserId].filter(Boolean)
     : ((conversation?.group?.members || [])
-    .map(m => m?._id || m?.id)
-    .filter(id => id && id !== currentUser?._id))
+      .map(m => m?._id || m?.id)
+      .filter(id => id && id !== currentUser?._id))
 
   const handleStartCall = (mode) => {
     if (!toUserIds.length) return
@@ -228,24 +229,24 @@ export function ChatArea({
       }, 0)
     }
   }
-  const isMutedLocal = useMuteStore(s => s.isMuted(conversation?._id));
-  const setMutedLocal = useMuteStore(s => s.setMuted);
+  const isMutedLocal = useMuteStore(s => s.isMuted(conversation?._id))
+  const setMutedLocal = useMuteStore(s => s.setMuted)
 
   async function handleMute(duration) {
-    if (!conversation?._id) return;
-    setMutedLocal(conversation._id, true); // optimistic
+    if (!conversation?._id) return
+    setMutedLocal(conversation._id, true) // optimistic
     try {
-      await muteConversation(conversation._id, duration); // "forever" | 2 | 4 | 8 | 12 | 24
+      await muteConversation(conversation._id, duration) // "forever" | 2 | 4 | 8 | 12 | 24
     } catch {
-      setMutedLocal(conversation._id, false); // rollback
+      setMutedLocal(conversation._id, false) // rollback
     }
   }
 
   async function handleUnmute() {
-    if (!conversation?._id) return;
-    setMutedLocal(conversation._id, false);
-    try { await unmuteConversation(conversation._id); }
-    catch { setMutedLocal(conversation._id, true); }
+    if (!conversation?._id) return
+    setMutedLocal(conversation._id, false)
+    try { await unmuteConversation(conversation._id) }
+    catch { setMutedLocal(conversation._id, true) }
   }
 
   useEffect(() => {
@@ -548,105 +549,7 @@ export function ChatArea({
       </div>
 
       {/* Slide Panel */}
-      <div
-        className={`fixed flex flex-col top-0 right-0 h-full w-80 shadow-lg transform transition-transform duration-300 ease-in-out border-l ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
-      >
-        <div className="flex items-center justify-center p-4 border-b h-18">
-          <h2 className="text-lg font-semibold">Conversation information</h2>
-        </div>
-
-        <div className="flex-1 overflow-y-auto pb-4">
-          <div className="p-6 text-center border-b">
-            <div className="w-20 h-20 bg-blue-500 rounded-full flex items-center justify-center mx-auto mb-4">
-              {conversation?.conversationAvatarUrl ? (
-                <Avatar className="w-20 h-20">
-                  <AvatarImage src={conversation?.conversationAvatarUrl} />
-                  <AvatarFallback>{initialChar}</AvatarFallback>
-                </Avatar>
-              ) : (
-                <span className="text-2xl font-bold text-white">{initialChar}</span>
-              )}
-            </div>
-            <div className="flex items-center justify-center mb-4">
-              <h3 className="text-xl font-semibold">{safeName}</h3>
-            </div>
-
-            <div className="flex justify-center space-x-8 mb-4">
-              <MuteMenu conversationId={conversation?._id} />
-              <button className="flex flex-col items-center p-3 rounded-lg transition-colors cursor-pointer">
-                <Pin size={24} className="mb-1" />
-                <span className="text-xs">Pin conversation</span>
-              </button>
-              <CreateGroupDialog />
-            </div>
-          </div>
-
-          {/* ✅ Thay mock bằng panel media động */}
-          <Accordion type="multiple" className="w-full" defaultValue={["media", "file", "link", "security"]}>
-            <AccordionItem value="media">
-              <AccordionTrigger className="text-base p-4">Ảnh & Video</AccordionTrigger>
-              <AccordionContent>
-                <ConversationMediaPanel
-                  conversationId={conversation?._id}
-                  kind="visual"     // ✅ chỉ Image/Video
-                  defaultTab="image"
-                />
-              </AccordionContent>
-            </AccordionItem>
-
-            <AccordionItem value="files">
-              <AccordionTrigger className="text-base p-4">Audio & File</AccordionTrigger>
-              <AccordionContent>
-                <ConversationMediaPanel
-                  conversationId={conversation?._id}
-                  kind="binary"        // ✅ chỉ Audio/File
-                  defaultTab="audio"
-                />
-              </AccordionContent>
-            </AccordionItem>
-            <AccordionItem value="security">
-              <AccordionTrigger className="text-base p-4">Thiết lập bảo mật</AccordionTrigger>
-              <AccordionContent>
-                <div className="px-4 pb-4 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <Shield size={18} className="mr-3" />
-                      <div>
-                        <p className="text-sm font-medium">Tin nhắn tự xóa</p>
-                        <p className="text-xs">Không bao giờ</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <EyeOff size={18} className="mr-3" />
-                      <span className="text-sm font-medium">Ẩn trò chuyện</span>
-                    </div>
-                    <Switch
-                      className="
-                        data-[state=checked]:bg-primary
-                        data-[state=unchecked]:bg-muted-foreground
-                      "
-                    />
-                  </div>
-
-                  <div className="pt-2 border-t">
-                    <div className="flex items-center mb-2">
-                      <TriangleAlert size={18} className="mr-3" />
-                      <span className="text-sm">Báo xấu</span>
-                    </div>
-                    <div className="flex items-center text-destructive">
-                      <Trash size={18} className="mr-3" />
-                      <span className="text-sm">Xóa lịch sử trò chuyện</span>
-                    </div>
-                  </div>
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
-        </div>
-      </div>
+      <ChatSidebarRight conversation={conversation} isOpen={isOpen}/>
 
       {ringing && (
         <div className="fixed left-1/2 -translate-x-1/2 bottom-4 z-50 bg-card border rounded-xl shadow-lg px-4 py-3 flex items-center gap-3">
