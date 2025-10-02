@@ -269,7 +269,7 @@ export function ChatSidebar({ currentView, onViewChange }) {
   const handleDeleteConversation = async (conversationId) => {
     try {
     // Hiển thị confirmation dialog
-      const confirmed = window.confirm('Bạn có chắc chắn muốn xóa lịch sử cuộc trở chuyện này? Hành động này không thể hoàn tác.')
+      const confirmed = window.confirm('Bạn có chắc chắn muốn xóa lịch sử cuộc trò chuyện này? Hành động này không thể hoàn tác.')
 
       if (!confirmed) return
 
@@ -305,6 +305,42 @@ export function ChatSidebar({ currentView, onViewChange }) {
       toast.error(error.message || 'Có lỗi xảy ra khi xóa cuộc trò chuyện')
     }
   }
+
+  //useEffect để lắng nghe event từ ChatSidebarRight
+  useEffect(() => {
+    const handleConversationDeletedFromOtherComponent = (event) => {
+      const { conversationId } = event.detail
+
+      // Cập nhật UI - xóa conversation khỏi danh sách
+      setConversationList(prev => {
+        console.log('External delete - Before filter:', prev.length)
+        const filtered = prev.filter(conv => {
+          const convId = extractId(conv)
+          const shouldKeep = convId !== conversationId
+          if (!shouldKeep) {
+            console.log('External delete - Removing conversation:', convId)
+          }
+          return shouldKeep
+        })
+        console.log('External delete - After filter:', filtered.length)
+        return filtered
+      })
+
+      // Xóa unread count
+      setUnread(conversationId, 0)
+
+      // Nếu đang xem conversation này, chuyển về trang chính
+      if (activeIdFromURL === conversationId) {
+        navigate('/')
+      }
+    }
+
+    window.addEventListener('conversation:deleted', handleConversationDeletedFromOtherComponent)
+
+    return () => {
+      window.removeEventListener('conversation:deleted', handleConversationDeletedFromOtherComponent)
+    }
+  }, [activeIdFromURL, navigate, setUnread])
 
   const handlePinConversation = async (conversationId) => {
     try {

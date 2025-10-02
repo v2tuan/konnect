@@ -6,7 +6,38 @@ import { EyeOff, Pin, Shield, Trash, TriangleAlert } from 'lucide-react'
 import CreateGroupDialog from '../../Modal/CreateGroupModel'
 import MuteMenu from "@/components/common/Sidebar/Chat/MuteMenu.jsx"
 import ConversationMediaPanel from './ConversationMediaPanel'
+import { deleteConversationAPI } from "@/apis"
+import { toast } from "react-toastify"
+import { useNavigate, useParams } from "react-router-dom"
 function ChatSidebarRight( { conversation, isOpen }) {
+  const navigate = useNavigate()
+  const { conversationId: activeIdFromURL } = useParams()
+  const handleDeleteConversation = async (conversationId) => {
+    try {
+      // Hiển thị confirmation dialog
+      const confirmed = window.confirm('Bạn có chắc chắn muốn xóa lịch sử cuộc trở chuyện này? Hành động này không thể hoàn tác.')
+
+      if (!confirmed) return
+
+      await deleteConversationAPI(conversationId, { action: 'delete' })
+
+      // Cập nhật UI - xóa conversation khỏi danh sách NGAY LẬP TỨC
+      window.dispatchEvent(new CustomEvent('conversation:deleted', {
+        detail: { conversationId }
+      }))
+
+      toast.success('Đã xóa cuộc trò chuyện thành công')
+
+      // Nếu đang xem conversation này, chuyển về trang chính
+      if (activeIdFromURL === conversationId) {
+        navigate('/')
+      }
+
+    } catch (error) {
+      console.error('Error deleting conversation:', error)
+      toast.error(error.message || 'Có lỗi xảy ra khi xóa cuộc trò chuyện')
+    }
+  }
   return (
     <div
       className={`fixed flex flex-col top-0 right-0 h-full w-80 shadow-lg transform transition-transform duration-300 ease-in-out border-l ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
@@ -92,14 +123,20 @@ function ChatSidebarRight( { conversation, isOpen }) {
                 </div>
 
                 <div className="pt-2 border-t">
-                  <div className="flex items-center mb-2">
+                  <div className="flex items-center mb-5">
                     <TriangleAlert size={18} className="mr-3" />
                     <span className="text-sm">Báo xấu</span>
                   </div>
-                  <div className="flex items-center text-destructive">
+                  <div className="flex items-center text-destructive mb-5 cursor-pointer" onClick={() => handleDeleteConversation(conversation?._id)}>
                     <Trash size={18} className="mr-3" />
                     <span className="text-sm">Xóa lịch sử trò chuyện</span>
                   </div>
+                  {conversation?.type === "group" && (
+                    <div className="flex items-center text-destructive mb-5 cursor-pointer">
+                      <Trash size={18} className="mr-3" />
+                      <span className="text-sm">Leave group</span>
+                    </div>
+                  )}
                 </div>
               </div>
             </AccordionContent>
