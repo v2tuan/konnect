@@ -20,5 +20,8 @@
     "url": "https://github.com/v2tuan/chat-app/issues"
   },
   "homepage": "https://github.com/v2tuan/chat-app#readme",
-  "description": ""
+  "description": "",
+  "dependencies": {
+    "prop-types": "^15.8.1"
+  }
 }

@@ -102,6 +102,40 @@ export const getConversations = async (page, limit) => {
 
   return response.data
 }
+export const fetchConversationMedia = async ({ conversationId, type, page = 1, limit = 24, q = "" }) => {
+  const params = { page, limit };
+  if (type) params.type = type;
+  if (q) params.q = q;
+
+  const { data } = await authorizeAxiosInstance.get(
+    `${API_ROOT}/api/conversation/${conversationId}/media`, // đảm bảo path đúng với BE của bạn
+    { params }
+  );
+  return data; // { page, limit, total, hasMore, items, quickPreview?, summary? }
+};
+
+// 🔕 Mute
+export const muteConversation = async (conversationId, duration) => {
+  // (tuỳ chọn) validate runtime cho an toàn
+  const allowed = [2, 4, 8, 12, 24, "forever"];
+  if (!allowed.includes(duration)) {
+    throw new Error("duration must be one of 2,4,8,12,24,'forever'");
+  }
+
+  const { data } = await authorizeAxiosInstance.patch(
+    `${API_ROOT}/api/conversation/${conversationId}/notifications`,
+    { muted: true, duration }
+  );
+  return data;
+};
+
+export const unmuteConversation = async (conversationId) => {
+  const { data } = await authorizeAxiosInstance.patch(
+    `${API_ROOT}/api/conversation/${conversationId}/notifications`,
+    { muted: false }
+  );
+  return data;
+};
 
 /**
  * Lấy conversation từ userId

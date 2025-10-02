@@ -167,6 +167,34 @@ const handleConversationActions = async (req, res, next) => {
     next(error)
   }
 }
+const updateNotifications = async (req, res, next) => {
+  try {
+    const userId = req.userId;
+    if (!userId) return res.status(StatusCodes.UNAUTHORIZED).json({ message: "Unauthorized" });
+
+    const conversationId = req.params.id;
+    const { muted, duration } = req.body || {};
+    // muted: boolean; duration: 2|4|8|12|24|"forever" (required khi muted=true)
+
+    if (muted === true && !duration) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "duration is required when muted=true" });
+    }
+
+    const result = await conversationService.updateNotificationSettings({
+      userId,
+      conversationId,
+      muted: !!muted,
+      duration: muted ? duration : null
+    });
+
+    // Sync realtime cho các tab của chính user
+    req.io?.to?.(`user:${userId}`)?.emit("conversation:mute-changed", result);
+
+    return res.status(StatusCodes.OK).json({ ok: true, ...result });
+  } catch (e) {
+    next(e);
+  }
+};
 
 export const conversationController = {
   createConversation,
@@ -175,5 +203,6 @@ export const conversationController = {
   readToLatest,
   getUnreadSummary,
   listConversationMedia,
-  handleConversationActions
+  handleConversationActions,
+  updateNotifications
 }

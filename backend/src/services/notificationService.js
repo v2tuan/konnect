@@ -63,45 +63,89 @@ const create = async ({
 };
 
 // ⭐ Có tin nhắn mới → tạo notification (trừ khi người nhận đang xem phòng)
-const notifyMessage = async ({conversationId, message, senderId, senderName, senderAvatar}) => {
+export const notifyMessage = async ({
+                                      conversationId,
+                                      message,
+                                      senderId,
+                                      senderName,
+                                      senderAvatar,
+                                      io,
+                                      presence
+                                    }) => {
   try {
-    // content ngắn gọn
+    // 1) Build preview content
     let content = "Tin nhắn mới";
-    if (message.type === "text") {
-      const raw = message.body?.text || "";
-      content = raw.length > 120 ? raw.slice(0, 120) + "…" : raw || "Tin nhắn mới";
-    } else if (message.type === "image") content = "Đã gửi một ảnh";
-    else if (message.type === "file")  content = "Đã gửi một tệp";
-    else if (message.type === "audio") content = "Đã gửi một audio";
+    if (message?.type === "text") {
+      const raw = message?.body?.text || "";
+      content = raw ? (raw.length > 120 ? raw.slice(0, 120) + "…" : raw) : "Tin nhắn mới";
+    } else if (message?.type === "image") content = "Đã gửi một ảnh";
+    else if (message?.type === "file")  content = "Đã gửi một tệp";
+    else if (message?.type === "audio") content = "Đã gửi một audio";
 
-    const members = await ConversationMember.find({conversation: conversationId})
-    .select("userId").lean();
+    // 2) Lấy tất cả thành viên (trừ người gửi) + trạng thái mute
+    const members = await ConversationMember.find({
+      conversation: conversationId,
+      userId: { $ne: senderId }
+    }).select("userId notifications").lean();
 
-    const tasks = members
-    .filter(m => String(m.userId) !== String(senderId))
-    .filter(m => !(presence.isOnline(m.userId) && presence.isViewing(m.userId, conversationId)))
-    .map(m => safeCreate({
-      receiverId: m.userId,
-      senderId,
-      type: "message",
-      title: senderName || "Tin nhắn mới",
-      content,
-      conversationId,
-      messageId: message._id,
-      extra: {
-        seq: message.seq,
-        type: message.type,
-        textPreview: message.body?.text || "",
-        senderId,
-        senderName: senderName || null,
-        senderAvatar: senderAvatar || null,
-        conversationId
-      },
-      status: "unread",
-    }));
+    const now = new Date();
+    const createdNotifs = [];
 
-    const created = await Promise.all(tasks);
-    return created.filter(Boolean);
+    for (const m of members) {
+      const receiverId = String(m.userId);
+
+      // 2.1 Bỏ qua nếu người nhận đang xem phòng (không cần tạo notification/không phát toast)
+      const isViewing = presence?.isOnline?.(receiverId) && presence?.isViewing?.(receiverId, conversationId);
+      if (isViewing) {
+        // Bạn có thể vẫn emit "message:new" (im lặng) để list/indicator đồng bộ nếu app cần:
+        io?.to?.(`user:${receiverId}`)?.emit?.("message:new", { conversationId, message });
+        continue;
+      }
+
+      // 2.2 Kiểm tra mute theo từng người
+      const muted =
+        !!m.notifications?.muted &&
+        (!m.notifications?.mutedUntil || new Date(m.notifications.mutedUntil) > now);
+
+      // 3) Lưu Notification vào DB (để badge/lịch sử). Nếu muốn không lưu khi mute -> có thể bỏ qua bước này.
+      const notif = await Notification.create({
+        receiverId: receiverId,
+        senderId: senderId,
+        type: "message",
+        title: senderName || "Tin nhắn mới",
+        content,
+        conversationId,
+        messageId: message._id,
+        extra: {
+          seq: message.seq,
+          type: message.type,
+          textPreview: message?.body?.text || "",
+          senderId,
+          senderName: senderName || null,
+          senderAvatar: senderAvatar || null,
+          conversationId
+        },
+        status: "unread"
+      });
+      createdNotifs.push(notif);
+
+      // 4) Socket emit theo trạng thái mute
+      if (muted) {
+        // Im lặng: không bắn notification:new (để FE không show toast/âm thanh)
+        // Có thể emit "message:new" để list cập nhật (badge/preview), không bật âm thanh/toast
+        io?.to?.(`user:${receiverId}`)?.emit?.("message:new", { conversationId, message });
+      } else {
+        // Không mute: bắn notification “ồn ào”
+        io?.to?.(`user:${receiverId}`)?.emit?.("notification:new", {
+          conversationId,
+          message,
+          senderName,
+          senderAvatar
+        });
+      }
+    }
+
+    return createdNotifs;
   } catch (e) {
     console.error("[notification][notifyMessage] failed:", e.message);
     throw e;
