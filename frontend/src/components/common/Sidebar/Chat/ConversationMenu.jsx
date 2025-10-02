@@ -1,7 +1,7 @@
-import { MoreHorizontal, Pin, Trash2 } from 'lucide-react'
+import { LogOut, MoreHorizontal, Pin, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
-const ConversationMenu = ({ conversationId, onDelete, onPin, isPinned = false }) => {
+const ConversationMenu = ({ conversationId, conversationType, onDelete, onLeave, onPin, isPinned = false }) => {
   const [isOpen, setIsOpen] = useState(false)
   const menuRef = useRef(null)
   const buttonRef = useRef(null)
@@ -36,6 +36,8 @@ const ConversationMenu = ({ conversationId, onDelete, onPin, isPinned = false })
       onDelete(conversationId)
     } else if (action === 'pin') {
       onPin(conversationId)
+    } else if (action === 'leave') {
+      onLeave(conversationId)
     }
   }
 
@@ -52,7 +54,7 @@ const ConversationMenu = ({ conversationId, onDelete, onPin, isPinned = false })
       {isOpen && (
         <div
           ref={menuRef}
-          className="absolute right-0 top-8 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 min-w-48"
+          className="absolute right-0 top-8 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 min-w-48 cursor-pointer"
         >
           <button
             onClick={(e) => handleAction('pin', e)}
@@ -69,6 +71,15 @@ const ConversationMenu = ({ conversationId, onDelete, onPin, isPinned = false })
             <Trash2 size={14} />
             Delete conversation
           </button>
+          {conversationType === "group" && (
+            <button
+              onClick={(e) => handleAction('leave', e)}
+              className="w-full px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-sm text-red-600 dark:text-red-400"
+            >
+              <LogOut size={14} />
+              Leave group
+            </button>
+          )}
         </div>
       )}
     </div>
