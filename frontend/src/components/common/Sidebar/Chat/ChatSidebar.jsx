@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate, useParams } from 'react-router-dom'
 
-import { getConversationByUserId, getConversations, searchUserByUsername } from '@/apis'
+import { deleteConversationAPI, getConversationByUserId, getConversations, searchUserByUsername } from '@/apis'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -17,6 +17,8 @@ import { useUnreadStore } from '@/store/useUnreadStore'
 
 // 🔌 socket chung
 import { connectSocket, getSocket } from '@/lib/socket'
+import { toast } from 'react-toastify'
+import ConversationMenu from './ConversationMenu'
 
 /* ========================= Helpers ========================= */
 
@@ -73,13 +75,16 @@ const buildConvFromSocket = (payload) => {
 /* ===================== Item component ====================== */
 
 function ConversationListItem({
-                                conversation,
-                                usersById,
-                                isActive,
-                                unread = 0,
-                                onClick,
-                                lastMessageText
-                              }) {
+  conversation,
+  usersById,
+  isActive,
+  unread = 0,
+  onClick,
+  lastMessageText,
+  onDelete,
+  onPin,
+  isPinned = false
+}) {
   const id = extractId(conversation)
 
   const status = conversation.type === 'direct'
@@ -111,7 +116,6 @@ function ConversationListItem({
 
   return (
     <div
-      key={id}
       onClick={onClick}
       className={`p-3 rounded-lg cursor-pointer transition-colors hover:bg-card-hover ${isActive ? 'bg-primary/10 border border-primary/20' : ''}`}
     >
@@ -133,6 +137,12 @@ function ConversationListItem({
             <h3 className={`truncate ${unread > 0 ? 'font-semibold text-foreground' : 'font-medium'}`}>
               {conversation.displayName}
             </h3>
+            <ConversationMenu
+              conversationId={id}
+              onDelete={onDelete}
+              onPin={onPin}
+              isPinned={isPinned}
+            />
 
             {unread > 0 && (
               <span
@@ -239,8 +249,8 @@ export function ChatSidebar({ currentView, onViewChange }) {
         setHasMore(newConversations.length === limit)
 
         const peers = newConversations
-        .map((c) => c?.direct?.otherUser)
-        .filter(Boolean)
+          .map((c) => c?.direct?.otherUser)
+          .filter(Boolean)
         if (peers.length) dispatch(upsertUsers(peers))
 
         if (page === 1) setInitialLoaded(true)
@@ -254,6 +264,70 @@ export function ChatSidebar({ currentView, onViewChange }) {
     },
     [limit, dispatch]
   )
+
+  //option for conversation (pin or delete)
+  const handleDeleteConversation = async (conversationId) => {
+    try {
+    // Hiển thị confirmation dialog
+      const confirmed = window.confirm('Bạn có chắc chắn muốn xóa lịch sử cuộc trở chuyện này? Hành động này không thể hoàn tác.')
+
+      if (!confirmed) return
+
+      await deleteConversationAPI(conversationId, { action: 'delete' })
+
+      // Cập nhật UI - xóa conversation khỏi danh sách NGAY LẬP TỨC
+      setConversationList(prev => {
+        console.log('Before filter:', prev.length) // Debug log
+        const filtered = prev.filter(conv => {
+          const convId = extractId(conv)
+          const shouldKeep = convId !== conversationId
+          if (!shouldKeep) {
+            console.log('Removing conversation:', convId) // Debug log
+          }
+          return shouldKeep
+        })
+        console.log('After filter:', filtered.length) // Debug log
+        return filtered
+      })
+
+      // Xóa unread count cho conversation này
+      setUnread(conversationId, 0)
+
+      toast.success('Đã xóa cuộc trò chuyện thành công')
+
+      // Nếu đang xem conversation này, chuyển về trang chính
+      if (activeIdFromURL === conversationId) {
+        navigate('/')
+      }
+
+    } catch (error) {
+      console.error('Error deleting conversation:', error)
+      toast.error(error.message || 'Có lỗi xảy ra khi xóa cuộc trò chuyện')
+    }
+  }
+
+  const handlePinConversation = async (conversationId) => {
+    try {
+      const conversation = conversationList.find(conv => extractId(conv) === conversationId)
+      const isPinned = conversation?.isPinned || false
+
+      // TODO: Implement pin API when backend is ready
+      // await pinConversationAPI(conversationId, isPinned)
+
+      // Cập nhật UI tạm thời (local state)
+      setConversationList(prev => prev.map(conv =>
+        extractId(conv) === conversationId
+          ? { ...conv, isPinned: !isPinned }
+          : conv
+      ))
+
+      toast.success(`Đã ${isPinned ? 'bỏ ghim' : 'ghim'} cuộc trò chuyện`)
+
+    } catch (error) {
+      console.error('Error pinning conversation:', error)
+      toast.error(error.message || 'Có lỗi xảy ra')
+    }
+  }
 
   // Initial load
   useEffect(() => {
@@ -668,6 +742,9 @@ export function ChatSidebar({ currentView, onViewChange }) {
                       unread={unread}
                       lastMessageText={getLastMessageText(conversation)}
                       onClick={() => handleClickConversation(conversation)}
+                      onDelete={handleDeleteConversation}
+                      onPin={handlePinConversation}
+                      isPinned={conversation.isPinned}
                     />
                   )
                 })}

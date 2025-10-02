@@ -7,6 +7,7 @@ import { messageService } from "./messageService";
 import { contactService } from "./contactService";
 import { mediaService } from "./mediaService";
 import { cloudinaryProvider } from "~/providers/CloudinaryProvider_v2";
+import Message from "~/models/messages";
 import Media from "~/models/medias";
 
 async function markFriendshipOnConversation(meId, convObj) {
