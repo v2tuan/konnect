@@ -48,34 +48,37 @@ export default function CallModal({
   const renderTile = (id) => {
     const isLocal = id === 'local'
     const stream = isLocal ? getLocalStream() : getRemoteStream(id)
-    const currentMode = isLocal ? mode : getPeerMode(id) // SỬA: Lấy mode riêng của từng peer
-    
-    // Check video tracks enabled
-    const hasVideo = stream?.getVideoTracks?.().some(track => track.enabled) || false
+    const currentMode = isLocal ? mode : getPeerMode(id)
+
+    // Render video when there is a video track present
+    const hasVideo = (stream?.getVideoTracks?.() || []).length > 0
     const isVideoMode = currentMode === 'video' && hasVideo
 
-    console.log(`[CallModal] Rendering tile ${id}:`, { 
-      hasStream: !!stream, 
-      hasVideo, 
-      currentMode, 
-      isVideoMode,
-      tracks: stream?.getTracks?.().length || 0
-    })
+    const attachAndPlay = (el, s, mute = false) => {
+      if (!el || !s) return
+      if (el.srcObject !== s) el.srcObject = s
+      el.muted = mute
+      const p = el.play?.()
+      if (p && typeof p.catch === 'function') {
+        p.catch(() => {
+          // Autoplay might be blocked until user interaction; ignore
+        })
+      }
+    }
 
     return (
       <div key={id} className="relative bg-black rounded-md overflow-hidden">
         {isVideoMode ? (
           <video
             ref={el => {
-              if (isLocal) {
-                localVideoRef.current = el;
-              } else if (el && stream && el.srcObject !== stream) {
-                el.srcObject = stream;
-              }
+              if (!el) return
+              // Mute both local and remote <video> to satisfy autoplay policy.
+              // Remote audio is handled by the separate <audio> element below.
+              attachAndPlay(el, stream, true)
+              if (isLocal) localVideoRef.current = el
             }}
             autoPlay
             playsInline
-            muted={isLocal}
             className="w-full h-full object-cover"
           />
         ) : (
@@ -86,21 +89,23 @@ export default function CallModal({
             <div className="text-sm opacity-60">Audio Mode</div>
           </div>
         )}
-        
-        {/* Audio element cho remote peer */}
+
         {!isLocal && (
-          <audio 
-            autoPlay 
-            ref={(el) => { 
-              if (el && stream && el.srcObject !== stream) {
-                console.log(`[CallModal] Setting audio srcObject for ${id}`)
-                el.srcObject = stream 
+          <audio
+            autoPlay
+            ref={(el) => {
+              if (!el) return
+              if (stream && el.srcObject !== stream) {
+                el.srcObject = stream
               }
-            }} 
+              const p = el.play?.()
+              if (p && typeof p.catch === 'function') {
+                p.catch(() => {})
+              }
+            }}
           />
         )}
-        
-        {/* Audio element cho local nếu audio mode */}
+
         {isLocal && currentMode === 'audio' && (
           <audio autoPlay muted ref={localAudioRef} />
         )}

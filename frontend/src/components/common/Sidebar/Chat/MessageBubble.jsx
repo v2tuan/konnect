@@ -412,7 +412,7 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
               <Tabs defaultValue='explore' className='gap-4'>
                 <TabsList className='bg-background rounded-none border-b p-0'>
                   {
-                    console.log('userEmojiMap', userEmojiMap)
+                    // console.log('userEmojiMap', userEmojiMap)
                   }
                   <TabsTrigger
                     value='all'

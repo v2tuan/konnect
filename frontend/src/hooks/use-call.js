@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { getWebRTCSocket } from '@/lib/socket'
 
-const ICE = { iceServers: [{ urls: ['stun:stun.l.google.com:19302'] }] }
+const ICE = {
+  iceServers: [
+    { urls: ['stun:stun.l.google.com:19302'] },
+    // Replace with your TURN server
+    // { urls: 'turn:your.turn.host:3478', username: 'user', credential: 'pass' }
+  ],
+  iceCandidatePoolSize: 10
+}
 
 export function useWebRTCGroup({ roomId, currentUserId, initialMode = 'video', callId }) {
   const [mode, setMode] = useState(initialMode)
@@ -13,6 +20,9 @@ export function useWebRTCGroup({ roomId, currentUserId, initialMode = 'video', c
   const remoteStreamsRef = useRef(new Map())
   const socketRef = useRef(null)
   const peerIdsRef = useRef([])
+
+  // Per-peer negotiation state
+  const pcStateRef = useRef(new Map()) // peerId -> { makingOffer, polite }
 
   const ensureLocalStream = async (target = mode) => {
     const needVideo = target === 'video'
@@ -53,6 +63,13 @@ export function useWebRTCGroup({ roomId, currentUserId, initialMode = 'video', c
     const pc = new RTCPeerConnection(ICE)
     pcsRef.current.set(peerId, pc)
 
+    pc.onconnectionstatechange = () => {
+      console.log('[WebRTC] PC', peerId, 'connectionState:', pc.connectionState)
+    }
+    pc.oniceconnectionstatechange = () => {
+      console.log('[WebRTC] PC', peerId, 'iceConnectionState:', pc.iceConnectionState)
+    }
+
     pc.ontrack = (e) => {
       console.log('[WebRTC] Received remote track from', peerId, 'kind:', e.track.kind)
       const remoteStream = e.streams[0]
@@ -82,38 +99,54 @@ export function useWebRTCGroup({ roomId, currentUserId, initialMode = 'video', c
     const stream = localStreamRef.current
     if (!stream) return
 
-    // Xóa tất cả senders cũ trước
-    pc.getSenders().forEach(sender => {
-      pc.removeTrack(sender)
-    })
-
-    // Thêm tracks mới
+    // Prefer replaceTrack to keep transceivers/mids stable
     stream.getTracks().forEach(track => {
-      console.log('[WebRTC] Adding local track to PC:', track.kind, track.label)
-      pc.addTrack(track, stream)
+      const sender = pc.getSenders().find(s => s.track && s.track.kind === track.kind)
+      if (sender) {
+        console.log('[WebRTC] Replacing local track on PC:', track.kind, track.label)
+        sender.replaceTrack(track)
+      } else {
+        console.log('[WebRTC] Adding local track to PC:', track.kind, track.label)
+        pc.addTrack(track, stream)
+      }
     })
+  }
+
+  const ensurePeerState = (peerId) => {
+    if (!pcStateRef.current.has(peerId)) {
+      const polite = (socketRef.current?.id || '') < (peerId || '')
+      pcStateRef.current.set(peerId, { makingOffer: false, polite })
+    }
+    return pcStateRef.current.get(peerId)
+  }
+
+  const createAndSendOffer = async (peerId) => {
+    const pc = createPC(peerId)
+    const st = ensurePeerState(peerId)
+    try {
+      st.makingOffer = true
+      const offer = await pc.createOffer()
+      await pc.setLocalDescription(offer)
+      socketRef.current?.emit('rtc-offer', {
+        to: peerId,
+        sdp: pc.localDescription,
+        from: socketRef.current.id
+      })
+      console.log('[WebRTC] Sent offer to', peerId)
+    } catch (err) {
+      console.error('[WebRTC] Error creating/sending offer:', err)
+    } finally {
+      st.makingOffer = false
+    }
   }
 
   // Renegotiate tất cả connections khi local stream thay đổi
   const renegotiateAllConnections = async () => {
     console.log('[WebRTC] Renegotiating all connections...')
-
     for (const [peerId, pc] of pcsRef.current) {
       try {
-        // Cập nhật tracks
         addLocalTracksTo(pc)
-
-        // Tạo offer mới
-        const offer = await pc.createOffer()
-        await pc.setLocalDescription(offer)
-
-        socketRef.current?.emit('rtc-offer', {
-          to: peerId,
-          sdp: offer,
-          from: socketRef.current.id
-        })
-
-        console.log('[WebRTC] Sent renegotiation offer to', peerId)
+        await createAndSendOffer(peerId)
       } catch (err) {
         console.error('[WebRTC] Error renegotiating with', peerId, err)
       }
@@ -126,21 +159,9 @@ export function useWebRTCGroup({ roomId, currentUserId, initialMode = 'video', c
 
     peerIds.forEach(async (peerId) => {
       if (!pcsRef.current.has(peerId)) {
-        const pc = createPC(peerId)
-
-        try {
-          const offer = await pc.createOffer()
-          await pc.setLocalDescription(offer)
-
-          socketRef.current?.emit('rtc-offer', {
-            to: peerId,
-            sdp: offer,
-            from: socketRef.current.id
-          })
-          console.log('[WebRTC] Sent offer to', peerId)
-        } catch (err) {
-          console.error('[WebRTC] Error creating offer:', err)
-        }
+        createPC(peerId)
+        // Initiate negotiation from one side; glare-safe below
+        await createAndSendOffer(peerId)
       }
     })
   }, [peerIds])
@@ -195,24 +216,42 @@ export function useWebRTCGroup({ roomId, currentUserId, initialMode = 'video', c
     // ===== THÊM: Xử lý mode change từ peer =====
     const onPeerModeChanged = ({ peerId, mode: peerMode }) => {
       console.log('[WebRTC] Peer', peerId, 'changed mode to:', peerMode)
-      setPeerModes(prev => new Map(prev.set(peerId, peerMode)))
-
-      // Force re-render để cập nhật UI
+      setPeerModes(prev => {
+        const next = new Map(prev)
+        next.set(peerId, peerMode)
+        return next
+      })
       setPeerIds(prev => [...prev])
     }
 
     const onRtcOffer = async ({ from, sdp }) => {
       console.log('[WebRTC] Received offer from', from)
       const pc = createPC(from)
+      const st = ensurePeerState(from)
+
+      const offerCollision = pc.signalingState !== 'stable' || st.makingOffer
+      const ignoreOffer = !st.polite && offerCollision
+      if (ignoreOffer) {
+        console.warn('[WebRTC] Ignoring offer due to glare (impolite)')
+        return
+      }
 
       try {
-        await pc.setRemoteDescription(sdp)
+        if (offerCollision) {
+          await Promise.all([
+            pc.setLocalDescription({ type: 'rollback' }),
+            pc.setRemoteDescription(sdp)
+          ])
+        } else {
+          await pc.setRemoteDescription(sdp)
+        }
+
         const answer = await pc.createAnswer()
         await pc.setLocalDescription(answer)
 
         socket.emit('rtc-answer', {
           to: from,
-          sdp: answer,
+          sdp: pc.localDescription,
           from: socket.id
         })
         console.log('[WebRTC] Sent answer to', from)
@@ -224,12 +263,11 @@ export function useWebRTCGroup({ roomId, currentUserId, initialMode = 'video', c
     const onRtcAnswer = async ({ from, sdp }) => {
       console.log('[WebRTC] Received answer from', from)
       const pc = pcsRef.current.get(from)
-      if (pc) {
-        try {
-          await pc.setRemoteDescription(sdp)
-        } catch (err) {
-          console.error('[WebRTC] Error handling answer:', err)
-        }
+      if (!pc) return
+      try {
+        await pc.setRemoteDescription(sdp)
+      } catch (err) {
+        console.error('[WebRTC] Error handling answer:', err)
       }
     }
 
@@ -276,7 +314,7 @@ export function useWebRTCGroup({ roomId, currentUserId, initialMode = 'video', c
   // Controls
   const getLocalStream = () => localStreamRef.current || null
   const getRemoteStream = (peerId) => remoteStreamsRef.current.get(peerId) || null
-  const getPeerMode = (peerId) => peerModes.get(peerId) || 'audio' // Lấy mode của peer
+  const getPeerMode = (peerId) => peerModes.get(peerId) || 'video'
 
   const toggleMute = () => {
     const stream = localStreamRef.current
