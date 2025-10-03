@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
-import ConversationMember from "~/models/conversation_members";
 import Conversation from "~/models/conversations";
+import ConversationMember from "~/models/conversation_members";
 import User from "~/models/user";
 import { toOid } from "~/utils/formatter";
 import { messageService } from "./messageService";
@@ -717,15 +717,32 @@ async function assertIsMember(userId, conversationId) {
   }
 }
 
-async function listConversationMedia({ userId, conversationId, type, page, limit, q }) {
-  if (!mongoose.isValidObjectId(conversationId)) {
-    const err = new Error("Invalid conversationId");
-    err.status = 400;
-    throw err;
+async function listConversationMedia({ userId, conversationId, type, page = 1, limit = 24, q }) {
+  let cid = conversationId;
+
+  // Fallback: nếu id không hợp lệ, coi là Cloud của user → tạo nếu chưa có
+  if (!mongoose.isValidObjectId(cid)) {
+    let cloud = await Conversation.findOne({ type: "cloud", "cloud.ownerId": userId });
+    if (!cloud) {
+      cloud = await Conversation.create({ type: "cloud", cloud: { ownerId: userId } });
+    }
+    await ConversationMember.updateOne(
+      { conversation: cloud._id, userId },
+      { $setOnInsert: { role: "owner", joinedAt: new Date(), lastReadMessageSeq: 0 } },
+      { upsert: true }
+    );
+    cid = String(cloud._id);
   }
 
-  // phải là thành viên
-  await assertIsMember(userId, conversationId);
+  const convIdObj = new mongoose.Types.ObjectId(cid);
+
+  // Đảm bảo là member (cloud đã upsert ở trên)
+  const member = await ConversationMember.findOne({ conversation: convIdObj, userId }).lean();
+  if (!member) {
+    const err = new Error("You are not a member of this conversation");
+    err.status = 403;
+    throw err;
+  }
 
   const p = Math.max(1, Number(page) || 1);
   const l = Math.max(1, Math.min(50, Number(limit) || 24));

@@ -103,15 +103,12 @@ export const getConversations = async (page, limit) => {
   return response.data
 }
 export const fetchConversationMedia = async ({ conversationId, type, page = 1, limit = 24, q = "" }) => {
-  const params = { page, limit };
-  if (type) params.type = type;
-  if (q) params.q = q;
-
-  const { data } = await authorizeAxiosInstance.get(
-    `${API_ROOT}/api/conversation/${conversationId}/media`, // đảm bảo path đúng với BE của bạn
-    { params }
-  );
-  return data; // { page, limit, total, hasMore, items, quickPreview?, summary? }
+  if (!conversationId) return { data: [], paging: { hasMore: false, nextPage: null } }
+  const params = { page, limit }
+  if (type) params.type = type
+  if (q) params.q = q
+  const { data } = await authorizeAxiosInstance.get(`${API_ROOT}/api/conversation/${conversationId}/media`, { params })
+  return data
 };
 
 // 🔕 Mute

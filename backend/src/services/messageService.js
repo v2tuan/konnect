@@ -154,6 +154,17 @@ async function sendMessage({ userId, conversationId, type, text, file, io }) {
       }
     }
   )
+
+  // BẢO ĐẢM membership cho cloud owner (đồng thời cập nhật lastRead)
+  await ConversationMember.updateOne(
+    { conversation: conversationId, userId },
+    {
+      $max: { lastReadMessageSeq: seq },
+      ...(conversation.type === "cloud" ? { $setOnInsert: { role: "owner", joinedAt: now } } : {})
+    },
+    { upsert: conversation.type === "cloud" }
+  );
+
   await ConversationMember.updateOne(
     { conversation: conversationId, userId },
     { $max: { lastReadMessageSeq: seq } }  // không bao giờ lùi tiến độ
@@ -265,19 +276,42 @@ async function setReaction({ userId, messageId, emoji, io }) {
 }
 
 async function listMessages({ userId, conversationId, limit = 30, beforeSeq }) {
-  if (!mongoose.isValidObjectId(conversationId)) throw new Error("Invalid conversationId")
+  if (!mongoose.isValidObjectId(conversationId)) {
+    let cloud = await Conversation.findOne({ type: "cloud", "cloud.ownerId": userId });
+    if (!cloud) {
+      cloud = await Conversation.create({ type: "cloud", cloud: { ownerId: userId } });
+    }
+    await ConversationMember.updateOne(
+      { conversation: cloud._id, userId },
+      { $setOnInsert: { role: "owner", joinedAt: new Date(), lastReadMessageSeq: 0 } },
+      { upsert: true }
+    );
+    conversationId = String(cloud._id);
+  }
 
-  const convo = await Conversation.findById(conversationId).lean()
-  if (!convo) throw new Error("Conversation not found")
+  const convo = await Conversation.findById(conversationId).lean();
+  if (!convo) throw new Error("Conversation not found");
   await assertCanAccessConversation(userId, convo)
 
-  // Debug: Kiểm tra conversation member
-  const member = await ConversationMember.findOne({
+  // Kiểm tra membership; riêng cloud: owner được auto-join (tạo membership nếu thiếu)
+  let member = await ConversationMember.findOne({
     conversation: conversationId,
     userId: userId
   }).lean()
 
-  if (!member) throw new Error("You are not a member of this conversation")
+  if (!member) {
+    if (convo.type === "cloud" && String(convo.cloud?.ownerId) === String(userId)) {
+      await ConversationMember.create({
+        conversation: conversationId,
+        userId,
+        role: "owner",
+        joinedAt: new Date(),
+        lastReadMessageSeq: 0
+      })
+    } else {
+      throw new Error("You are not a member of this conversation")
+    }
+  }
 
   const q = { conversationId: new mongoose.Types.ObjectId(conversationId) }
   
