@@ -9,6 +9,7 @@ import { mediaService } from "./mediaService";
 import { cloudinaryProvider } from "~/providers/CloudinaryProvider_v2";
 import Message from "~/models/messages";
 import Media from "~/models/medias";
+import { SYSTEM_SENDER, SYSTEM_USER_ID } from "~/utils/constant";
 
 async function markFriendshipOnConversation(meId, convObj) {
   try {
@@ -648,30 +649,29 @@ const leaveGroup = async (userId, conversationId, io) => {
   })
 
   // Tạo tin nhắn thông báo
+  const nextSeq = (conversation.messageSeq || 0) + 1;
   const notificationMessage = await Message.create({
     conversationId: new mongoose.Types.ObjectId(conversationId),
-    seq: conversation.messageSeq + 1,
-    senderId: new mongoose.Types.ObjectId(userId),
+    seq: nextSeq,
+    senderId: SYSTEM_USER_ID,
     type: 'notification',
-    body: {
-      text: `${userName} đã rời khỏi nhóm`
-    },
+    body: { text: `${userName} đã rời khỏi nhóm` },
     createdAt: new Date()
   })
 
   // Cập nhật messageSeq của conversation
-await Conversation.updateOne(
+  await Conversation.updateOne(
     { _id: conversationId },
     {
       $inc: { messageSeq: 1 },
       $set: {
         lastMessage: {
-          seq: conversation.messageSeq + 1,
+          seq: nextSeq,
           messageId: notificationMessage._id,
           type: 'notification',
           textPreview: `${userName} đã rời khỏi nhóm`,
-          senderId: userId,
-          createdAt: new Date()
+          senderId: SYSTEM_USER_ID, // <<-- system sender cho preview
+          createdAt: notificationMessage.createdAt
         },
         updatedAt: new Date()
       }
@@ -683,24 +683,23 @@ await Conversation.updateOne(
     message: {
       _id: notificationMessage._id,
       conversationId,
-      seq: conversation.messageSeq + 1,
+      seq: nextSeq,
       type: 'notification',
       body: { text: `${userName} đã rời khỏi nhóm` },
-      senderId: userId,
+      senderId: SYSTEM_USER_ID,
+      sender: SYSTEM_SENDER,
       createdAt: notificationMessage.createdAt
     }
   }
 
   // Emit cho các thành viên còn lại
   if (io) {
-    // Giữ event cũ (nếu bạn đang dùng nơi khác để cập nhật UI members)
     io.to(`conversation:${conversationId}`).emit('member:left', {
       conversationId,
-      userId,
+      userId,      // ai đã rời nhóm (để UI khác nếu cần)
       userName,
       message: payload.message
     })
-    // QUAN TRỌNG: emit "message:new" để FE cập nhật preview/unread ngay
     io.to(`conversation:${conversationId}`).emit('message:new', payload)
   }
 
