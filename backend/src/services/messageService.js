@@ -169,6 +169,30 @@ async function sendMessage({ userId, conversationId, type, text, file, io }) {
   if (io) {
     io.to(`conversation:${conversationId}`).emit("message:new", payload)
   }
+  
+  try {
+    const deletedMembers = await ConversationMember.find({
+      conversation: conversationId,
+      deletedAt: { $ne: null }
+    }).select("userId").lean()
+
+    if (deletedMembers.length) {
+      // Clear cờ deleted để hội thoại xuất hiện lại ở danh sách
+      await ConversationMember.updateMany(
+        { conversation: conversationId, deletedAt: { $ne: null } },
+        { $set: { deletedAt: null, deletedAtSeq: null } }
+      )
+
+      // Gửi message:new trực tiếp tới user-room để FE có thể thêm lại vào list ngay
+      if (io) {
+        deletedMembers.forEach(m => {
+          io.to(`user:${m.userId}`).emit("message:new", payload)
+        })
+      }
+    }
+  } catch (e) {
+    console.error("[messageService][reviveOnNewMessage] failed:", e.message)
+  }
 
   // 7) Emit badge:update cho các thành viên khác
   if (io) {
