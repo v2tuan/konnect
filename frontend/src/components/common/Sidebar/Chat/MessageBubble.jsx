@@ -93,6 +93,14 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
     [message.reactions]
   )
 
+  // Nhận diện System message
+  const SYSTEM_ID_FALLBACK = '000000000000000000000000'
+  const sysSid = (message?.sender?._id || message?.senderId || '').toString()
+  const sysName = (message?.sender?.fullName || message?.sender?.username || '').trim().toLowerCase()
+  const isSystemMessage =
+    sysName === 'system' ||
+    sysSid === SYSTEM_ID_FALLBACK
+
   const [usersData, setUsersData] = useState({}) // userId -> user info
   useEffect(() => {
     const userIds = Object.keys(userEmojiMap)
@@ -174,12 +182,14 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
 
   return (
     <div
-      className={`flex gap-2 ${message.reactions.length > 0 ? 'mb-4' : 'mb-2'} ${isOwn ? 'justify-end' : 'justify-start'}`}
+      className={`flex gap-2 ${message.reactions.length > 0 ? 'mb-4' : 'mb-2'} ${
+        isSystemMessage ? 'justify-center' : (isOwn ? 'justify-end' : 'justify-start')
+      }`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {/* Avatar bên trái cho tin nhắn của người khác */}
-      {!isOwn && showAvatar && (
+      {/* Avatar: ẩn hoàn toàn với system message */}
+      {!isOwn && showAvatar && !isSystemMessage && (
         <Avatar className="w-8 h-8">
           <AvatarImage src={isGroup ? sender?.avatarUrl : conversation?.direct?.otherUser?.avatarUrl} />
           <AvatarFallback>
@@ -188,67 +198,73 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
         </Avatar>
       )}
 
-      <div className={`relative max-w-[70%] ${isOwn ? 'order-first' : ''}`}>
-        {/* Tên người gửi (chỉ group + không phải của mình) */}
-        {isGroup && !isOwn && (
+      <div className={`relative ${isSystemMessage ? 'max-w-[80%]' : 'max-w-[70%]'} ${isOwn ? 'order-first' : ''}`}>
+        {/* Tên người gửi: ẩn nếu là system */}
+        {isGroup && !isOwn && !isSystemMessage && (
           <div className="mb-1 ml-1 text-[11px] font-medium text-gray-500">
             {sender?.fullName || sender?.username || 'User'}
           </div>
         )}
 
-        {/* Action bar nổi hai bên bubble */}
-        <div
-          className={`
-            z-[999] pointer-events-auto absolute top-1/2 -translate-y-1/2
-            ${isOwn ? '-left-22' : '-right-22'}
-            opacity-0 transition-opacity duration-150
-            ${hovered ? 'opacity-100' : 'opacity-0'}
-            flex items-center gap-1
-          `}
-        >
-          <Button size="sm" variant="ghost" className="h-6 w-6 p-0">
-            <Reply className="w-3 h-3" />
-          </Button>
+        {/* Action bar: ẩn nếu là system */}
+        {!isSystemMessage && (
+          <div
+            className={`
+              z-[999] pointer-events-auto absolute top-1/2 -translate-y-1/2
+              ${isOwn ? '-left-22' : '-right-22'}
+              opacity-0 transition-opacity duration-150
+              ${hovered ? 'opacity-100' : 'opacity-0'}
+              flex items-center gap-1
+            `}
+          >
+            <Button size="sm" variant="ghost" className="h-6 w-6 p-0">
+              <Reply className="w-3 h-3" />
+            </Button>
 
-          <ReactionButton messageId={message.id} />
+            <ReactionButton messageId={message.id} />
 
-          <Button size="sm" variant="ghost" className="h-6 w-6 p-0">
-            <MoreHorizontal className="w-3 h-3" />
-          </Button>
-        </div>
+            <Button size="sm" variant="ghost" className="h-6 w-6 p-0">
+              <MoreHorizontal className="w-3 h-3" />
+            </Button>
+          </div>
+        )}
 
         <div className='relative'>
-          {/* Bubble */}
-          {message.media && message.media.length > 0 ? (
-            (
-              <>
-                <div className="space-y-2">
-                  {/* Phân loại media thành images và files */}
-                  {(() => {
-                    const images = message.media.filter(m => m.type === 'image')
-                    const files = message.media.filter(m => m.type === 'file')
-                    const audios = message.media.filter(m => m.type === 'audio')
-
-                    return (
-                      <>
-                        {/* Hiển thị images với grid layout */}
-                        {images.length > 0 && (
-                          <div className={`
+          {/* System message: chip giữa, chỉ hiển thị text */}
+          {isSystemMessage ? (
+            <div className="px-3 py-1 rounded-full bg-muted text-muted-foreground text-xs text-center whitespace-pre-wrap">
+              {message.text ?? message.body?.text ?? ''}
+            </div>
+          ) : (
+            <>
+              {/* Bubble thường (media hoặc text) */}
+              {message.media && message.media.length > 0 ? (
+                <>
+                  <div className="space-y-2">
+                    {(() => {
+                      const images = message.media.filter(m => m.type === 'image')
+                      const files = message.media.filter(m => m.type === 'file')
+                      const audios = message.media.filter(m => m.type === 'audio')
+                      return (
+                        <>
+                          {/* Hiển thị images với grid layout */}
+                          {images.length > 0 && (
+                            <div className={`
             ${images.length === 1 ? 'flex justify-center' :
-                            images.length === 2 ? 'grid grid-cols-2 gap-2' :
-                              images.length <= 4 ? 'grid grid-cols-2 gap-2 max-w-md' :
-                                'grid grid-cols-3 gap-2 max-w-lg'
+                                images.length === 2 ? 'grid grid-cols-2 gap-2' :
+                                  images.length <= 4 ? 'grid grid-cols-2 gap-2 max-w-md' :
+                                    'grid grid-cols-3 gap-2 max-w-lg'
                           }
           `}>
-                            {images.map((media, index) => (
-                              <div key={`image-${index}`} className="relative">
-                                {message.isPinned && (
-                                  <Pin className="absolute top-1 right-1 w-3 h-3 text-yellow-500 z-10" />
-                                )}
-                                <img
-                                  src={media.url ?? message.body?.media?.url}
-                                  alt={media.metadata?.filename || "message attachment"}
-                                  className={`
+                              {images.map((media, index) => (
+                                <div key={`image-${index}`} className="relative">
+                                  {message.isPinned && (
+                                    <Pin className="absolute top-1 right-1 w-3 h-3 text-yellow-500 z-10" />
+                                  )}
+                                  <img
+                                    src={media.url ?? message.body?.media?.url}
+                                    alt={media.metadata?.filename || "message attachment"}
+                                    className={`
                     rounded-lg shadow-md object-cover
                     ${images.length === 1 ? 'max-w-sm max-h-96 w-full' :
                                 images.length === 2 ? 'w-full h-32 sm:h-40' :
@@ -257,252 +273,251 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                               }
                     hover:shadow-lg transition-shadow duration-200 cursor-pointer
                   `}
-                                  onClick={() => {
-                                    // Có thể thêm function để mở ảnh full size
-                                    // openImageModal(media.url ?? message.body?.media?.url);
-                                  }}
-                                />
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        {/* Hiển thị files dạng danh sách */}
-                        {files.length > 0 && (
-                          <div className="space-y-1">
-                            {files.map((media, index) => (
-                              <div
-                                key={`file-${index}`}
-                                className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg border border-gray-200 transition-colors duration-200"
-                              >
-                                {/* File icon dựa trên mimetype */}
-                                <div className="flex-shrink-0">
-                                  {(() => {
-                                    const mimetype = media.metadata?.mimetype || ''
-                                    if (mimetype.includes('pdf')) {
-                                      return <FileText className="w-8 h-8 text-red-500" />
-                                    } else if (mimetype.includes('word') || mimetype.includes('document')) {
-                                      return <FileText className="w-8 h-8 text-blue-500" />
-                                    } else if (mimetype.includes('sheet') || mimetype.includes('excel')) {
-                                      return <FileSpreadsheet className="w-8 h-8 text-green-500" />
-                                    } else if (mimetype.includes('zip') || mimetype.includes('rar') || mimetype.includes('archive')) {
-                                      return <Archive className="w-8 h-8 text-yellow-600" />
-                                    } else if (mimetype.includes('video')) {
-                                      return <Video className="w-8 h-8 text-purple-500" />
-                                    } else if (mimetype.includes('audio')) {
-                                      return <Music className="w-8 h-8 text-pink-500" />
-                                    } else {
-                                      return <File className="w-8 h-8 text-gray-500" />
-                                    }
-                                  })()}
+                                    onClick={() => {
+                                      // Có thể thêm function để mở ảnh full size
+                                      // openImageModal(media.url ?? message.body?.media?.url);
+                                    }}
+                                  />
                                 </div>
+                              ))}
+                            </div>
+                          )}
 
-                                {/* File info */}
-                                <div className="flex-1 min-w-0">
-                                  <div className="text-sm font-medium text-gray-900 truncate">
-                                    {media.metadata?.filename || 'Unknown file'}
+                          {/* Hiển thị files dạng danh sách */}
+                          {files.length > 0 && (
+                            <div className="space-y-1">
+                              {files.map((media, index) => (
+                                <div
+                                  key={`file-${index}`}
+                                  className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg border border-gray-200 transition-colors duration-200"
+                                >
+                                  {/* File icon dựa trên mimetype */}
+                                  <div className="flex-shrink-0">
+                                    {(() => {
+                                      const mimetype = media.metadata?.mimetype || ''
+                                      if (mimetype.includes('pdf')) {
+                                        return <FileText className="w-8 h-8 text-red-500" />
+                                      } else if (mimetype.includes('word') || mimetype.includes('document')) {
+                                        return <FileText className="w-8 h-8 text-blue-500" />
+                                      } else if (mimetype.includes('sheet') || mimetype.includes('excel')) {
+                                        return <FileSpreadsheet className="w-8 h-8 text-green-500" />
+                                      } else if (mimetype.includes('zip') || mimetype.includes('rar') || mimetype.includes('archive')) {
+                                        return <Archive className="w-8 h-8 text-yellow-600" />
+                                      } else if (mimetype.includes('video')) {
+                                        return <Video className="w-8 h-8 text-purple-500" />
+                                      } else if (mimetype.includes('audio')) {
+                                        return <Music className="w-8 h-8 text-pink-500" />
+                                      } else {
+                                        return <File className="w-8 h-8 text-gray-500" />
+                                      }
+                                    })()}
                                   </div>
-                                  <div className="text-xs text-gray-500 flex items-center gap-2">
-                                    <span>{formatFileSize(media.metadata?.size)}</span>
-                                    {/* {media.metadata?.mimetype && (
-                                    <span className="text-gray-400">•</span>
+
+                                  {/* File info */}
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-sm font-medium text-gray-900 truncate">
+                                      {media.metadata?.filename || 'Unknown file'}
+                                    </div>
+                                    <div className="text-xs text-gray-500 flex items-center gap-2">
+                                      <span>{formatFileSize(media.metadata?.size)}</span>
+                                      {/* {media.metadata?.mimetype && (
+                                      <span className="text-gray-400">•</span>
+                                    )}
+                                    {media.metadata?.mimetype && (
+                                      <span>{media.metadata.mimetype.split('/')[1]?.toUpperCase()}</span>
+                                    )} */}
+                                    </div>
+                                  </div>
+
+                                  {/* Download icon */}
+                                  <div className="flex-shrink-0">
+                                    <button
+                                      onClick={() =>
+                                        handleDownload(media.secure_url, media.metadata?.filename || 'file.jpg')
+                                      }
+                                    >
+                                      <Download className="w-4 h-4 text-gray-400 cursor-pointer" />
+                                    </button>
+
+
+                                  </div>
+
+                                  {/* Pin icon nếu message được pin */}
+                                  {message.isPinned && (
+                                    <Pin className="w-3 h-3 text-yellow-500" />
                                   )}
-                                  {media.metadata?.mimetype && (
-                                    <span>{media.metadata.mimetype.split('/')[1]?.toUpperCase()}</span>
-                                  )} */}
-                                  </div>
                                 </div>
+                              ))}
+                            </div>
+                          )}
 
-                                {/* Download icon */}
-                                <div className="flex-shrink-0">
-                                  <button
-                                    onClick={() =>
-                                      handleDownload(media.secure_url, media.metadata?.filename || 'file.jpg')
-                                    }
-                                  >
-                                    <Download className="w-4 h-4 text-gray-400 cursor-pointer" />
-                                  </button>
-
-
-                                </div>
-
-                                {/* Pin icon nếu message được pin */}
-                                {message.isPinned && (
-                                  <Pin className="w-3 h-3 text-yellow-500" />
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        {/* Hiển thị audio */}
-                        {audios.length > 0 && (
-                          <div className="space-y-2">
-                            {audios.map((media, index) => (
-                              <div
-                                key={`audio-${index}`}
-                                className={`flex items-center gap-2 p-2 max-w-xs rounded-sm
+                          {/* Hiển thị audio */}
+                          {audios.length > 0 && (
+                            <div className="space-y-2">
+                              {audios.map((media, index) => (
+                                <div
+                                  key={`audio-${index}`}
+                                  className={`flex items-center gap-2 p-2 max-w-xs rounded-sm
           ${message.isOwn ? 'ml-auto bg-primary/10 border border-primary rounded-l-lg rounded-tr-lg'
                                 : 'mr-auto bg-gray-100 text-black rounded-r-lg rounded-tl-lg'} 
           shadow-sm`}
-                              >
-                                {/* Audio player mở rộng đúng flex */}
-                                <audio controls className="flex-1 min-w-0">
-                                  <source src={media.url} type={media.metadata?.mimetype || 'audio/webm'} />
-                                  Your browser does not support the audio element.
-                                </audio>
+                                >
+                                  {/* Audio player mở rộng đúng flex */}
+                                  <audio controls className="flex-1 min-w-0">
+                                    <source src={media.url} type={media.metadata?.mimetype || 'audio/webm'} />
+                                    Your browser does not support the audio element.
+                                  </audio>
 
-                                {/* Icon Pin nếu có */}
-                                {message.isPinned && (
-                                  <Pin className="w-4 h-4 text-yellow-500 shrink-0" />
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        )}
+                                  {/* Icon Pin nếu có */}
+                                  {message.isPinned && (
+                                    <Pin className="w-4 h-4 text-yellow-500 shrink-0" />
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
 
-                      </>
-                    )
-                  })()}
+                        </>
+                      )
+                    })()}
+                  </div>
+                </>
+              ) : (
+                <div
+                  className={`
+                    relative p-3 rounded-sm
+                    ${isOwn
+                    ? 'bg-primary/10 border border-primary rounded-br-sm'
+                    : 'bg-secondary text-secondary-foreground rounded-bl-sm'
+                    }
+                  `}
+                >
+                  {message.isPinned && (
+                    <Pin className="absolute top-1 right-1 w-3 h-3 text-yellow-500" />
+                  )}
+                  <p className="text-sm whitespace-pre-wrap break-words">
+                    {message.text ?? message.body?.text ?? ''}
+                  </p>
                 </div>
-              </>
-            )
-          ) : (
-            // Nếu là text thì render bubble
-            <div
-              className={`
-      relative p-3 rounded-sm
-      ${isOwn
-              ? 'bg-primary/10 border border-primary rounded-br-sm'
-              : 'bg-secondary text-secondary-foreground rounded-bl-sm'
-            }
-    `}
-            >
-              {message.isPinned && (
-                <Pin className="absolute top-1 right-1 w-3 h-3 text-yellow-500" />
               )}
 
-              <p className="text-sm whitespace-pre-wrap break-words">
-                {message.text ?? message.body?.text ?? ''}
-              </p>
-
-            </div>
+              {/* Reactions bubble anchor */}
+              {Array.isArray(message.reactions) && message.reactions.length > 0 && (() => {
+                return (
+                  <div className="absolute -bottom-2 right-2 cursor-pointer shadow-sm rounded-full border" onClick={() => setOpen(true)}>
+                    <Badge variant="secondary" className="text-xs flex gap-1">
+                      {topEmojis.map(reaction => reaction.emoji).join(' ')} {message.reactions.length}
+                    </Badge>
+                  </div>
+                )
+              })()}
+            </>
           )}
-
-          {Array.isArray(message.reactions) && message.reactions.length > 0 && (() => {
-
-            return (
-              <div className="absolute -bottom-2 right-2 cursor-pointer shadow-sm rounded-full border" onClick={() => setOpen(true)}>
-                <Badge variant="secondary" className="text-xs flex gap-1">
-                  {/* Hiển thị tất cả emoji */}
-                  {topEmojis.map(reaction => reaction.emoji).join(' ')} {message.reactions.length}
-                </Badge>
-              </div>
-            )
-          })()}
         </div>
 
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogContent className="sm:max-w-[400px] max-h-[60vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle className="text-center">Reactions</DialogTitle>
-            </DialogHeader>
+        {/* Dialog reactions giữ nguyên */}
+        {!isSystemMessage && (
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogContent className="sm:max-w-[400px] max-h-[60vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle className="text-center">Reactions</DialogTitle>
+              </DialogHeader>
 
-            <div className='w-full max-w-md'>
-              <Tabs defaultValue='explore' className='gap-4'>
-                <TabsList className='bg-background rounded-none border-b p-0'>
-                  {
-                    // console.log('userEmojiMap', userEmojiMap)
-                  }
-                  <TabsTrigger
-                    value='all'
-                    className='bg-background data-[state=active]:border-primary data-[state=active]:text-primary dark:data-[state=active]:border-primary h-full rounded-none border-0 border-b-2 border-transparent data-[state=active]:shadow-none'
-                  >
-                    All {message.reactions.length}
-                  </TabsTrigger>
-                  {Object.entries(emojiCountMap).map(([key, value]) => (
+              <div className='w-full max-w-md'>
+                <Tabs defaultValue='explore' className='gap-4'>
+                  <TabsList className='bg-background rounded-none border-b p-0'>
+                    {
+                      // console.log('userEmojiMap', userEmojiMap)
+                    }
                     <TabsTrigger
-                      key={key}
-                      value={key}
+                      value='all'
                       className='bg-background data-[state=active]:border-primary data-[state=active]:text-primary dark:data-[state=active]:border-primary h-full rounded-none border-0 border-b-2 border-transparent data-[state=active]:shadow-none'
                     >
-                      {key} {value}
+                      All {message.reactions.length}
                     </TabsTrigger>
-                  ))}
-                </TabsList>
-
-                <TabsContent value='all'>
-                  <div className='space-y-4 mt-2'>
-                    {Object.entries(userEmojiMap).map(([userId, value]) => (
-                      <div key={userId} className='flex items-center gap-2'>
-                        <Avatar className='w-8 h-8'>
-                          <AvatarImage
-                            src={usersData[userId]?.avatarUrl}
-                          />
-                          <AvatarFallback>
-                            {(usersData[userId]?.fullName || usersData[userId]?.username || 'User')}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span className='font-medium flex-1 min-w-0 text-sm'>
-                          {usersData[userId]?.fullName || usersData[userId]?.username || 'User'}
-                        </span>
-                        <span className='text-sm'>{value.emoji.join(' ')}</span>
-                        <span className='text-sm'>{value.count}</span>
-                      </div>
+                    {Object.entries(emojiCountMap).map(([key, value]) => (
+                      <TabsTrigger
+                        key={key}
+                        value={key}
+                        className='bg-background data-[state=active]:border-primary data-[state=active]:text-primary dark:data-[state=active]:border-primary h-full rounded-none border-0 border-b-2 border-transparent data-[state=active]:shadow-none'
+                      >
+                        {key} {value}
+                      </TabsTrigger>
                     ))}
-                  </div>
-                </TabsContent>
+                  </TabsList>
 
-                {(() => {
-                  const reaction = message.reactions || []
-                  if (reaction.length === 0) return null
-                  const emojiUserMap = {}
+                  <TabsContent value='all'>
+                    <div className='space-y-4 mt-2'>
+                      {Object.entries(userEmojiMap).map(([userId, value]) => (
+                        <div key={userId} className='flex items-center gap-2'>
+                          <Avatar className='w-8 h-8'>
+                            <AvatarImage
+                              src={usersData[userId]?.avatarUrl}
+                            />
+                            <AvatarFallback>
+                              {(usersData[userId]?.fullName || usersData[userId]?.username || 'User')}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className='font-medium flex-1 min-w-0 text-sm'>
+                            {usersData[userId]?.fullName || usersData[userId]?.username || 'User'}
+                          </span>
+                          <span className='text-sm'>{value.emoji.join(' ')}</span>
+                          <span className='text-sm'>{value.count}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </TabsContent>
 
-                  reaction.forEach(({ userId, emoji }) => {
-                    if (!emojiUserMap[emoji]) emojiUserMap[emoji] = [{ userId, count: 0 }]
-                    if (!emojiUserMap[emoji].some(u => u.userId === userId)) {
-                      emojiUserMap[emoji].push({ userId, count: 0 })
-                    }
-                    const userEntry = emojiUserMap[emoji].find(u => u.userId === userId)
-                    if (userEntry) {
-                      userEntry.count += 1
-                    }
-                  })
+                  {(() => {
+                    const reaction = message.reactions || []
+                    if (reaction.length === 0) return null
+                    const emojiUserMap = {}
 
-                  // Trả về JSX cho từng tab emoji
-                  return Object.entries(emojiUserMap).map(([emoji, users]) => (
-                    <TabsContent key={emoji} value={emoji}>
-                      <div className='space-y-4 mt-2'>
-                        {users.map(({ userId, count }) => (
-                          <div key={userId} className='flex items-center gap-2'>
-                            <Avatar className='w-8 h-8'>
-                              <AvatarImage src={usersData[userId]?.avatarUrl} />
-                              <AvatarFallback>
+                    reaction.forEach(({ userId, emoji }) => {
+                      if (!emojiUserMap[emoji]) emojiUserMap[emoji] = [{ userId, count: 0 }]
+                      if (!emojiUserMap[emoji].some(u => u.userId === userId)) {
+                        emojiUserMap[emoji].push({ userId, count: 0 })
+                      }
+                      const userEntry = emojiUserMap[emoji].find(u => u.userId === userId)
+                      if (userEntry) {
+                        userEntry.count += 1
+                      }
+                    })
+
+                    // Trả về JSX cho từng tab emoji
+                    return Object.entries(emojiUserMap).map(([emoji, users]) => (
+                      <TabsContent key={emoji} value={emoji}>
+                        <div className='space-y-4 mt-2'>
+                          {users.map(({ userId, count }) => (
+                            <div key={userId} className='flex items-center gap-2'>
+                              <Avatar className='w-8 h-8'>
+                                <AvatarImage src={usersData[userId]?.avatarUrl} />
+                                <AvatarFallback>
+                                  {usersData[userId]?.fullName || usersData[userId]?.username || 'User'}
+                                </AvatarFallback>
+                              </Avatar>
+                              <span className='font-medium flex-1 min-w-0 text-sm'>
                                 {usersData[userId]?.fullName || usersData[userId]?.username || 'User'}
-                              </AvatarFallback>
-                            </Avatar>
-                            <span className='font-medium flex-1 min-w-0 text-sm'>
-                              {usersData[userId]?.fullName || usersData[userId]?.username || 'User'}
-                            </span>
-                            <span className='text-sm'>{emoji}</span>
-                            <span className='text-sm'>{count}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </TabsContent>
-                  ))
-                })()}
-              </Tabs>
-            </div>
+                              </span>
+                              <span className='text-sm'>{emoji}</span>
+                              <span className='text-sm'>{count}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </TabsContent>
+                    ))
+                  })()}
+                </Tabs>
+              </div>
 
-            <DialogFooter className="mt-2">
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+              <DialogFooter className="mt-2">
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
 
-
-        {/* Time + status */}
-        {showMeta && (
+        {/* Time + status: ẩn cho system */}
+        {showMeta && !isSystemMessage && (
           <div className={`flex items-center gap-1 mt-2 text-xs text-gray-500 ${isOwn ? 'justify-end' : 'justify-start'}`}>
             <span>{formatTime(message.createdAt || message.timestamp)}</span>
             <StatusIcon />

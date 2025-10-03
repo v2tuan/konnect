@@ -224,9 +224,18 @@ export function ChatSidebar({ currentView, onViewChange }) {
       const sid =
         typeof lm.senderId === 'object' ? lm.senderId?._id : lm.senderId
 
+      // Detect "System" sender
+      const sName = (lm.sender?.fullName || lm.sender?.username || '').trim()
+      const isSystem =
+        sName.toLowerCase() === 'system' ||
+        String(sid) === '000000000000000000000000' // fallback nếu dùng SYSTEM_USER_ID mặc định
+
       if (sid && String(sid) === String(currentUser?._id)) {
         return `You: ${body}`
       }
+
+      // Nếu là System => luôn chỉ hiện body, không prefix tên
+      if (isSystem) return body
 
       if (conv.type === 'group') {
         let senderName = lm.sender?.fullName || lm.sender?.username
