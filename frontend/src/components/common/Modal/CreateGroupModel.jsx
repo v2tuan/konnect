@@ -221,7 +221,7 @@ export default function CreateGroupDialog() {
         <DialogTrigger asChild>
           <button className="flex flex-col items-center p-3 rounded-lg transition-colors cursor-pointer">
             <Users size={24} className="mb-1" />
-            <span className="text-xs">Create a chat group</span>
+            <span className="text-xs">Create group</span>
           </button>
         </DialogTrigger>
         <DialogContent className="max-w-[800px] min-w-[800px] w-[800px] h-[600px] p-0">

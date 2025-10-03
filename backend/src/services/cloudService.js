@@ -3,13 +3,23 @@ import { MAX_LIMIT_MESSAGE } from "~/utils/constant"
 import { messageService } from "./messageService"
 import Message from "~/models/messages"
 import mongoose from "mongoose"
+import ConversationMember from "~/models/conversation_members"
 
-const fetchCloudConversation = async (
-  userId,
-  { limit = 30, beforeSeq } = {}
-) => {
+async function ensureCloudMembership(conversationId, userId) {
+  const exists = await ConversationMember.findOne({ conversation: conversationId, userId }).lean();
+  if (!exists) {
+    await ConversationMember.create({
+      conversation: conversationId,
+      userId,
+      role: "owner",
+      joinedAt: new Date(),
+      lastReadMessageSeq: 0
+    });
+  }
+}
+
+const fetchCloudConversation = async (userId, { limit = 30, beforeSeq } = {}) => {
   try {
-    // neu chua co hoi thoai thi tao cloud conversation dau tien
     let convo = await Conversation.findOne({ type: "cloud", "cloud.ownerId": userId })
     if (!convo) {
       convo = await Conversation.create({
@@ -17,6 +27,9 @@ const fetchCloudConversation = async (
         cloud: { ownerId: userId }
       })
     }
+
+    // Đảm bảo owner có membership
+    await ensureCloudMembership(convo._id, userId)
 
     // goi message service de list ra message
     const _limit = Math.min(Number(limit) || 30, MAX_LIMIT_MESSAGE)
@@ -48,7 +61,7 @@ const fetchCloudConversation = async (
     }
   } catch (error) {
     // giữ nguyên stack cho dễ debug
-    throw error instanceof Error ? error : new Error(String(error))
+    throw error
   }
 }
 

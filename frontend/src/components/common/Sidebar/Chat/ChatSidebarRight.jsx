@@ -88,11 +88,11 @@ function ChatSidebarRight({ conversation, isOpen }) {
             <h3 className="text-xl font-semibold truncate max-w-full px-2">{conversation?.displayName}</h3>
           </div>
 
-          <div className="flex justify-center space-x-4 mb-4 flex-wrap">
+          <div className="flex justify-center items-center gap-4 mb-4">
             <MuteMenu conversationId={conversation?._id} />
             <button className="flex flex-col items-center p-2 rounded-lg transition-colors cursor-pointer min-w-0">
-              <Pin size={20} className="mb-1" />
-              <span className="text-xs">Pin conversation</span>
+              <Pin size={24} className="mb-1" />
+              <span className="text-xs">Pin</span>
             </button>
             <CreateGroupDialog />
           </div>
