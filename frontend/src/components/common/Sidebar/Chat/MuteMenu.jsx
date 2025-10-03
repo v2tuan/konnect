@@ -55,11 +55,11 @@ export default function MuteMenu({ conversationId }) {
             inline-flex flex-col items-center justify-center gap-1
             w-28 text-center whitespace-normal break-words leading-tight
           "
-          title={isMutedLocal ? "Notifications off" : "Turn off Notification"}
+          title={isMutedLocal ? "Notifications off" : "Mute"}
         >
           <Bell className="h-6 w-6" />
           <span className="text-xs">
-            {isMutedLocal ? "Notifications off" : "Turn off Notification"}
+            {isMutedLocal ? "Notifications off" : "Mute"}
           </span>
         </Button>
       </DropdownMenuTrigger>
