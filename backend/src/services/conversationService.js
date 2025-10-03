@@ -660,7 +660,7 @@ const leaveGroup = async (userId, conversationId, io) => {
   })
 
   // Cập nhật messageSeq của conversation
-  await Conversation.updateOne(
+await Conversation.updateOne(
     { _id: conversationId },
     {
       $inc: { messageSeq: 1 },
@@ -678,22 +678,30 @@ const leaveGroup = async (userId, conversationId, io) => {
     }
   )
 
-  // Emit notification cho các thành viên còn lại
+  const payload = {
+    conversationId,
+    message: {
+      _id: notificationMessage._id,
+      conversationId,
+      seq: conversation.messageSeq + 1,
+      type: 'notification',
+      body: { text: `${userName} đã rời khỏi nhóm` },
+      senderId: userId,
+      createdAt: notificationMessage.createdAt
+    }
+  }
+
+  // Emit cho các thành viên còn lại
   if (io) {
+    // Giữ event cũ (nếu bạn đang dùng nơi khác để cập nhật UI members)
     io.to(`conversation:${conversationId}`).emit('member:left', {
       conversationId,
       userId,
       userName,
-      message: {
-        _id: notificationMessage._id,
-        conversationId,
-        seq: conversation.messageSeq + 1,
-        type: 'notification',
-        body: { text: `${userName} đã rời khỏi nhóm` },
-        senderId: userId,
-        createdAt: notificationMessage.createdAt
-      }
+      message: payload.message
     })
+    // QUAN TRỌNG: emit "message:new" để FE cập nhật preview/unread ngay
+    io.to(`conversation:${conversationId}`).emit('message:new', payload)
   }
 
   return {

@@ -1,19 +1,16 @@
 import { createConversation, getFriendsAPI } from "@/apis"
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Dialog, DialogClose, DialogContent, DialogTrigger } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
-import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
-import { Label } from "@radix-ui/react-label"
-import { fr } from "date-fns/locale"
-import { Camera, Image, LoaderCircle, Search, Users, X } from "lucide-react"
+import { selectCurrentUser } from "@/redux/user/userSlice"
+import { API_ROOT } from '@/utils/constant'
+import { Camera, Image, Search, Users, X } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
-import { set } from "date-fns"
+import { useSelector } from "react-redux"
+import { useNavigate } from "react-router-dom"
 import { toast } from "react-toastify"
 import { io } from 'socket.io-client'
-import { API_ROOT } from '@/utils/constant'
-import { useNavigate } from "react-router-dom"
-import { useSelector } from "react-redux"
-import { selectCurrentUser } from "@/redux/user/userSlice"
 
 export default function CreateGroupDialog() {
   const [selectedMembers, setSelectedMembers] = useState([]) // Mảng tên thành viên đã chọn

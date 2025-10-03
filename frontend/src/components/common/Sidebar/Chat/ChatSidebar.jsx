@@ -566,6 +566,13 @@ export function ChatSidebar({ currentView, onViewChange }) {
         setUnread(convId, curr + 1)
       }
     }
+    const onMemberLeft = (payload) => {
+      const convId = extractId(
+        payload?.conversationId || payload?.conversation?._id || payload?.conversation
+      )
+      if (!convId || !payload?.message) return
+      onNewMessage({ conversationId: convId, message: payload.message })
+    }
 
     const onConversationCreated = (payload) => {
       const conversation = payload?.conversation
@@ -619,12 +626,14 @@ export function ChatSidebar({ currentView, onViewChange }) {
     s.on('message:new', onNewMessage)
     s.on('conversation:created', onConversationCreated)
     s.on('conversation:member:added', onAddedToConversation)
+    s.on('member:left', onMemberLeft)
 
     return () => {
       s.off('connect', onConnect)
       s.off('message:new', onNewMessage)
       s.off('conversation:created', onConversationCreated)
       s.off('conversation:member:added', onAddedToConversation)
+      s.off('member:left', onMemberLeft)
       listenersAttachedRef.current = false
     }
   }, [initialLoaded, currentUser?._id, conversationList, activeIdFromURL, setUnread])
