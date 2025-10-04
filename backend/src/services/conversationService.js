@@ -1,15 +1,16 @@
+import { StatusCodes } from "http-status-codes";
 import mongoose from "mongoose";
-import Conversation from "~/models/conversations";
 import ConversationMember from "~/models/conversation_members";
-import User from "~/models/user";
-import { toOid } from "~/utils/formatter";
-import { messageService } from "./messageService";
-import { contactService } from "./contactService";
-import { mediaService } from "./mediaService";
-import { cloudinaryProvider } from "~/providers/CloudinaryProvider_v2";
-import Message from "~/models/messages";
+import Conversation from "~/models/conversations";
 import Media from "~/models/medias";
+import Message from "~/models/messages";
+import User from "~/models/user";
+import { cloudinaryProvider } from "~/providers/CloudinaryProvider_v2";
 import { SYSTEM_SENDER, SYSTEM_USER_ID } from "~/utils/constant";
+import { toOid } from "~/utils/formatter";
+import { contactService } from "./contactService";
+import { messageService } from "./messageService";
+import ApiError from "~/utils/ApiError";
 
 async function markFriendshipOnConversation(meId, convObj) {
   try {
@@ -131,7 +132,7 @@ const createConversation = async (conversationData, file, userId) => {
     const uniqueMemberIds = [...new Set([userId, ...memberIds])]
 
     if (uniqueMemberIds.length <= 2) {
-      throw new Error('Không thể tạo nhóm chỉ với 2 thành viên')
+      throw new ApiError(StatusCodes.NOT_ACCEPTABLE, 'Không thể tạo nhóm với 2 người')
     }
 
     let uploadResults = null
