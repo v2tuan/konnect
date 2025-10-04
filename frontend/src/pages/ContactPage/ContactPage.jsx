@@ -20,8 +20,6 @@ const ContactPage = () => {
       <Routes>
         <Route path="friends" element={<ListFriend />} />
         <Route path="friendsRequest" element={<FriendRequest />} />
-        <Route path="groups" element={<div>Joined groups and communities (placeholder)</div>} />
-        <Route path="groupsRequest" element={<div>Group and community invitations (placeholder)</div>} />
       </Routes>
     </div>
   )

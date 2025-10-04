@@ -1,15 +1,10 @@
-"use client"
-
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Search, UserPlus, Users, UserSearch } from "lucide-react"
-import { FaUsers, FaUsersCog } from "react-icons/fa"
 
 export const CONTACT_TABS = [
   { name: "Friends list", value: "friends", icon: UserSearch },
-  { name: "Joined groups and communities", value: "groups", icon: FaUsers },
-  { name: "Friends requests", value: "friendsRequest", icon: UserPlus },
-  { name: "Group and community invitations", value: "groupsRequest", icon: FaUsersCog }
+  { name: "Friends requests", value: "friendsRequest", icon: UserPlus }
 ]
 
 export default function ContactSidebar({ value, onValueChange }) {
