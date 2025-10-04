@@ -100,10 +100,6 @@ export function ListFriend({ onFriendSelect }) {
               {onlineCount} bạn Online • {friends.length} tổng số bạn bè
             </p>
           </div>
-          <Button>
-            <UserPlus className="w-4 h-4 mr-2" />
-            Thêm bạn
-          </Button>
         </div>
 
         {/* Search */}
