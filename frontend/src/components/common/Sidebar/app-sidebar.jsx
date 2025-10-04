@@ -39,7 +39,7 @@ const data = {
 }
 
 export function AppSidebar(props) {
-  // Remove custom props so they aren't forwarded to DOM (avoid unused variable warnings)
+  // Preserve props
   const { chatState, contactTab, onContactTabChange, ...rest } = (() => {
     const clone = { ...props }
     delete clone.cloudTab
@@ -51,11 +51,13 @@ export function AppSidebar(props) {
 
   const isMessage = location.pathname.startsWith("/chats")
   const isContact = location.pathname.startsWith("/contacts")
+  // PATCH: Cloud không mở panel
+  // const isCloud = location.pathname.startsWith("/cloud")
 
-  /** ⭐ NEW: boot unread + lấy tổng số phòng có unread để hiển thị badge */
   useUnreadBoot()
   const totalConversations = useUnreadStore(s => s.totalConversations)
 
+  // PATCH: chỉ mở khi là chats hoặc contacts
   useEffect(() => {
     const shouldOpen = isMessage || isContact
     if (open !== shouldOpen) setOpen(shouldOpen)
@@ -67,7 +69,7 @@ export function AppSidebar(props) {
       className="overflow-hidden [&>[data-sidebar=sidebar]]:flex-row"
       {...rest}
     >
-      {/* Left rail - Luôn chỉ hiện icon, không expand */}
+      {/* Left rail */}
       <Sidebar
         collapsible="none"
         className="w-[calc(var(--sidebar-width-icon))] border-r"
@@ -78,12 +80,24 @@ export function AppSidebar(props) {
               <SidebarMenuButton
                 size="lg"
                 tooltip={{ children: "Konnect", hidden: false }}
-                className="w-full justify-center px-0"
+                className="
+                  relative flex h-12 w-full items-center justify-center gap-0 p-0 leading-none
+                  /* Giữ nguyên chiều cao khi sidebar ở chế độ icon */
+                  group-data-[collapsible=icon]:!h-12
+                  group-data-[collapsible=icon]:!w-full
+                  group-data-[collapsible=icon]:!p-0
+                "
               >
-                <div
-                  className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                  <GalleryVerticalEnd className="size-4"/>
-                </div>
+                <span
+                  className="
+                    flex h-8 w-8 items-center justify-center rounded-lg
+                    bg-sidebar-primary text-sidebar-primary-foreground
+                    /* Nếu muốn logo to hơn chút khi collapsed có thể tăng h-9 w-9 */
+                    group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8
+                  "
+                >
+                  <GalleryVerticalEnd className="h-4 w-4 block" />
+                </span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
@@ -95,6 +109,7 @@ export function AppSidebar(props) {
               <SidebarMenu>
                 {data.navMain.map((item) => {
                   const active = location.pathname.startsWith(item.url)
+                  const needPanel = item.url === "/chats" || item.url === "/contacts" // PATCH
                   const isMessageItem = item.url === "/chats"
                   return (
                     <SidebarMenuItem key={item.title} className="relative overflow-visible">
@@ -103,22 +118,14 @@ export function AppSidebar(props) {
                         isActive={active}
                         className="w-full justify-center px-0 overflow-visible"
                         tooltip={{ children: item.title, hidden: false }}
-                        onClick={() => setOpen(true)} // mở submenu
+                        // PATCH: chỉ mở panel nếu cần; ngược lại đóng (Cloud, Block, Agent)
+                        onClick={() => setOpen(needPanel)}
                       >
-                        {/* bọc navlink để đặt badge absolute */}
                         <NavLink to={item.url} className="relative flex items-center justify-center">
-                          <item.icon/>
-                          {/* ⭐ NEW: Badge tổng số cuộc trò chuyện có unread */}
+                          <item.icon className="block" />
                           {isMessageItem && totalConversations > 0 && (
                             <span
-                              className="
-                            absolute z-10
-                            top-0 right-0 translate-x-1/3 -translate-y-1/3  /* đẩy chéo ra ngoài */
-                            min-w-5 h-5 rounded-full
-                            bg-red-500 text-white text-[10px] px-1 leading-none
-                            flex items-center justify-center
-                            shadow-sm
-                          "
+                              className="absolute z-10 top-0 right-0 translate-x-1/3 -translate-y-1/3 min-w-5 h-5 rounded-full bg-red-500 text-white text-[10px] px-1 leading-none flex items-center justify-center shadow-sm"
                               aria-label={`${totalConversations} conversations have new messages`}
                             >
                               {totalConversations > 99 ? "99+" : totalConversations}
@@ -135,13 +142,13 @@ export function AppSidebar(props) {
         </SidebarContent>
 
         <SidebarFooter className="flex items-center justify-center gap-3">
-          <Bell/>
-          <ModeToggle/>
-          <NavUser/>
+          <Bell />
+            <ModeToggle />
+          <NavUser />
         </SidebarFooter>
       </Sidebar>
 
-      {/* Middle pane - Message list (submenu) */}
+      {/* Middle pane - Message list */}
       {open && isMessage && chatState && (
         <Sidebar collapsible="none" className="w-[450px] border-r bg-background">
           <ChatSidebar
@@ -155,13 +162,12 @@ export function AppSidebar(props) {
         </Sidebar>
       )}
 
-      {/* Middle pane - Contact tabs (submenu) */}
+      {/* Middle pane - Contact */}
       {open && isContact && (
         <Sidebar collapsible="none" className="w-[450px] border-r bg-background">
           <ContactSidebar
             value={contactTab || "home"}
-            onValueChange={onContactTabChange || (() => {
-            })}
+            onValueChange={onContactTabChange || (() => {})}
           />
         </Sidebar>
       )}

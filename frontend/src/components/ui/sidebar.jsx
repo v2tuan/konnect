@@ -135,9 +135,20 @@ function Sidebar({
   collapsible = "offcanvas",
   className,
   children,
+  expandOn,
+  autoExpand = true,
+  currentPath, // NEW
   ...props
 }) {
-  const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
+  const { isMobile, state, openMobile, setOpenMobile, open, setOpen } = useSidebar()
+
+  React.useEffect(() => {
+    if (!autoExpand || !Array.isArray(expandOn) || !expandOn.length) return
+    const path = currentPath ||
+      (typeof window !== 'undefined' ? window.location.pathname : '/')
+    const shouldOpen = expandOn.some(p => path.startsWith(p))
+    if (open !== shouldOpen) setOpen(shouldOpen)
+  }, [expandOn, autoExpand, currentPath, open, setOpen]) // <— add currentPath
 
   if (collapsible === "none") {
     return (
