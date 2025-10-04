@@ -46,15 +46,25 @@ app.use('/api', APIs_V1)
 
 app.use((err, req, res, next) => {
   const status = err.statusCode || err.status || 500
-  const isProd = process.env.NODE_ENV === 'production'
-  const payload = { message: err.message || 'Internal Server Error' }
+  const buildMode = env.BUILD_MODE // dev | production
+  const isProd = buildMode === 'production' || process.env.NODE_ENV === 'production'
+  const message = err.message || 'Internal Server Error'
 
   if (!isProd) {
-    // Dev: có thể thêm err.stack nếu cần
-    console.error('[ERR]', status, err.message)
+    console.error('========== ERROR START ==========')
+    console.error('Time     :', new Date().toISOString())
+    console.error('Method   :', req.method)
+    console.error('URL      :', req.originalUrl)
+    console.error('Status   :', status)
+    console.error('Message  :', message)
+    console.error('Name     :', err.name)
+    if (err.stack) console.error('Stack:\n' + err.stack)
+    console.error('=========== ERROR END ===========')
+  } else {
+    console.error(`[ERR] ${status} ${err.name}: ${message}`)
   }
 
-  res.status(status).json(payload)
+  res.status(status).json({ message })
 })
 server.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`)

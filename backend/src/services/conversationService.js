@@ -53,15 +53,11 @@ async function markFriendshipOnConversation(meId, convObj) {
   return convObj
 }
 
-const createConversation = async (conversationData, file, userId) => {
+const createConversation = async (conversationData, file, userId, io) => {
   let { type, memberIds, name } = conversationData
   console.log("Creating conversation:", conversationData, "by user:", userId)
-  console.log(name)
 
-  memberIds = Array.isArray(memberIds)
-  ? memberIds
-  : JSON.parse(memberIds || "[]");
-
+  memberIds = Array.isArray(memberIds) ? memberIds : JSON.parse(memberIds || "[]")
 
   const conversationDataToCreate = {
     type,
@@ -71,66 +67,33 @@ const createConversation = async (conversationData, file, userId) => {
   let membersToAdd = []
 
   if (type === 'cloud') {
-    // Kiểm tra đã có cloud conversation chưa
-
-    // Set up conversation data
-    conversationDataToCreate.cloud = {
-      ownerId: userId
-    }
-
-    membersToAdd = [
-      { userId: userId, role: 'owner' }
-    ]
+    conversationDataToCreate.cloud = { ownerId: userId }
+    membersToAdd = [{ userId, role: 'owner' }]
   } else if (type === 'direct') {
-    // Kiểm tra recipient có tồn tại không
     if (memberIds.length > 2) {
       throw new Error('Tin nhắn trực tiếp chỉ có tối đa 2 thành viên')
     }
-
     const recipientId = memberIds.find(id => id !== userId)
     const recipient = await User.findById(recipientId)
+    if (!recipient) throw new Error('Recipient not found')
+    if (userId === recipientId) throw new Error('Cannot create a conversation with yourself')
 
-    if (!recipient) {
-      throw new Error('Recipient not found')
-    }
-
-    // Kiểm tra không thể tạo conversation với chính mình
-    if (userId === recipientId) {
-      throw new Error('Cannot create a conversation with yourself')
-    }
-
-    // Kiểm tra có bị block không
-
-    // Kiểm tra conversation đã tồn tại chưa
     const existingConversation = await Conversation.findOne({
       type: 'direct',
       $or: [
         { 'direct.userA': userId, 'direct.userB': recipientId },
         { 'direct.userA': recipientId, 'direct.userB': userId }
       ]
-    });
+    })
+    if (existingConversation) return existingConversation
 
-    if (existingConversation) {
-      return
-    }
-
-    // Set up conversation data
-    conversationDataToCreate.direct = {
-      userA: userId,
-      userB: recipientId
-    };
-
-    // Set up conversation data
+    conversationDataToCreate.direct = { userA: userId, userB: recipientId }
     membersToAdd = [
-      { userId: userId, role: 'member' },
+      { userId, role: 'member' },
       { userId: recipientId, role: 'member' }
     ]
-  }
-  else if (type === 'group') {
-    // Kiểm tra tất cả member có tồn tại không
-    // Kiểm tra có user hiện tại trong danh sách không nếu không thì thêm vào
+  } else if (type === 'group') {
     const uniqueMemberIds = [...new Set([userId, ...memberIds])]
-
     if (uniqueMemberIds.length <= 2) {
       throw new ApiError(StatusCodes.NOT_ACCEPTABLE, 'Không thể tạo nhóm với 2 người')
     }
@@ -140,11 +103,10 @@ const createConversation = async (conversationData, file, userId) => {
       const uploadOptions = {
         folder: `konnect/${name || 'group_avatars'}`,
         resource_type: 'auto'
-    }
+      }
       uploadResults = await cloudinaryProvider.uploadSingle(file, uploadOptions)
     }
 
-    // Set up conversation data
     conversationDataToCreate.group = {
       name: name ?? 'New Group',
       avatarUrl: uploadResults?.secure_url ?? '/'
@@ -156,22 +118,131 @@ const createConversation = async (conversationData, file, userId) => {
     }))
   }
 
-  // ============================= TẠO CONVERSATION ================================
+  // Tạo conversation
   const newConversation = await Conversation.create(conversationDataToCreate)
-  await newConversation.save()
 
-  // Thêm member vào conversation
-  const memberPromises = membersToAdd.map(member => {
-    const conversationMember = new ConversationMember({
-      conversation: newConversation._id,
-      userId: member.userId,
-      role: member.role
+  // Thêm members
+  await Promise.all(
+    membersToAdd.map(m =>
+      ConversationMember.create({
+        conversation: newConversation._id,
+        userId: m.userId,
+        role: m.role
+      })
+    )
+  )
+
+  // Nếu là group → tạo system notification đầu tiên
+  if (type === 'group') {
+    const creator = await User.findById(userId).select('fullName username').lean()
+    const creatorName = creator?.fullName || creator?.username || 'Người dùng'
+    const othersCount = membersToAdd.length - 1
+    const text =
+      othersCount > 1
+        ? `${creatorName} đã tạo nhóm với ${othersCount} thành viên khác`
+        : `${creatorName} đã tạo nhóm`
+
+    const seq = 1
+    const now = new Date()
+
+    const systemMsg = await Message.create({
+      conversationId: newConversation._id,
+      seq,
+      senderId: SYSTEM_USER_ID,
+      type: 'notification',
+      body: { text },
+      createdAt: now
     })
 
-    return conversationMember.save()
-  })
+    await Conversation.updateOne(
+      { _id: newConversation._id },
+      {
+        $set: {
+          messageSeq: seq,
+            lastMessage: {
+              _id: systemMsg._id,
+              seq,
+              messageId: systemMsg._id,
+              type: 'notification',
+              textPreview: text,
+              senderId: SYSTEM_USER_ID,
+              createdAt: now
+            },
+            updatedAt: now
+        }
+      }
+    )
 
-  await Promise.all(memberPromises)
+    // Build nhẹ members (để FE xác thực membership)
+    const groupMemberIds = membersToAdd.map(m => m.userId)
+    const convoPayload = {
+      _id: newConversation._id,
+      id: newConversation._id,
+      type: 'group',
+      group: {
+        name: conversationDataToCreate.group.name,
+        avatarUrl: conversationDataToCreate.group.avatarUrl,
+        members: groupMemberIds.map(uid => ({ id: uid })) // tối giản
+      },
+      displayName: conversationDataToCreate.group.name,
+      conversationAvatarUrl: conversationDataToCreate.group.avatarUrl,
+      lastMessage: {
+        _id: systemMsg._id,
+        seq,
+        type: 'notification',
+        textPreview: text,
+        senderId: SYSTEM_USER_ID,
+        createdAt: now
+      }
+    }
+
+    const messagePayload = {
+      conversationId: newConversation._id,
+      conversation: convoPayload, // <-- thêm
+      message: {
+        _id: systemMsg._id,
+        conversationId: newConversation._id,
+        seq,
+        type: 'notification',
+        body: { text },
+        senderId: SYSTEM_USER_ID,
+        sender: SYSTEM_SENDER,
+        createdAt: now
+      }
+    }
+
+    if (io) {
+      for (const m of membersToAdd) {
+        io.to(`user:${m.userId}`).emit('conversation:created', {
+          conversation: convoPayload
+        })
+      }
+      io.to(`conversation:${newConversation._id}`).emit('message:new', messagePayload)
+    }
+  } else {
+    // Direct hoặc Cloud có thể emit sự kiện tạo nếu cần
+    if (io) {
+      const convoPayload = {
+        _id: newConversation._id,
+        id: newConversation._id,
+        type,
+        displayName:
+          type === 'cloud'
+            ? 'Cloud Chat'
+            : undefined,
+        conversationAvatarUrl:
+          type === 'cloud'
+            ? 'https://cdn-icons-png.flaticon.com/512/8038/8038388.png'
+            : undefined,
+        lastMessage: null
+      }
+      for (const m of membersToAdd) {
+        io.to(`user:${m.userId}`).emit('conversation:created', {
+          conversation: convoPayload
+        })
+      }
+    }
+  }
 
   return newConversation
 }

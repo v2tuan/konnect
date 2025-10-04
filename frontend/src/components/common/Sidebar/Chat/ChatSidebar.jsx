@@ -503,12 +503,11 @@ export function ChatSidebar({ currentView, onViewChange }) {
     connectSocket(currentUser._id) // no-op nếu đã kết nối
   }, [currentUser?._id])
 
-  // 2) gắn listener một lần + join rooms mỗi lần connect
+  // 2) gắn listener (KHÔNG chờ initialLoaded)
   useEffect(() => {
-    if (!initialLoaded || !currentUser?._id) return
+    if (!currentUser?._id) return
     const s = getSocket()
     if (!s) return
-
     if (listenersAttachedRef.current) return
     listenersAttachedRef.current = true
 
@@ -516,17 +515,15 @@ export function ChatSidebar({ currentView, onViewChange }) {
       try {
         (conversationList || []).forEach(c => {
           const id = extractId(c)
-          if (id && !joinedRef.current.has(id)) {
-            s.emit('conversation:join', { conversationId: id })
-            joinedRef.current.add(id)
-          }
+            if (id && !joinedRef.current.has(id)) {
+              s.emit('conversation:join', { conversationId: id })
+              joinedRef.current.add(id)
+            }
         })
       } catch {}
     }
 
-    const onConnect = () => {
-      joinAllRooms()
-    }
+    const onConnect = () => joinAllRooms()
 
     const onNewMessage = (payload) => {
       const convId = extractId(
@@ -535,17 +532,35 @@ export function ChatSidebar({ currentView, onViewChange }) {
       if (!convId) return
       const msg = payload?.message || payload
 
-      // Cập nhật lastMessage & đẩy conv lên đầu
       setConversationList(prev => {
         const idx = prev.findIndex(c => extractId(c) === convId)
         if (idx === -1) {
-          const draft = buildConvFromSocket(payload)
+          // Nếu payload có conversation (nhờ backend patch)
+          const draft = payload.conversation
+            ? {
+                ...payload.conversation,
+                _id: convId,
+                id: convId
+              }
+            : buildConvFromSocket(payload)
+
           try {
             if (!joinedRef.current.has(convId)) {
               s.emit('conversation:join', { conversationId: convId })
               joinedRef.current.add(convId)
             }
           } catch {}
+
+          // Gắn lastMessage nếu chưa có
+          if (!draft.lastMessage && msg) {
+            draft.lastMessage = {
+              _id: msg._id || msg.id,
+              textPreview: msg.body?.text ?? msg.text ?? '',
+              senderId: msg.senderId || msg.sender?._id || msg.sender?.id,
+              sender: msg.sender,
+              createdAt: msg.createdAt || Date.now()
+            }
+          }
           return [draft, ...prev]
         }
 
@@ -565,22 +580,21 @@ export function ChatSidebar({ currentView, onViewChange }) {
         return [updated, ...next]
       })
 
-      // ⭐ Tăng unread nếu: không phải phòng đang mở & không phải mình gửi
       const myId = String(currentUser?._id || '')
       const senderId = String((msg.senderId && msg.senderId._id) || msg.senderId || '')
       const isMine = myId && senderId && myId === senderId
-
       if (convId !== activeIdFromURL && !isMine) {
         const curr = useUnreadStore.getState().map?.[convId] || 0
         setUnread(convId, curr + 1)
       }
     }
+
     const onMemberLeft = (payload) => {
-      const convId = extractId(
-        payload?.conversationId || payload?.conversation?._id || payload?.conversation
-      )
-      if (!convId || !payload?.message) return
-      onNewMessage({ conversationId: convId, message: payload.message })
+      if (!payload?.message) return
+      onNewMessage({
+        conversationId: payload.conversationId,
+        message: payload.message
+      })
     }
 
     const onConversationCreated = (payload) => {
@@ -589,45 +603,44 @@ export function ChatSidebar({ currentView, onViewChange }) {
       const convId = extractId(conversation)
       if (!convId) return
 
-      const currentUserId = currentUser?._id
-      const isUserInConversation =
-        conversation.type === 'group'
-          ? conversation.group?.members?.some(
-            (m) => String(m._id || m.id) === String(currentUserId)
+      const currentUserId = String(currentUser?._id)
+      let isUserInConversation = false
+      if (conversation.type === 'group') {
+        // Nếu backend gửi members → check; nếu không gửi → mặc định true vì emit theo user room
+        const members = conversation.group?.members
+        if (Array.isArray(members) && members.length) {
+          isUserInConversation = members.some(m =>
+            String(m.id || m._id) === currentUserId
           )
-          : conversation.type === 'direct' &&
-          (String(conversation.direct?.otherUser?._id) === String(currentUserId) ||
-            String(conversation.direct?.user?._id) === String(currentUserId))
-
+        } else {
+          isUserInConversation = true
+        }
+      } else if (conversation.type === 'direct') {
+        isUserInConversation = true
+      } else if (conversation.type === 'cloud') {
+        isUserInConversation = true
+      }
       if (!isUserInConversation) return
 
       setConversationList(prev => {
         if (prev.some(c => extractId(c) === convId)) return prev
-
         const newConv = {
           ...conversation,
           _id: convId,
           id: convId,
-          displayName: conversation.displayName || conversation.name || 'New Conversation',
-          conversationAvatarUrl: conversation.conversationAvatarUrl || conversation.avatarUrl || '',
-          lastMessage: null
+          lastMessage: conversation.lastMessage || null
         }
-
         try {
           if (!joinedRef.current.has(convId)) {
             s.emit('conversation:join', { conversationId: convId })
             joinedRef.current.add(convId)
           }
         } catch {}
-
         return [newConv, ...prev]
       })
     }
 
     const onAddedToConversation = (payload) => {
-      const conversation = payload?.conversation
-      const addedUserId = payload?.userId
-      if (!conversation || String(addedUserId) !== String(currentUser?._id)) return
       onConversationCreated(payload)
     }
 
@@ -645,7 +658,7 @@ export function ChatSidebar({ currentView, onViewChange }) {
       s.off('member:left', onMemberLeft)
       listenersAttachedRef.current = false
     }
-  }, [initialLoaded, currentUser?._id, conversationList, activeIdFromURL, setUnread])
+  }, [currentUser?._id, activeIdFromURL, setUnread])
 
   // 3) Khi danh sách hội thoại đổi → đảm bảo đã join đủ (kể cả đang online)
   useEffect(() => {
@@ -661,42 +674,6 @@ export function ChatSidebar({ currentView, onViewChange }) {
       })
     } catch {}
   }, [conversationList])
-
-  // Lắng nghe event local (khi tạo hội thoại mới local)
-  useEffect(() => {
-    const s = getSocket()
-    const onLocalCreated = (e) => {
-      const conversation = e?.detail?.conversation
-      if (!conversation) return
-      const convId = extractId(conversation)
-      if (!convId) return
-
-      setConversationList(prev => {
-        if (prev.some(c => extractId(c) === convId)) return prev
-
-        const newConv = {
-          ...conversation,
-          _id: convId,
-          id: convId,
-          displayName: conversation.displayName || conversation.name || 'New Conversation',
-          conversationAvatarUrl:
-            conversation.conversationAvatarUrl || conversation.avatarUrl || '',
-          lastMessage: null
-        }
-
-        try {
-          if (s && !joinedRef.current.has(convId)) {
-            s.emit('conversation:join', { conversationId: convId })
-            joinedRef.current.add(convId)
-          }
-        } catch {}
-
-        return [newConv, ...prev]
-      })
-    }
-    window.addEventListener('local:conversation:created', onLocalCreated)
-    return () => window.removeEventListener('local:conversation:created', onLocalCreated)
-  }, [])
 
   /* =============== Actions =============== */
 

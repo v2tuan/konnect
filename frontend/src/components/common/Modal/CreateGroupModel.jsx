@@ -3,14 +3,13 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogClose, DialogContent, DialogTrigger } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { connectSocket } from '@/lib/socket'; // + thêm
 import { selectCurrentUser } from "@/redux/user/userSlice"
-import { API_ROOT } from '@/utils/constant'
 import { Camera, Image, Search, Users, X } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { useSelector } from "react-redux"
 import { useNavigate } from "react-router-dom"
 import { toast } from "react-toastify"
-import { io } from 'socket.io-client'
 
 export default function CreateGroupDialog() {
   const [selectedMembers, setSelectedMembers] = useState([]) // Mảng tên thành viên đã chọn
@@ -28,7 +27,6 @@ export default function CreateGroupDialog() {
   const [searchQuery, setSearchQuery] = useState('')
   const [open, setOpen] = useState(false)
   const [sending, setSending] = useState(false)
-  const socketRef = useRef(null)
   const navigate = useNavigate()
   const currentUser = useSelector(selectCurrentUser)
 
@@ -128,68 +126,43 @@ export default function CreateGroupDialog() {
     setPage(1)
   }, [debouncedQ])
 
-  // Khởi tạo socket connection
+  // Khởi tạo (đảm bảo) socket chung nếu chưa có
   useEffect(() => {
-    if (!socketRef.current) {
-      socketRef.current = io(API_ROOT, { withCredentials: true })
+    if (currentUser?._id) {
+      connectSocket(currentUser._id) // no-op nếu đã kết nối
     }
-    
-    return () => {
-      if (socketRef.current) {
-        socketRef.current.disconnect()
-        socketRef.current = null
-      }
-    }
-  }, [])
+  }, [currentUser?._id])
 
   const handleCreateGroup = async () => {
-    // Logic tạo nhóm
     const payload = new FormData()
     payload.append('type', 'group')
     payload.append('name', groupName)
-    const formData = new FormData()
-    selectedMembers.forEach(m => formData.append('memberIds[]', m.id))
     if (fileInputRef.current?.files?.[0]) {
-      payload.append('avatarUrl', fileInputRef.current.files[0])
+      payload.append('avatarUrl', fileInputRef.current.files[0]) // (nếu BE mong field 'avatar')
     }
     payload.append('memberIds', JSON.stringify(selectedMembers.map(m => m.id)))
-    // Gọi API tạo nhóm
+
     try {
-      setSending(true)
       if (sending) return
+      setSending(true)
+
       const response = await createConversation(payload)
-      const newConversation = response?.data || response
+      const newConversation = response?.conversation || response?.data || response
 
-      // ✅ Emit socket event để thông báo conversation mới
-      if (socketRef.current && newConversation) {
-        socketRef.current.emit('conversation:created', {
-          conversation: newConversation,
-          createdBy: currentUser?._id, // Thêm info người tạo
-          type: 'group'
-        })
-      }
-      window.dispatchEvent(new CustomEvent('local:conversation:created', {
-        detail: { conversation: newConversation }
-      }))
-
-      // Reset state và đóng modal
       setSelectedMembers([])
       setGroupName('')
       setGroupImage(null)
       setOpen(false)
-      
       toast.success('Nhóm đã được tạo thành công!')
       setSending(false)
 
-      // ✅ Optional: Navigate đến conversation mới
       if (newConversation?._id) {
         navigate(`/chats/${newConversation._id}`)
       }
-      
     } catch (err) {
       console.error('Error creating group:', err)
       setSending(false)
-      toast.error('Không thể tạo nhóm. Vui lòng thử lại!')
+      toast.error(err?.response?.data?.message || 'Không thể tạo nhóm. Vui lòng thử lại!')
     }
   }
 
@@ -382,7 +355,7 @@ export default function CreateGroupDialog() {
                 </Button>
 
                 <Button
-                className={`px-6 py-2`}
+                  className={`px-6 py-2`}
                   disabled={selectedMembers.length === 0 || !groupName.trim() || sending}
                   onClick={handleCreateGroup}
                 >

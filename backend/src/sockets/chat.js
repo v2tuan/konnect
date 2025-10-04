@@ -2,6 +2,10 @@
 export function registerChat(io) {
   io.on('connection', (socket) => {
     const userId = socket.user?.id
+    if (userId) {
+      // JOIN user phòng để emit conversation:created
+      socket.join(`user:${userId}`)
+    }
 
     socket.on('conversation:join', ({ conversationId }) => {
       if (!conversationId) return
