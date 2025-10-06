@@ -63,7 +63,7 @@ function ChatSidebarRight({ conversation, isOpen }) {
 
   return (
     <div
-      className={`fixed flex flex-col top-0 right-0 h-full w-80 shadow-lg transform transition-transform duration-300 ease-in-out border-l overflow-hidden ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
+      className={`fixed flex flex-col top-0 right-0 bg-sidebar h-full w-80 shadow-lg transform transition-transform duration-300 ease-in-out border-l overflow-hidden ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
     >
       <div className="flex items-center justify-center p-4 border-b h-18 shrink-0">
         <h2 className="text-lg font-semibold truncate">Conversation information</h2>
