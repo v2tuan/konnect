@@ -11,6 +11,7 @@ import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, Di
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { get } from 'react-hook-form'
 import { getDisplayUsers } from '@/apis'
+import { set } from 'date-fns'
 
 function processReactions(reactions) {
   const emojiCountMap = {}
@@ -83,7 +84,7 @@ function pickSender(conversation, message, contact) {
   }
 }
 
-export function MessageBubble({ message, showAvatar, contact, showMeta = true, conversation }) {
+export function MessageBubble({ message, showAvatar, contact, showMeta = true, conversation, setReplyingTo }) {
   const [hovered, setHovered] = useState(false)
   const isOwn = !!message?.isOwn
   const isGroup = conversation?.type === 'group'
@@ -182,9 +183,8 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
 
   return (
     <div
-      className={`flex gap-2 ${message.reactions.length > 0 ? 'mb-4' : 'mb-2'} ${
-        isSystemMessage ? 'justify-center' : (isOwn ? 'justify-end' : 'justify-start')
-      }`}
+      className={`flex gap-2 ${message.reactions.length > 0 ? 'mb-4' : 'mb-2'} ${isSystemMessage ? 'justify-center' : (isOwn ? 'justify-end' : 'justify-start')
+        }`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -217,7 +217,22 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
               flex items-center gap-1
             `}
           >
-            <Button size="sm" variant="ghost" className="h-6 w-6 p-0">
+            <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => {
+              const images = message.media.filter(m => m.type === 'image')
+              const files = message.media.filter(m => m.type === 'file')
+              const audios = message.media.filter(m => m.type === 'audio')
+              console.log('Reply to message', message)
+              setReplyingTo({
+                sender: sender?.fullName || sender?.username || 'User',
+                content: (files.length > 0
+                  ? files[0]?.metadata?.filename
+                  : (images.length > 0 ? '[Image]' : (audios.length > 0 ? '[Audio]' : '')))
+                  || message.text
+                  || message.body?.text,
+                media: message.media.length > 0 ? message.media : null,
+                messageId: message.id
+              })
+            }}>
               <Reply className="w-3 h-3" />
             </Button>
 
@@ -254,7 +269,7 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                                 images.length === 2 ? 'grid grid-cols-2 gap-2' :
                                   images.length <= 4 ? 'grid grid-cols-2 gap-2 max-w-md' :
                                     'grid grid-cols-3 gap-2 max-w-lg'
-                          }
+                              }
           `}>
                               {images.map((media, index) => (
                                 <div key={`image-${index}`} className="relative">
@@ -267,10 +282,10 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                                     className={`
                     rounded-lg shadow-md object-cover
                     ${images.length === 1 ? 'max-w-sm max-h-96 w-full' :
-                                images.length === 2 ? 'w-full h-32 sm:h-40' :
-                                  images.length <= 4 ? 'w-full h-24 sm:h-32' :
-                                    'w-full h-20 sm:h-24'
-                              }
+                                        images.length === 2 ? 'w-full h-32 sm:h-40' :
+                                          images.length <= 4 ? 'w-full h-24 sm:h-32' :
+                                            'w-full h-20 sm:h-24'
+                                      }
                     hover:shadow-lg transition-shadow duration-200 cursor-pointer
                   `}
                                     onClick={() => {
@@ -359,7 +374,7 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                                   key={`audio-${index}`}
                                   className={`flex items-center gap-2 p-2 max-w-xs rounded-sm
           ${message.isOwn ? 'ml-auto bg-primary/10 border border-primary rounded-l-lg rounded-tr-lg'
-                                : 'mr-auto bg-gray-100 text-black rounded-r-lg rounded-tl-lg'} 
+                                      : 'mr-auto bg-gray-100 text-black rounded-r-lg rounded-tl-lg'} 
           shadow-sm`}
                                 >
                                   {/* Audio player mở rộng đúng flex */}
@@ -387,8 +402,8 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                   className={`
                     relative p-3 rounded-sm
                     ${isOwn
-                    ? 'bg-primary/10 border border-primary rounded-br-sm'
-                    : 'bg-secondary text-secondary-foreground rounded-bl-sm'
+                      ? 'bg-primary/10 border border-primary rounded-br-sm'
+                      : 'bg-secondary text-secondary-foreground rounded-bl-sm'
                     }
                   `}
                 >

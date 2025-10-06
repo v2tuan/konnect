@@ -12,12 +12,20 @@ import { useMuteStore } from "@/store/useMuteStore"
 import { formatChip, groupByDay, pickPeerStatus } from '@/utils/helper'
 import EmojiPicker from 'emoji-picker-react'
 import {
+  Archive,
+  AudioLines,
+  File,
+  FileSpreadsheet,
+  FileText,
   Image,
   LoaderCircle,
+  MessageSquareQuote,
   Mic,
   MoreHorizontal,
+  Music,
   Paperclip,
   Phone,
+  Reply,
   Search as SearchIcon,
   Send,
   Smile,
@@ -25,7 +33,7 @@ import {
   Video,
   X
 } from 'lucide-react'
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { use, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useSelector } from 'react-redux'
 import CallModal from '../../Modal/CallModal'
 import { MessageBubble } from './MessageBubble'
@@ -57,6 +65,19 @@ export function ChatArea({
 
   const { theme, systemTheme } = useTheme()
   const currentTheme = theme === "system" ? systemTheme : theme
+
+  const [replyingTo, setReplyingTo] = useState({
+    sender: 'Dang Duy',
+    content: 'Nộp Project cuối kỳ lần 2Bài tập Opened: Thứ Bảy, 19 tháng 7 2025, 2:04 PM Due: Thứ Bảy, 4 tháng 10 2025, 12:45 PM Nộp các nội dung sau: 1. Danh sác...'
+  })
+
+  const handleCloseReply = () => {
+    setReplyingTo(null)
+  }
+
+  useEffect(() => {
+    setReplyingTo(null)
+  }, [conversation?._id])
 
   // loại cuộc trò chuyện
   const type = conversation?.type || mode
@@ -424,6 +445,7 @@ export function ChatArea({
                         showAvatar={showAvatar}
                         showMeta={showMeta}
                         conversation={conversation}
+                        setReplyingTo={setReplyingTo}
                       />
                     ) : (
                       <div
@@ -474,6 +496,78 @@ export function ChatArea({
 
         {/* Input */}
         <div className="p-4 bg-card/80 backdrop-blur-sm border-t border-border shrink-0">
+          {/* Reply Preview Bar */}
+          {replyingTo && (
+            <div className="mb-3 bg-primary/5 border-l-4 border-primary rounded p-3 flex items-start justify-between">
+              <div className="flex flex-1 items-center gap-3">
+                {/* Thumbnail ảnh nếu có */}
+                {replyingTo.media && (
+                  <>
+                    {(() => {
+                      const images = replyingTo.media.filter(m => m.type === 'image')
+                      const files = replyingTo.media.filter(m => m.type === 'file')
+                      const audios = replyingTo.media.filter(m => m.type === 'audio')
+                      if (images.length > 0) {
+                        return (
+                          <div className="flex-shrink-0">
+                            <img
+                              src={images[0]?.url}
+                              alt="Preview"
+                              className="w-12 h-12 rounded object-cover"
+                            />
+                          </div>
+                        )
+                      } else if (files.length > 0) {
+                        const mimetype = files[0].metadata?.mimetype || ''
+                        if (mimetype.includes('pdf')) {
+                          return <FileText className="w-8 h-8 text-red-500" />
+                        } else if (mimetype.includes('word') || mimetype.includes('document')) {
+                          return <FileText className="w-8 h-8 text-blue-500" />
+                        } else if (mimetype.includes('sheet') || mimetype.includes('excel')) {
+                          return <FileSpreadsheet className="w-8 h-8 text-green-500" />
+                        } else if (mimetype.includes('zip') || mimetype.includes('rar') || mimetype.includes('archive')) {
+                          return <Archive className="w-8 h-8 text-yellow-600" />
+                        } else if (mimetype.includes('video')) {
+                          return <Video className="w-8 h-8 text-purple-500" />
+                        } else if (mimetype.includes('audio')) {
+                          return <Music className="w-8 h-8 text-pink-500" />
+                        } else {
+                          return <File className="w-8 h-8 text-gray-500" />
+                        }
+                      } else if (audios.length > 0) {
+                        return (
+                          <div className="flex-shrink-0">
+                            <div className="w-12 h-12 rounded bg-muted flex items-center justify-center">
+                              <AudioLines className="w-6 h-6 text-muted-foreground" />
+                            </div>
+                          </div>
+                        )
+                      } else {
+                        return null
+                      }
+                    })()}
+                  </>
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="flex text-sm font-semibold items-center gap-1">
+                      <Reply className='h-4 w-4' /> Reply {replyingTo.sender}
+                    </span>
+                  </div>
+                  <p className="text-xs truncate overflow-hidden whitespace-nowrap max-w-4xl">
+                    {replyingTo.content}
+                  </p>
+
+                </div>
+                <button
+                  onClick={handleCloseReply}
+                  className="ml-3 tion-colors flex-shrink-0 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
           <div className="flex items-end gap-2">
             <Input type="file" ref={fileRef} onChange={handleFileChange} className="hidden" />
             <Input type="file" ref={imageRef} onChange={handleImageChange} accept="image/*" className="hidden" multiple />
