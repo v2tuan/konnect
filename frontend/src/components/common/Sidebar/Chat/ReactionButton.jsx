@@ -5,7 +5,7 @@ import { setReaction } from "@/apis"
 
 const defaultReactions = ["👍", "❤️", "😂", "😮", "😢", "😡"]
 
-export default function ReactionButton({messageId}) {
+export default function ReactionButton({ messageId }) {
   const popupRef = useRef(null)
   const containerRef = useRef(null)
 
@@ -62,7 +62,7 @@ export default function ReactionButton({messageId}) {
         <Smile className="w-3 h-3" />
 
         {/* cầu hover */}
-        <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-50 h-12 opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto"></div>
+        <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-10 h-12 opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto"></div>
 
         {/* Popup reactions */}
         {(

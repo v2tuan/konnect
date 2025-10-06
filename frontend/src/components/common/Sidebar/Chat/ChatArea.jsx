@@ -39,6 +39,7 @@ import CallModal from '../../Modal/CallModal'
 import { MessageBubble } from './MessageBubble'
 import { io } from 'socket.io-client'
 import ChatSidebarRight from './ChatSidebarRight'
+import { set } from 'date-fns'
 
 export function ChatArea({
   mode = 'direct',
@@ -219,9 +220,11 @@ export function ChatArea({
   const handleSendMessage = () => {
     const value = messageText.trim()
     if (!value || sending) return
-    onSendMessage?.({ type: 'text', content: value })
+    onSendMessage?.({ type: 'text', content: value, repliedMessage: replyingTo?.messageId || null })
     setMessageText('')
     setShowEmojiPicker(false)
+    setReplyingTo(null)
+    console.log({ type: 'text', content: value, repliedMessage: replyingTo?.messageId || null })
   }
 
   const handleSendAudioMessage = () => {
@@ -357,11 +360,11 @@ export function ChatArea({
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full bg-background">
       {/* Main */}
       <div className={`flex flex-col flex-1 min-h-0 transition-all duration-300 ease-in-out ${isOpen ? 'mr-80' : 'mr-0'}`}>
         {/* Header */}
-        <div className="flex items-center justify-between p-4 bg-card/80 backdrop-blur-sm border-b border-border shadow-soft">
+        <div className="flex items-center justify-between p-4 bg-sidebar backdrop-blur-sm border-b border-border shadow-soft">
           <div className="flex items-center gap-3">
             <div className="relative">
               <Avatar className="w-10 h-10">
@@ -403,7 +406,7 @@ export function ChatArea({
         </div>
 
         {/* Messages Area */}
-        <div className="flex-1 min-h-0 overflow-y-auto relative py-4">
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden relative py-4">
           {shouldShowFriendBanner && (
             <div className="sticky top-0 z-20 border-b">
               <div className="pointer-events-none absolute -bottom-6 left-0 right-0 h-6 from-card to-transparent" />
@@ -517,7 +520,7 @@ export function ChatArea({
         </div>
 
         {/* Input */}
-        <div className="p-4 bg-card/80 backdrop-blur-sm border-t border-border shrink-0">
+        <div className="p-4 bg-sidebar backdrop-blur-sm border-t border-border shrink-0">
           {/* Reply Preview Bar */}
           {replyingTo && (
             <div className="mb-3 bg-primary/5 border-l-4 border-primary rounded p-3 flex items-start justify-between">

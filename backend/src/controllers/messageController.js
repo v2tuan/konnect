@@ -57,6 +57,7 @@ const sendMessage = async (req, res, next) => {
       conversationId,
       type,
       text: body?.text,
+      repliedMessage: body?.repliedMessage,
       file: req.files,   // ⚡ Thêm file vào service
       io: req.io
     })
