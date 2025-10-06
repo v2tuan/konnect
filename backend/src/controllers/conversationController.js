@@ -156,6 +156,21 @@ const handleConversationActions = async (req, res, next) => {
       return res.status(StatusCodes.OK).json(result)
     }
 
+    //handle add memeber to group
+    if (action === "add") {
+      const { memberIds } = req.body
+      if (!memberIds) {
+        return res.status(StatusCodes.BAD_REQUEST).json({ message: 'memberIds is required' })
+      }
+      const result = await conversationService.addMembersToGroup({
+        actorId: userId,
+        conversationId,
+        memberIds,
+        io: req.io
+      })
+      return res.status(StatusCodes.OK).json(result)
+    }
+
     return res.status(StatusCodes.BAD_REQUEST).json({
       message: 'Invalid action. Use "delete" or "leave"'
     })
