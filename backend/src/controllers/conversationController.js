@@ -5,15 +5,12 @@ import Message from "~/models/messages";
 const {StatusCodes} = require("http-status-codes")
 const {conversationService} = require("~/services/conversationService")
 
-const createConversation = async (req, res, next) => {
+export const createConversation = async (req, res, next) => {
   try {
-    const newConversation = await conversationService.createConversation(req.body, req.file, req.userId)
-    console.log(req.userId)
-    res.status(StatusCodes.CREATED).json({
-      data: newConversation
-    })
-  } catch (error) {
-    next(error)
+    const convo = await conversationService.createConversation(req.body, req.file, req.userId, req.io)
+    res.json({ conversation: convo })
+  } catch (e) {
+    next(e)
   }
 }
 

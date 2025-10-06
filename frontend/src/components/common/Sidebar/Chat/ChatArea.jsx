@@ -37,8 +37,8 @@ import { use, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useSelector } from 'react-redux'
 import CallModal from '../../Modal/CallModal'
 import { MessageBubble } from './MessageBubble'
-// ✅ NEW: import panel media
-import ChatSidebarRight from './ChatSIdebarRight'
+import { io } from 'socket.io-client'
+import ChatSidebarRight from './ChatSidebarRight'
 
 export function ChatArea({
   mode = 'direct',
@@ -327,7 +327,29 @@ export function ChatArea({
       console.error("Error accessing microphone", err)
     }
   }
+  const socketRef = useRef(null)
 
+
+  useEffect(() => {
+    socketRef.current = io(import.meta.env.VITE_WS_URL, { withCredentials: true })
+    const s = socketRef.current
+    if (conversation?._id) {
+      s.emit('conversation:join', conversation._id)
+    }
+    const onMessageNew = (payload) => {
+      if (!payload || payload.conversationId !== conversation?._id) return
+      const t = payload.message?.type
+      if (['image','video','audio','file'].includes(t)) {
+        window.dispatchEvent(new CustomEvent('conversation-media:refresh', { detail: { conversationId: conversation._id, type: t } }))
+      }
+    }
+    s.on('message:new', onMessageNew)
+    return () => {
+      s.off('message:new', onMessageNew)
+      if (conversation?._id) s.emit('conversation:leave', conversation._id)
+      s.disconnect()
+    }
+  }, [conversation?._id])
   const stopRecording = () => {
     mediaRecorderRef.current?.stop()
     mediaRecorderRef.current?.stream.getTracks().forEach(track => track.stop())

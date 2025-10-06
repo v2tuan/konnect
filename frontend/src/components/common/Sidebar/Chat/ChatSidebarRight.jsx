@@ -1,4 +1,3 @@
-// src/components/chat/ChatArea.jsx
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Switch } from "@/components/ui/switch"
@@ -13,7 +12,7 @@ import { useNavigate, useParams } from "react-router-dom"
 function ChatSidebarRight({ conversation, isOpen }) {
   const navigate = useNavigate()
   const { conversationId: activeIdFromURL } = useParams()
-  
+
   const handleDeleteConversation = async (conversationId) => {
     try {
       const confirmed = window.confirm('Bạn có chắc chắn muốn xóa lịch sử cuộc trò chuyện này? Hành động này không thể hoàn tác.')
@@ -100,7 +99,7 @@ function ChatSidebarRight({ conversation, isOpen }) {
 
         {/* ✅ Thêm overflow-hidden cho Accordion */}
         <div className="overflow-hidden">
-          <Accordion type="multiple" className="w-full" defaultValue={["media", "file", "link", "security"]}>
+          <Accordion type="multiple" className="w-full" defaultValue={["media", "files", "members", "security"]}>
             <AccordionItem value="media">
               <AccordionTrigger className="text-base p-4">Ảnh & Video</AccordionTrigger>
               <AccordionContent className="overflow-hidden">
@@ -122,7 +121,38 @@ function ChatSidebarRight({ conversation, isOpen }) {
                 />
               </AccordionContent>
             </AccordionItem>
-
+            <AccordionItem value="members">
+              <AccordionTrigger className="text-base p-4">Thành viên nhóm</AccordionTrigger>
+              <AccordionContent className="overflow-hidden">
+                <div className="px-4 pb-4 space-y-2">
+                  {(conversation?.type !== "group" || !Array.isArray(conversation?.group?.members) || !conversation.group.members.length) ? (
+                    <div className="text-sm text-muted-foreground">Cuộc trò chuyện này không phải nhóm hoặc chưa có thành viên.</div>
+                  ) : (
+                    conversation.group.members.map(m => {
+                      const name = m?.fullName || m?.username || "User"
+                      const initial = (name?.[0] || "U").toUpperCase()
+                      return (
+                        <div key={m._id || m.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/60">
+                          <Avatar className="w-8 h-8">
+                            <AvatarImage src={m?.avatarUrl || ""} />
+                            <AvatarFallback>{initial}</AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0">
+                            <div className="text-sm font-medium truncate">{name}</div>
+                            {/* Nếu BE có status { isOnline, lastActiveAt } thì hiện thêm */}
+                            {m?.status?.isOnline !== undefined && (
+                              <div className="text-xs text-muted-foreground">
+                                {m.status.isOnline ? "Đang hoạt động" : "Ngoại tuyến"}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+              </AccordionContent>
+            </AccordionItem>
             <AccordionItem value="security">
               <AccordionTrigger className="text-base p-4">Thiết lập bảo mật</AccordionTrigger>
               <AccordionContent className="overflow-hidden">
@@ -156,12 +186,12 @@ function ChatSidebarRight({ conversation, isOpen }) {
                       <TriangleAlert size={18} className="mr-3 shrink-0" />
                       <span className="text-sm truncate">Báo xấu</span>
                     </div>
-                    
+
                     <div className="flex items-center text-destructive mb-5 cursor-pointer min-w-0" onClick={() => handleDeleteConversation(conversation?._id)}>
                       <Trash size={18} className="mr-3 shrink-0" />
                       <span className="text-sm truncate">Xóa lịch sử trò chuyện</span>
                     </div>
-                    
+
                     {conversation?.type === "group" && (
                       <div className="flex items-center text-destructive mb-5 cursor-pointer min-w-0" onClick={() => handleLeaveGroup(conversation?._id)}>
                         <LogOut size={18} className="mr-3 shrink-0" />
