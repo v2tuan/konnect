@@ -20,6 +20,11 @@ let messageSchema = new mongoose.Schema({
         enum: ['text', 'image', 'file', 'notification', 'audio'],
         required: true
     },
+    repliedMessage: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Message',
+        default: null
+    },
     body: {
         text: { type: String, default: '' }
     },

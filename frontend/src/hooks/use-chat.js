@@ -195,7 +195,7 @@ export const useCloudChat = (options = {}) => {
       if (message.type === "text") {
         payload = {
           type: "text",
-          body: { text: message.content }
+          body: { text: message.content, repliedMessage: message.repliedMessage || null }
         }
       }
       else if (["image", "file", "audio"].includes(message.type)) {

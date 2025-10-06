@@ -150,7 +150,7 @@ export function AppSidebar(props) {
 
       {/* Middle pane - Message list */}
       {open && isMessage && chatState && (
-        <Sidebar collapsible="none" className="w-[450px] border-r bg-background">
+        <Sidebar collapsible="none" className="w-[450px] border-r">
           <ChatSidebar
             chats={chatState.chats}
             contacts={chatState.contacts}

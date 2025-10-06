@@ -76,7 +76,7 @@ async function assertCanAccessConversation(userId, convo) {
  * @param {any} [params.file]  // có thể là req.file hoặc req.files
  * @param {import("socket.io").Server} params.io
  */
-async function sendMessage({ userId, conversationId, type, text, file, io }) {
+async function sendMessage({ userId, conversationId, type, text, repliedMessage, file, io }) {
   // 1) Kiểm tra quyền
   const conversation = await Conversation.findById(conversationId).lean()
   await assertCanAccessConversation(userId, conversation)
@@ -128,6 +128,7 @@ async function sendMessage({ userId, conversationId, type, text, file, io }) {
     senderId: new mongoose.Types.ObjectId(userId),
     media: mediaDocs.map((m) => m._id),
     type,
+    repliedMessage: repliedMessage ? new mongoose.Types.ObjectId(repliedMessage) : null,
     body: {
       text: type === "text" ? (text || "") : `Đã gửi/nhận một tin nhắn ${type}`
     },

@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { getDisplayUsers } from "@/apis"
 
 const mediaUrl = (m, message) => m?.secure_url || m?.url || message?.body?.media?.url || ""
+import { set } from 'date-fns'
 
 function processReactions(reactions = []) {
   const emojiCountMap = {}
@@ -76,7 +77,7 @@ function formatFileSize(bytes) {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`
 }
 
-export function MessageBubble({ message, showAvatar, contact, showMeta = true, conversation }) {
+export function MessageBubble({ message, showAvatar, contact, showMeta = true, conversation, setReplyingTo }) {
   const [hovered, setHovered] = useState(false)
   const [open, setOpen] = useState(false)
   const isOwn = !!message?.isOwn
@@ -157,8 +158,8 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
 
   return (
     <div
-      className={`flex gap-2 ${Array.isArray(message?.reactions) && message.reactions.length > 0 ? "mb-4" : "mb-2"} ${
-        isSystemMessage ? "justify-center" : isOwn ? "justify-end" : "justify-start"
+      className={`flex gap-2 ${message.reactions.length > 0 ? 'mb-4' : 'mb-2'} ${
+        isSystemMessage ? 'justify-center' : (isOwn ? 'justify-end' : 'justify-start')
       }`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -181,7 +182,22 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
               hovered ? "opacity-100" : "opacity-0"
             } flex items-center gap-1`}
           >
-            <Button size="sm" variant="ghost" className="h-6 w-6 p-0">
+            <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => {
+              const images = message.media.filter(m => m.type === 'image')
+              const files = message.media.filter(m => m.type === 'file')
+              const audios = message.media.filter(m => m.type === 'audio')
+              console.log('Reply to message', message)
+              setReplyingTo({
+                sender: sender?.fullName || sender?.username || 'User',
+                content: (files.length > 0
+                  ? files[0]?.metadata?.filename
+                  : (images.length > 0 ? '[Image]' : (audios.length > 0 ? '[Audio]' : '')))
+                  || message.text
+                  || message.body?.text,
+                media: message.media.length > 0 ? message.media : null,
+                messageId: message.id
+              })
+            }}>
               <Reply className="w-3 h-3" />
             </Button>
             <ReactionButton messageId={message.id || message._id} />
@@ -198,69 +214,51 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
             </div>
           ) : (
             <>
-              {Array.isArray(message?.media) && message.media.length > 0 ? (
-                <div className="space-y-2">
-                  {/* Images */}
-                  {images.length > 0 && (
-                    <div
-                      className={`${
-                        images.length === 1
-                          ? "flex justify-center"
-                          : images.length === 2
-                            ? "grid grid-cols-2 gap-2"
-                            : images.length <= 4
-                              ? "grid grid-cols-2 gap-2 max-w-md"
-                              : "grid grid-cols-3 gap-2 max-w-lg"
-                      }`}
-                    >
-                      {images.map((m, i) => {
-                        const url = mediaUrl(m, message)
-                        return (
-                          <div key={`img-${i}`} className="relative">
-                            {message.isPinned && <Pin className="absolute top-1 right-1 w-3 h-3 text-yellow-500 z-10" />}
-                            <img
-                              src={url}
-                              alt={m?.metadata?.filename || "image"}
-                              className={`rounded-lg shadow-md object-cover ${
-                                images.length === 1
-                                  ? "max-w-sm max-h-96 w-full"
-                                  : images.length === 2
-                                    ? "w-full h-32 sm:h-40"
-                                    : images.length <= 4
-                                      ? "w-full h-24 sm:h-32"
-                                      : "w-full h-20 sm:h-24"
-                              } hover:shadow-lg transition-shadow duration-200 cursor-pointer`}
-                              onClick={() => setPreview({ open: true, url, type: "image" })}
-                            />
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
-
-                  {/* Videos */}
-                  {videos.length > 0 && (
-                    <div className="space-y-2">
-                      {videos.map((m, i) => {
-                        const url = mediaUrl(m, message)
-                        return (
-                          <div key={`vid-${i}`} className="relative">
-                            {message.isPinned && <Pin className="absolute top-1 right-1 w-3 h-3 text-yellow-500 z-10" />}
-                            <video
-                              src={url}
-                              controls
-                              className={`rounded-lg shadow-md ${videos.length === 1 ? "max-w-sm w-full max-h-96" : "w-full max-h-72"}`}
-                              onClick={(e) => {
-                                // dùng lightbox để xem video lớn hơn (không autoplay khi click trong bubble)
-                                e.stopPropagation()
-                                setPreview({ open: true, url, type: "video" })
-                              }}
-                            />
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
+              {/* Bubble thường (media hoặc text) */}
+              {message.media && message.media.length > 0 ? (
+                <>
+                  <div className="space-y-2">
+                    {(() => {
+                      const images = message.media.filter(m => m.type === 'image')
+                      const files = message.media.filter(m => m.type === 'file')
+                      const audios = message.media.filter(m => m.type === 'audio')
+                      return (
+                        <>
+                          {/* Hiển thị images với grid layout */}
+                          {images.length > 0 && (
+                            <div className={`
+            ${images.length === 1 ? 'flex justify-center' :
+                                images.length === 2 ? 'grid grid-cols-2 gap-2' :
+                                  images.length <= 4 ? 'grid grid-cols-2 gap-2 max-w-md' :
+                                    'grid grid-cols-3 gap-2 max-w-lg'
+                          }
+          `}>
+                              {images.map((media, index) => (
+                                <div key={`image-${index}`} className="relative">
+                                  {message.isPinned && (
+                                    <Pin className="absolute top-1 right-1 w-3 h-3 text-yellow-500 z-10" />
+                                  )}
+                                  <img
+                                    src={media.url ?? message.body?.media?.url}
+                                    alt={media.metadata?.filename || "message attachment"}
+                                    className={`
+                    rounded-lg shadow-md object-cover
+                    ${images.length === 1 ? 'max-w-sm max-h-96 w-full' :
+                                images.length === 2 ? 'w-full h-32 sm:h-40' :
+                                  images.length <= 4 ? 'w-full h-24 sm:h-32' :
+                                    'w-full h-20 sm:h-24'
+                              }
+                    hover:shadow-lg transition-shadow duration-200 cursor-pointer
+                  `}
+                                    onClick={() => {
+                                      // Có thể thêm function để mở ảnh full size
+                                      // openImageModal(media.url ?? message.body?.media?.url);
+                                    }}
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                          )}
 
                   {/* Files */}
                   {files.length > 0 && (
@@ -301,35 +299,46 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                     </div>
                   )}
 
-                  {/* Audios */}
-                  {audios.length > 0 && (
-                    <div className="space-y-2">
-                      {audios.map((m, i) => {
-                        const url = mediaUrl(m, message)
-                        const type = m?.metadata?.mimetype || "audio/webm"
-                        return (
-                          <div
-                            key={`audio-${i}`}
-                            className={`flex items-center gap-2 p-2 max-w-xs rounded-sm ${
-                              message.isOwn ? "ml-auto bg-primary/10 border border-primary rounded-l-lg rounded-tr-lg" : "mr-auto bg-gray-100 text-black rounded-r-lg rounded-tl-lg"
-                            } shadow-sm`}
-                          >
-                            <audio controls className="flex-1 min-w-0">
-                              <source src={url} type={type} />
-                              Your browser does not support the audio element.
-                            </audio>
-                            {message.isPinned && <Pin className="w-4 h-4 text-yellow-500 shrink-0" />}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
+                          {/* Hiển thị audio */}
+                          {audios.length > 0 && (
+                            <div className="space-y-2">
+                              {audios.map((media, index) => (
+                                <div
+                                  key={`audio-${index}`}
+                                  className={`flex items-center gap-2 p-2 max-w-xs rounded-sm
+          ${message.isOwn ? 'ml-auto bg-primary/10 border border-primary rounded-l-lg rounded-tr-lg'
+                                : 'mr-auto bg-gray-100 text-black rounded-r-lg rounded-tl-lg'} 
+          shadow-sm`}
+                                >
+                                  {/* Audio player mở rộng đúng flex */}
+                                  <audio controls className="flex-1 min-w-0">
+                                    <source src={media.url} type={media.metadata?.mimetype || 'audio/webm'} />
+                                    Your browser does not support the audio element.
+                                  </audio>
+
+                                  {/* Icon Pin nếu có */}
+                                  {message.isPinned && (
+                                    <Pin className="w-4 h-4 text-yellow-500 shrink-0" />
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                        </>
+                      )
+                    })()}
+                  </div>
+                </>
               ) : (
                 <div
-                  className={`relative p-3 rounded-sm ${
-                    isOwn ? "bg-primary/10 border border-primary rounded-br-sm" : "bg-secondary text-secondary-foreground rounded-bl-sm"
-                  }`}
+                  className={`
+                    relative p-3 rounded-sm
+                    ${isOwn
+                    ? 'bg-primary/10 border border-primary rounded-br-sm'
+                    : 'bg-secondary text-secondary-foreground rounded-bl-sm'
+                    }
+                  `}
                 >
                   {message.isPinned && <Pin className="absolute top-1 right-1 w-3 h-3 text-yellow-500" />}
                   <p className="text-sm whitespace-pre-wrap break-words">{message.text ?? message.body?.text ?? ""}</p>
