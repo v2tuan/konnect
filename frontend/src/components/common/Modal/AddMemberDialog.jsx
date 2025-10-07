@@ -1,0 +1,314 @@
+import { createConversation, getFriendsAPI } from "@/apis"
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Button } from "@/components/ui/button"
+import { Dialog, DialogClose, DialogContent, DialogTrigger } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { connectSocket } from '@/lib/socket'; // + thêm
+import { selectCurrentUser } from "@/redux/user/userSlice"
+import { Camera, Image, Search, UserPlus, X } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
+import { useSelector } from "react-redux"
+import { useNavigate } from "react-router-dom"
+import { toast } from "react-toastify"
+
+export default function AddMemberDialog() {
+  const [selectedMembers, setSelectedMembers] = useState([]) // Mảng tên thành viên đã chọn
+  const [groupName, setGroupName] = useState('')
+  const [searchTerm, setSearchTerm] = useState('')
+  const [activeTab, setActiveTab] = useState('Tất cả')
+  const [groupImage, setGroupImage] = useState(null)
+  const fileInputRef = useRef(null)
+  const [friends, setFriends] = useState([]) /** @type {[FriendUI[], any]} */
+  const [hasNext, setHasNext] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+  const [page, setPage] = useState(1)
+  const [debouncedQ, setDebouncedQ] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [open, setOpen] = useState(false)
+  const [sending, setSending] = useState(false)
+  const navigate = useNavigate()
+  const currentUser = useSelector(selectCurrentUser)
+
+  const toggleMember = (member) => {
+    setSelectedMembers(prev =>
+      prev.some(m => m.id === member.id) // kiểm tra đã có chưa
+        ? prev.filter(m => m.id !== member.id) // remove
+        : [...prev, member] // add
+    )
+  }
+
+
+  const removeMember = (member) => {
+    setSelectedMembers(prev => prev.filter(itemMember => itemMember.id !== member.id))
+  }
+
+  // Đọc ảnh bằng FileReader chuyển thành base64 để hiển thị lại
+  // Wrapper để đọc file trả về Promise cho dễ await
+  function readFileAsDataURL(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      // Đăng ký callback: khi việc đọc file hoàn tất thành công, onload sẽ được gọi
+      reader.onload = () => resolve(reader.result)
+      reader.onerror = (e) => reject(e)
+      // Bắt đầu đọc file dưới dạng Data URL (base64). Đây là thao tác bất đồng bộ:
+      // readAsDataURL trả về ngay, nhưng quá trình đọc file sẽ chạy trong nền.
+      // Khi đọc xong, reader.onload mới được gọi.
+      reader.readAsDataURL(file)
+    })
+  }
+
+  // Handler async
+  const handleImageSelect = async (event) => {
+    const file = event.target.files[0]
+    if (!file || !file.type.startsWith('image/')) return
+
+    try {
+      // await chờ cho file được đọc xong rồi mới tiếp tục
+      const dataUrl = await readFileAsDataURL(file)
+      setGroupImage(dataUrl)
+    } catch (err) {
+      console.error('Lỗi khi đọc file:', err)
+    }
+  }
+
+
+  const handleImageClick = () => {
+    fileInputRef.current?.click()
+  }
+
+  const removeImage = () => {
+    setGroupImage(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
+  // Debounce search 400ms
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQ(searchQuery.trim()), 400)
+    return () => clearTimeout(t)
+  }, [searchQuery])
+
+  // Fetch friends when page or debouncedQ changes
+  useEffect(() => {
+    let cancelled = false
+    const fetchFriends = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const res = await getFriendsAPI({ page, limit: 30, q: debouncedQ })
+        if (cancelled) return
+        const mapped = (res?.data || []).map((r) => ({
+          id: r.friend.id,
+          name: r.friend.fullName || r.friend.username,
+          username: r.friend.username,
+          avatar: r.friend.avatarUrl,
+          status: r.friend.status?.isOnline ? 'online' : 'offline',
+          lastActiveAt: r.friend.status?.lastActiveAt || null
+        }))
+        setFriends((prev) => (page === 1 ? mapped : [...prev, ...mapped]))
+        setHasNext(!!res?.hasNext)
+      } catch (e) {
+        if (!cancelled) setError(e?.message || 'Không tải được danh sách bạn bè.')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    fetchFriends()
+    return () => {
+      cancelled = true
+    }
+  }, [page, debouncedQ])
+
+  // Reset về page 1 khi đổi q
+  useEffect(() => {
+    setPage(1)
+  }, [debouncedQ])
+
+  // Khởi tạo (đảm bảo) socket chung nếu chưa có
+  useEffect(() => {
+    if (currentUser?._id) {
+      connectSocket(currentUser._id) // no-op nếu đã kết nối
+    }
+  }, [currentUser?._id])
+
+  const handleCreateGroup = async () => {
+    const payload = new FormData()
+    payload.append('type', 'group')
+    payload.append('name', groupName)
+    if (fileInputRef.current?.files?.[0]) {
+      payload.append('avatarUrl', fileInputRef.current.files[0]) // (nếu BE mong field 'avatar')
+    }
+    payload.append('memberIds', JSON.stringify(selectedMembers.map(m => m.id)))
+
+    try {
+      if (sending) return
+      setSending(true)
+
+      const response = await createConversation(payload)
+      const newConversation = response?.conversation || response?.data || response
+
+      setSelectedMembers([])
+      setGroupName('')
+      setGroupImage(null)
+      setOpen(false)
+      toast.success('Nhóm đã được tạo thành công!')
+      setSending(false)
+
+      if (newConversation?._id) {
+        navigate(`/chats/${newConversation._id}`)
+      }
+    } catch (err) {
+      console.error('Error creating group:', err)
+      setSending(false)
+      toast.error(err?.response?.data?.message || 'Không thể tạo nhóm. Vui lòng thử lại!')
+    }
+  }
+
+  const ContactItem = ({ contact, section = 'recent' }) => (
+    <div
+      className="flex items-center p-3 rounded-md border border-transparent cursor-pointer hover:bg-primary/10 hover:border-primary/50"
+      onClick={() => toggleMember(contact)}
+    >
+
+      <div className={`w-4 h-4 rounded-full border-2 mr-3 flex items-center justify-center ${selectedMembers.some(m => m.id == contact.id)
+        ? 'bg-blue-500 border-blue-500'
+        : 'border-gray-300'
+      }`}>
+        {selectedMembers.some(m => m.id == contact.id) && (
+          <div className="w-2 h-2 bg-white rounded-full"></div>
+        )}
+      </div>
+      <Avatar className="w-10 h-10 mr-3">
+        <AvatarImage src={contact.avatar} />
+        <AvatarFallback>{contact.name}</AvatarFallback>
+      </Avatar>
+
+      <span className="font-medium text-sm">{contact.name}</span>
+    </div>
+  )
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <form>
+        <DialogTrigger asChild>
+          <button className="flex flex-col items-center p-3 rounded-lg transition-colors cursor-pointer">
+            <UserPlus size={24} className="mb-1" />
+            <span className="text-xs">Add members</span>
+          </button>
+        </DialogTrigger>
+        <DialogContent className="max-w-[800px] min-w-[800px] w-[800px] h-[600px] p-0">
+          <div className="fixed inset-0 bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-background rounded-lg shadow-xl w-[800px] h-[600px] flex flex-col">
+              {/* Header */}
+              <div className="flex items-center justify-between p-4 border-b">
+                <h2 className="font-semibold">Add members</h2>
+                <DialogClose asChild>
+                  <button className="p-1 rounded-full hover:bg-primary/50 hover:text-primary-foreground">
+                    <X size={20} />
+                  </button>
+                </DialogClose>
+              </div>
+
+              {/* Search */}
+              <div className="p-4">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                  <Input
+                    placeholder="Nhập tên, số điện thoại, hoặc danh sách số điện thoại."
+                    className="pl-10 rounded-full border border-border"
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* Main Content - Split Layout */}
+              <div className="flex flex-1 overflow-hidden">
+                {/* Left Side - Contacts */}
+                <div className="flex-1 flex flex-col border-r">
+                  {/* Contacts List */}
+                  <div className="flex-1 overflow-y-auto">
+                    {/* Recent Contacts */}
+                    {/* <div className="px-4 py-2">
+                      <h3 className="text-sm font-semibold mb-2">Trò chuyện gần đây</h3>
+                      {recentContacts.map(contact => (
+                        <ContactItem key={contact.name} contact={contact} />
+                      ))}
+                    </div> */}
+
+                    {/* Alphabetical Contacts */}
+                    {/* {Object.entries(alphabetContacts).map(([letter, contacts]) => (
+                      <div key={letter} className="px-4 py-2">
+                        <h3 className="text-sm font-semibold mb-2">{letter}</h3>
+                        {contacts.map(contact => (
+                          <ContactItem key={contact.name} contact={contact} section="alphabet" />
+                        ))}
+                      </div>
+                    ))} */}
+
+                    {/* Friends from API */}
+                    {friends.length > 0 && (
+                      <div className="px-4 py-2">
+                        {friends.map(friend => (
+                          <ContactItem key={friend.id} contact={friend} section="alphabet" />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Right Side - Selected Members */}
+                <div className="w-80 flex flex-col">
+                  <div className="px-4 py-3 border-b">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-muted-foreground">Đã chọn</span>
+                      <span className="text-sm text-blue-600">{selectedMembers.length}/100</span>
+                    </div>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-4">
+                    {selectedMembers.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {selectedMembers.map(member => (
+                          <div key={member} className="inline-flex items-center bg-blue-100 rounded-full px-3 py-1">
+                            <span className="text-sm text-blue-700">{member.name}</span>
+                            <button
+                              onClick={() => removeMember(member)}
+                              className="text-blue-500 hover:text-blue-700 ml-1"
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center text-gray-400 mt-8">
+                        <p className="text-sm">Chưa có thành viên nào được chọn</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="flex justify-end space-x-3 p-4 border-t">
+                <Button variant={"outline"} className={`px-6 py-2`} onClick={() => setOpen(false)}>
+                  Hủy
+                </Button>
+
+                <Button
+                  className={`px-6 py-2`}
+                  disabled={selectedMembers.length === 0 || !groupName.trim() || sending}
+                  onClick={handleCreateGroup}
+                >
+                  {sending ? 'Creating Group...' : 'Create Group'}
+                </Button>
+
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </form>
+    </Dialog>
+  )
+}
