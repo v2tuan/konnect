@@ -888,6 +888,13 @@ function calcMutedUntil(duration) {
   return d;
 }
 
+function joinNamesVN(names = []) {
+  const arr = names.filter(Boolean)
+  if (arr.length <= 1) return arr.join("")
+  if (arr.length === 2) return `${arr[0]} và ${arr[1]}`
+  return `${arr.slice(0, -1).join(", ")} và ${arr[arr.length - 1]}`
+}
+
 async function updateNotificationSettings({ userId, conversationId, muted, duration }) {
   if (!mongoose.isValidObjectId(conversationId)) {
     const err = new Error("Invalid conversationId");
@@ -925,6 +932,222 @@ async function isMemberMutedNow({ userId, conversationId }) {
   const until = cm.notifications.mutedUntil;
   return !until || new Date(until) > new Date();
 }
+
+async function addMembersToGroup({ actorId, conversationId, memberIds, io }) {
+  if (!mongoose.isValidObjectId(conversationId)) {
+    const err = new Error("Invalid conversationId")
+    err.status = 400
+    throw err
+  }
+
+  // 1) Load conversation & verify type
+  const convo = await Conversation.findById(conversationId).lean()
+  if (!convo) {
+    const err = new Error("Conversation not found")
+    err.status = 404
+    throw err
+  }
+  if (convo.type !== "group") {
+    const err = new Error("Only group can add members")
+    err.status = 400
+    throw err
+  }
+
+  // 2) Check actor’s role (admin/owner)
+  const actorMember = await ConversationMember.findOne({
+    conversation: conversationId,
+    userId: actorId,
+    deletedAt: null
+  }).lean()
+  if (!actorMember) {
+    const err = new Error("You are not a member of this conversation")
+    err.status = 403
+    throw err
+  }
+  if (!["admin"].includes(actorMember.role)) {
+    const err = new Error("Only admin can add members")
+    err.status = 403
+    throw err
+  }
+
+  // 3) Chuẩn hóa danh sách cần thêm
+  let ids = Array.isArray(memberIds) ? memberIds : JSON.parse(memberIds || "[]")
+  ids = [...new Set(ids.map(String))].filter(id => mongoose.isValidObjectId(id))
+
+  if (!ids.length) {
+    return { ok: true, added: [], message: "No valid members to add" }
+  }
+
+  // 4) Lọc ra những người đã là member
+  const existing = await ConversationMember.find({
+    conversation: conversationId,
+    userId: { $in: ids }
+  }).select("userId").lean()
+  const existingSet = new Set(existing.map(m => String(m.userId)))
+  const toAdd = ids.filter(id => !existingSet.has(String(id)) && String(id) !== String(actorId))
+
+  if (!toAdd.length) {
+    return { ok: true, added: [], message: "All users are already members or invalid" }
+  }
+
+  // 5) Tạo records ConversationMember cho người mới
+  const now = new Date()
+  await ConversationMember.insertMany(
+    toAdd.map(uid => ({
+      conversation: new mongoose.Types.ObjectId(conversationId),
+      userId: new mongoose.Types.ObjectId(uid),
+      role: "member",
+      joinedAt: now,
+      lastReadMessageSeq: 0
+    })),
+    { ordered: false }
+  )
+
+  // 6) Tạo system message: "A đã thêm B[, C, D] vào nhóm"
+  const [actorUser, addedUsers] = await Promise.all([
+    User.findById(actorId).select("fullName username").lean(),
+    User.find({ _id: { $in: toAdd } }).select("fullName username").lean()
+  ])
+  const actorName = actorUser?.fullName || actorUser?.username || "Ai đó"
+  const addedNames = addedUsers.map(u => u.fullName || u.username || "Người dùng")
+
+  // tăng messageSeq atomically để lấy seq
+  const updatedConvo = await Conversation.findOneAndUpdate(
+    { _id: conversationId },
+    { $inc: { messageSeq: 1 }, $set: { updatedAt: now } },
+    { new: true, lean: true }
+  )
+  const seq = updatedConvo.messageSeq
+
+  const text =
+    addedNames.length === 1
+      ? `${actorName} đã thêm ${addedNames[0]} vào nhóm`
+      : `${actorName} đã thêm ${joinNamesVN(addedNames)} vào nhóm`
+
+  const sysMsg = await Message.create({
+    conversationId: new mongoose.Types.ObjectId(conversationId),
+    seq,
+    senderId: SYSTEM_USER_ID,
+    type: "notification",
+    body: { text },
+    createdAt: now
+  })
+
+  // cập nhật lastMessage
+  await Conversation.updateOne(
+    { _id: conversationId },
+    {
+      $set: {
+        lastMessage: {
+          seq,
+          messageId: sysMsg._id,
+          type: "notification",
+          textPreview: text,
+          senderId: SYSTEM_USER_ID,
+          createdAt: now
+        },
+        updatedAt: now
+      }
+    }
+  )
+
+  // 7) Emit realtime
+  const payload = {
+    conversationId,
+    message: {
+      _id: sysMsg._id,
+      conversationId,
+      seq,
+      type: "notification",
+      body: { text },
+      senderId: SYSTEM_USER_ID,
+      sender: SYSTEM_SENDER,
+      createdAt: now
+    },
+    addedMemberIds: toAdd
+  }
+
+  if (io) {
+    // a) Đẩy "conversation:created" cho người vừa được add để họ có cuộc trò chuyện trong list ngay
+    const convoPayload = {
+      _id: conversationId,
+      id: conversationId,
+      type: "group",
+      group: {
+        name: convo.group?.name || "Group",
+        avatarUrl: convo.group?.avatarUrl || ""
+      },
+      displayName: convo.group?.name || "Group",
+      conversationAvatarUrl: convo.group?.avatarUrl || "",
+      lastMessage: {
+        _id: sysMsg._id,
+        seq,
+        type: "notification",
+        textPreview: text,
+        senderId: SYSTEM_USER_ID,
+        createdAt: now
+      }
+    }
+    toAdd.forEach(uid => {
+      io.to(`user:${uid}`).emit("conversation:created", { conversation: convoPayload })
+    })
+
+    // b) Báo cho room: có người được thêm + có message mới
+    io.to(`conversation:${conversationId}`).emit("member:added", {
+      conversationId,
+      addedMemberIds: toAdd,
+      actorId,
+      message: payload.message
+    })
+    io.to(`conversation:${conversationId}`).emit("message:new", payload)
+  }
+
+  // 8) Cập nhật badge cho tất cả thành viên khác (kể cả người mới), TRỪ actor
+  const members = await ConversationMember.find({
+    conversation: conversationId,
+    userId: { $ne: actorId }
+  }).select("userId lastReadMessageSeq").lean()
+
+  if (io) {
+    members.forEach((m) => {
+      const unread = Math.max(0, seq - (m.lastReadMessageSeq || 0))
+      io.to(`user:${m.userId}`).emit("badge:update", { conversationId, unread })
+    })
+    // Đồng thời clear badge cho actor (vì actor vừa thực hiện action)
+    io.to(`user:${actorId}`).emit("badge:update", { conversationId, unread: 0 })
+  }
+
+  // 9) Ghi Notification cho tất cả trừ actor (bao gồm thành viên cũ & mới)
+  try {
+    const receivers = members.map(m => String(m.userId))
+    // receivers đã bao gồm người mới (vì vừa insert xong), đảm bảo không có actor
+    const notifDocs = receivers.map(rid => ({
+      receiverId: new mongoose.Types.ObjectId(rid),
+      senderId: new mongoose.Types.ObjectId(actorId),
+      type: "system",
+      title: "Thêm thành viên",
+      content: text,
+      conversationId: new mongoose.Types.ObjectId(conversationId),
+      extra: {
+        action: "member_added",
+        addedMemberIds: toAdd
+      }
+    }))
+    const created = await Notification.insertMany(notifDocs, { ordered: false })
+
+    // emit notification:new
+    if (io) {
+      created.forEach(n => {
+        io.to(`user:${n.receiverId}`).emit("notification:new", n.toJSON ? n.toJSON() : n)
+      })
+    }
+  } catch (e) {
+    console.error("[conversationService][addMembersToGroup][notify] failed:", e.message)
+  }
+
+  return { ok: true, added: toAdd, message: payload.message }
+}
+
 export const conversationService = {
   listConversationMedia,
   createConversation,
@@ -934,5 +1157,6 @@ export const conversationService = {
   deleteConversation,
   leaveGroup,
   updateNotificationSettings,
-  isMemberMutedNow
+  isMemberMutedNow,
+  addMembersToGroup
 }
