@@ -8,6 +8,7 @@ import ConversationMediaPanel from './ConversationMediaPanel'
 import { deleteConversationAPI, leaveGroupAPI } from "@/apis"
 import { toast } from "react-toastify"
 import { useNavigate, useParams } from "react-router-dom"
+import AddMemberDialog from "../../Modal/AddMemberDialog"
 
 function ChatSidebarRight({ conversation, isOpen }) {
   const navigate = useNavigate()
@@ -87,14 +88,24 @@ function ChatSidebarRight({ conversation, isOpen }) {
             <h3 className="text-xl font-semibold truncate max-w-full px-2">{conversation?.displayName}</h3>
           </div>
 
-          <div className="flex justify-center items-center gap-4 mb-4">
-            <MuteMenu conversationId={conversation?._id} />
-            <button className="flex flex-col items-center p-2 rounded-lg transition-colors cursor-pointer min-w-0">
-              <Pin size={24} className="mb-1" />
-              <span className="text-xs">Pin</span>
+          <div className="grid grid-cols-3 gap-4 mb-4 place-items-center">
+            <div className="h-16 w-24 grid place-items-center">
+              <MuteMenu conversationId={conversation?._id} />
+            </div>
+
+            <button
+              className="h-16 w-24 grid place-items-center rounded-lg hover:bg-muted transition-colors"
+            >
+              <div className="flex flex-col items-center leading-none">
+                <Pin size={20} className="mb-1" />
+                <span className="text-xs">Pin</span>
+              </div>
             </button>
-            <CreateGroupDialog />
+            <div className="h-16 w-24 grid place-items-center">
+              {conversation?.type === 'direct' ? <CreateGroupDialog /> : <AddMemberDialog />}
+            </div>
           </div>
+
         </div>
 
         {/* ✅ Thêm overflow-hidden cho Accordion */}

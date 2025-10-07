@@ -51,9 +51,9 @@ export default function MuteMenu({ conversationId }) {
           disabled={loading}
           // 🔽 stack vertically + fixed width so text wraps instead of clipping
           className="
-            shrink-0 h-auto px-2 py-3
-            inline-flex flex-col items-center justify-center gap-1
-            w-28 text-center whitespace-normal break-words leading-tight
+            flex flex-col items-center justify-center gap-1
+            p-2 rounded-lg h-auto w-auto
+            text-center text-xs leading-tight
           "
           title={isMutedLocal ? "Notifications off" : "Mute"}
         >
