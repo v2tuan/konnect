@@ -105,9 +105,14 @@ export function useCallInvite(currentUserId) {
     const onDeclined = ({ callId }) => {
       toast.dismiss(callId)
       toastMapRef.current.delete(callId)
-      // Dừng mọi âm thanh ngay khi nhận declined
       stopAllAudio()
-      toast.warn('Call was declined')
+
+      // DEDUPE: chỉ warn một lần cho mỗi callId
+      const declinedToastId = `${callId}-declined`
+      if (!toast.isActive(declinedToastId)) {
+        toast.warn('Call was declined', { toastId: declinedToastId, autoClose: 2500 })
+      }
+
       setRinging(prev => {
         if (prev?.callId === callId) {
           if (prev.timer) clearInterval(prev.timer)
