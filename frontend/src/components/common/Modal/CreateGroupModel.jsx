@@ -257,53 +257,97 @@ export default function CreateGroupDialog() {
   }
 
   // --- NEW: component preview avatar tự động (giữ nguyên container ngoài) ---
-  const AutoGroupAvatar = () => {
-    if (groupImage) return null
-    if (!autoAvatarMembers.length) {
-      return (
-        <>
-          <Camera size={20} className="text-gray-400 group-hover:text-gray-600" />
-          <div className="absolute inset-0 rounded-full border-2 border-dashed border-transparent group-hover:border-primary/50"></div>
-        </>
-      )
-    }
+const AutoGroupAvatar = () => {
+  if (groupImage) return null
+
+  const total = (adminMember ? 1 : 0) + selectedMembers.length
+
+  // Trạng thái rỗng
+  if (!autoAvatarMembers.length && total === 0) {
+    return (
+      <>
+        <Camera size={20} className="text-gray-400 group-hover:text-gray-600" />
+        <div className="absolute inset-0 rounded-full border-2 border-dashed border-transparent group-hover:border-primary/50"></div>
+      </>
+    )
+  }
+
+  // Lấy tối đa 3 người để render ảnh thật
+  const visible = autoAvatarMembers.slice(0, 3)
+
+  // ========== LAYOUT >= 4: 2x2 (3 avatar + 1 badge) ==========
+  if (total >= 4) {
+    const badgeValue = total - 3
     return (
       <div className="relative w-12 h-12">
-        {autoAvatarMembers.map((m, idx) => {
-          const layout =
-            autoAvatarMembers.length === 1
-              ? [{ cls: 'w-12 h-12 left-0 top-0' }]
-              : autoAvatarMembers.length === 2
-                ? [
-                  { cls: 'w-8 h-8 left-0 top-1/2 -translate-y-1/2' },
-                  { cls: 'w-8 h-8 right-0 top-1/2 -translate-y-1/2' }
-                ]
-                : [
-                  { cls: 'w-7 h-7 left-1/2 -translate-x-1/2 top-0' }, // index 0 (admin) nếu có 3
-                  { cls: 'w-7 h-7 left-0 bottom-0' },
-                  { cls: 'w-7 h-7 right-0 bottom-0' }
-                ]
-          const pos = layout[idx]
-          return (
+        {/* grid 2x2, có tí gap để không dính nhau */}
+        <div className="absolute inset-0 grid grid-cols-2 grid-rows-2 gap-[2px] p-[2px]">
+          {visible.map((m, i) => (
             <div
               key={m.id}
-              className={`absolute rounded-full border border-white overflow-hidden bg-muted flex items-center justify-center text-xs font-medium ${pos.cls}`}
+              className="rounded-full border border-white overflow-hidden bg-muted flex items-center justify-center text-xs font-medium"
               style={{ boxShadow: '0 0 0 1px rgba(0,0,0,0.05)' }}
             >
               {m.avatar
                 ? <img src={m.avatar} className="w-full h-full object-cover" />
                 : <span>{(m.name?.[0] || 'U').toUpperCase()}</span>}
             </div>
-          )
-        })}
-        {remainingCount > 0 && (
-          <div className="absolute w-7 h-7 rounded-full bg-gray-400 text-white text-[10px] font-semibold flex items-center justify-center -right-1 -bottom-1 border border-white shadow">
-            {remainingCount}
+          ))}
+
+          {/* Ô thứ 4 là badge +N, đặt ở ô cuối (bottom-right) */}
+          <div className="rounded-full bg-gray-400 text-white text-[10px] font-semibold border border-white flex items-center justify-center">
+            {badgeValue}
           </div>
-        )}
+        </div>
       </div>
     )
   }
+
+  // ========== LAYOUT 1,2,3 như cũ ==========
+  const layout2 = [
+    { cls: 'w-8 h-8 left-0 top-1/2 -translate-y-1/2' },
+    { cls: 'w-8 h-8 right-0 top-1/2 -translate-y-1/2' }
+  ]
+  const layout3 = [
+    { cls: 'w-7 h-7 left-1/2 -translate-x-1/2 top-0' },
+    { cls: 'w-7 h-7 left-0 bottom-0' },
+    { cls: 'w-7 h-7 right-0 bottom-0' }
+  ]
+
+  return (
+    <div className="relative w-12 h-12">
+      {visible.length === 1 && (
+        <div className="absolute w-12 h-12 left-0 top-0 rounded-full border border-white overflow-hidden bg-muted flex items-center justify-center text-xs font-medium">
+          {visible[0].avatar
+            ? <img src={visible[0].avatar} className="w-full h-full object-cover" />
+            : <span>{(visible[0].name?.[0] || 'U').toUpperCase()}</span>}
+        </div>
+      )}
+
+      {visible.length === 2 && visible.map((m, i) => (
+        <div
+          key={m.id}
+          className={`absolute rounded-full border border-white overflow-hidden bg-muted flex items-center justify-center text-xs font-medium ${layout2[i].cls}`}
+          style={{ boxShadow: '0 0 0 1px rgba(0,0,0,0.05)' }}
+        >
+          {m.avatar ? <img src={m.avatar} className="w-full h-full object-cover" /> : <span>{(m.name?.[0] || 'U').toUpperCase()}</span>}
+        </div>
+      ))}
+
+      {visible.length === 3 && visible.map((m, i) => (
+        <div
+          key={m.id}
+          className={`absolute rounded-full border border-white overflow-hidden bg-muted flex items-center justify-center text-xs font-medium ${layout3[i].cls}`}
+          style={{ boxShadow: '0 0 0 1px rgba(0,0,0,0.05)' }}
+        >
+          {m.avatar ? <img src={m.avatar} className="w-full h-full object-cover" /> : <span>{(m.name?.[0] || 'U').toUpperCase()}</span>}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+
 
   const ContactItem = ({ contact }) => (
     <div
