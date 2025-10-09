@@ -1,17 +1,48 @@
+/* eslint-disable no-empty */
 import { useEffect, useRef, useState, createElement } from 'react'
 import { toast } from 'react-toastify'
 import { getWebRTCSocket } from '@/lib/socket'
 import { ToastIncoming } from '@/components/common/Modal/CallToast'
 
+const CALLER_RING_SRC = '/zalo-sender.mp3'
+const CALLEE_RING_SRC = '/zalo-receive.mp3'
+const DEFAULT_VOLUME = 0.8
+
 export function useCallInvite(currentUserId) {
   const socketRef = useRef(null)
 
-  // Khung chờ phía caller
   const [ringing, setRinging] = useState(null)
-  // Map callId -> toastId
   const toastMapRef = useRef(new Map())
-  // Callback mở modal WebRTC
   const onOpenCallRef = useRef(null)
+
+  // NEW: audio refs
+  const callerAudioRef = useRef(null)    // âm cho người gọi
+  const calleeAudioRef = useRef(null)    // âm cho người nhận
+
+  const startLoop = (ref, src) => {
+    try {
+      if (!ref.current) {
+        ref.current = new Audio(src)
+        ref.current.loop = true
+        ref.current.volume = DEFAULT_VOLUME
+      }
+      ref.current.currentTime = 0
+      ref.current.play().catch(()=>{}) // autoplay có thể bị chặn
+    } catch {}
+  }
+  const stopLoop = (ref) => {
+    try {
+      if (ref.current) {
+        ref.current.pause()
+        ref.current.currentTime = 0
+      }
+    } catch {}
+  }
+
+  const stopAllAudio = () => {
+    stopLoop(callerAudioRef)
+    stopLoop(calleeAudioRef)
+  }
 
   useEffect(() => {
     if (!currentUserId) return
@@ -21,44 +52,45 @@ export function useCallInvite(currentUserId) {
 
     console.log('[useCallInvite] Setting up socket listeners for user:', currentUserId)
 
-    // ===== Callee: nhận cuộc gọi đến =====
+    // ===== Callee nhận cuộc gọi =====
     const onRinging = ({ callId, conversationId, mode, from }) => {
       console.log('[useCallInvite] call:ringing received:', { callId, conversationId, mode, from })
 
+      // Bắt đầu chuông dành cho người được gọi
+      startLoop(calleeAudioRef, CALLEE_RING_SRC)
+
       const toastId = toast.info(
         createElement(ToastIncoming, {
-          from: from,
-          mode: mode,
+          from,
+            mode,
           onAccept: () => accept(callId, conversationId, mode, from),
           onDecline: () => decline(callId, from?.id)
         }),
         {
           autoClose: false,
           closeOnClick: false,
-          toastId: callId // Đặt toastId = callId để dễ quản lý
+          toastId: callId
         }
       )
       toastMapRef.current.set(callId, toastId)
     }
 
-    // Caller hủy cuộc gọi
     const onCanceled = ({ callId }) => {
       console.log('[useCallInvite] call:canceled received:', callId)
-
-      // Dismiss toast by callId
       toast.dismiss(callId)
       toastMapRef.current.delete(callId)
+      stopLoop(calleeAudioRef)
     }
 
-    // Cả 2 bên được thông báo accept
     const onAccepted = ({ callId, conversationId, mode, acceptedAt }) => {
       console.log('[useCallInvite] call:accepted received:', { callId, conversationId, mode, acceptedAt })
 
-      // Đóng toast
       toast.dismiss(callId)
       toastMapRef.current.delete(callId)
 
-      // Caller tắt khung chờ
+      // Dừng mọi âm thanh
+      stopAllAudio()
+
       setRinging(prev => {
         if (prev?.callId === callId) {
           if (prev.timer) clearInterval(prev.timer)
@@ -67,22 +99,16 @@ export function useCallInvite(currentUserId) {
         return prev
       })
 
-      // Mở modal WebRTC
       if (typeof onOpenCallRef.current === 'function') {
-        console.log('[useCallInvite] Opening call modal:', { conversationId, mode, acceptedAt, callId })
         onOpenCallRef.current(conversationId, mode, acceptedAt, callId)
-      } else {
-        console.warn('[useCallInvite] onOpenCallRef not set!')
       }
     }
 
-    // Caller nhận báo bị từ chối
     const onDeclined = ({ callId }) => {
       console.log('[useCallInvite] call:declined received:', callId)
-
       toast.dismiss(callId)
       toastMapRef.current.delete(callId)
-
+      stopAllAudio()
       toast.warn('Call was declined')
       setRinging(prev => {
         if (prev?.callId === callId) {
@@ -104,25 +130,21 @@ export function useCallInvite(currentUserId) {
       s.off('call:accepted', onAccepted)
       s.off('call:declined', onDeclined)
 
-      // Dọn dẹp
+      // Cleanup
       setRinging(prev => {
         if (prev?.timer) clearInterval(prev.timer)
         return null
       })
-      toastMapRef.current.forEach(toastId => toast.dismiss(toastId))
+      toastMapRef.current.forEach(id => toast.dismiss(id))
       toastMapRef.current.clear()
+      stopAllAudio()
     }
   }, [currentUserId])
 
   // ===== Helper functions =====
   function accept(callId, conversationId, mode, fromUser) {
-    if (!socketRef.current) {
-      console.error('[useCallInvite] Socket not connected for accept')
-      return
-    }
-
-    console.log('[useCallInvite] Accepting call:', { callId, conversationId, mode, fromUser })
-
+    if (!socketRef.current) return
+    console.log('[useCallInvite] Accepting call:', { callId })
     socketRef.current.emit('call:accept', {
       callId,
       conversationId,
@@ -130,32 +152,24 @@ export function useCallInvite(currentUserId) {
       fromUserId: currentUserId,
       toUserId: fromUser?.id
     })
-
-    // Dismiss toast ngay lập tức
+    stopAllAudio()
     toast.dismiss(callId)
     toastMapRef.current.delete(callId)
   }
 
   function decline(callId, toUserId) {
-    if (!socketRef.current) {
-      console.error('[useCallInvite] Socket not connected for decline')
-      return
-    }
-
-    console.log('[useCallInvite] Declining call:', { callId, toUserId })
-
+    if (!socketRef.current) return
+    console.log('[useCallInvite] Declining call:', { callId })
     socketRef.current.emit('call:decline', {
       callId,
       fromUserId: currentUserId,
       toUserId
     })
-
-    // Dismiss toast ngay lập tức
+    stopAllAudio()
     toast.dismiss(callId)
     toastMapRef.current.delete(callId)
   }
 
-  // Đăng ký callback mở modal
   function setOnOpenCall(fn) {
     console.log('[useCallInvite] setOnOpenCall registered')
     onOpenCallRef.current = fn
@@ -163,16 +177,13 @@ export function useCallInvite(currentUserId) {
 
   // ===== Caller bắt đầu gọi =====
   function startCall({ callId, conversationId, mode, toUserIds, me, peer }) {
-    if (!socketRef.current || !conversationId || !toUserIds || toUserIds.length === 0) {
+    if (!socketRef.current || !conversationId || !toUserIds?.length) {
       console.error('[useCallInvite] Invalid startCall params')
       return
     }
-
     const _callId = callId || `${conversationId}:${Date.now()}`
+    console.log('[useCallInvite] Starting call:', { _callId, conversationId, mode })
 
-    console.log('[useCallInvite] Starting call:', { _callId, conversationId, mode, toUserIds })
-
-    // Emit invite
     socketRef.current.emit('call:invite', {
       callId: _callId,
       conversationId,
@@ -181,7 +192,9 @@ export function useCallInvite(currentUserId) {
       from: me
     })
 
-    // Hiển thị khung chờ 30s
+    // Bắt đầu chuông caller
+    startLoop(callerAudioRef, CALLER_RING_SRC)
+
     const ttl = 30000
     const startedAt = Date.now()
     const timer = setInterval(() => {
@@ -189,10 +202,10 @@ export function useCallInvite(currentUserId) {
         if (!prev || prev.callId !== _callId) return prev
         const left = ttl - (Date.now() - startedAt)
         if (left <= 0) {
-          // Timeout - tự động hủy
           clearInterval(timer)
-          console.log('[useCallInvite] Call timeout, auto canceling')
+            console.log('[useCallInvite] Call timeout, auto canceling')
           socketRef.current?.emit('call:cancel', { callId: _callId, toUserIds })
+          stopLoop(callerAudioRef)
           return null
         }
         return { ...prev, leftMs: left }
@@ -213,11 +226,10 @@ export function useCallInvite(currentUserId) {
   // Caller hủy chủ động
   function cancelCaller(toUserIds) {
     if (!ringing || !socketRef.current) return
-
     console.log('[useCallInvite] Canceling call:', ringing.callId)
     socketRef.current.emit('call:cancel', { callId: ringing.callId, toUserIds })
-
     if (ringing.timer) clearInterval(ringing.timer)
+    stopLoop(callerAudioRef)
     setRinging(null)
   }
 
