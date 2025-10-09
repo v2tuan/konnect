@@ -45,7 +45,7 @@ export default function App() {
             <Route path="chats" element={<MessagePage />} />
             <Route path="chats/:conversationId" element={<MessagePage />} />
             <Route path="contacts/*" element={<ContactPage />} />
-            <Route path="cloud" element={<CloudPage />} />
+            <Route path="chats/cloud" element={<CloudPage />} />
           </Route>
         </Route>
 

@@ -232,3 +232,12 @@ export const leaveGroupAPI = async (conversationId) => {
   })
   return response.data
 }
+
+export const addMemberToGroup = async (conversationId, memberIds) => {
+  // BE của bạn parse được cả array lẫn JSON string. Gửi array là đủ.
+  const response = await authorizeAxiosInstance.delete(
+    `${API_ROOT}/api/conversation/chats/${conversationId}`,
+    { data: { action: 'add', memberIds } }
+  )
+  return response.data
+}

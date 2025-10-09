@@ -178,7 +178,7 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
 
         {!isSystemMessage && (
           <div
-            className={`z-[999] pointer-events-auto absolute top-1/2 -translate-y-1/2 ${isOwn ? "-left-22" : "-right-22"} opacity-0 transition-opacity duration-150 ${
+            className={`pointer-events-auto absolute top-1/2 -translate-y-1/2 ${isOwn ? "-left-22" : "-right-22"} opacity-0 transition-opacity duration-150 ${
               hovered ? "opacity-100" : "opacity-0"
             } flex items-center gap-1`}
           >

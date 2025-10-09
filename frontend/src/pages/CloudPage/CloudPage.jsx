@@ -1,44 +1,59 @@
 import { ChatArea } from '@/components/common/Sidebar/Chat/ChatArea'
 import { Loader2 } from 'lucide-react'
-import { useCloudChat } from '@/hooks/use-chat'
 import { useSelector } from 'react-redux'
 import { selectCurrentUser } from '@/redux/user/userSlice'
+import { useNavigate } from 'react-router-dom'
+import { useCloudChat } from '@/hooks/use-chat'
+import { useEffect, useRef } from 'react'
 
 export default function CloudPage() {
+  const navigate = useNavigate()
   const currentUser = useSelector(selectCurrentUser)
-  const currentUserId = currentUser._id
+  const currentUserId = currentUser?._id
 
-  const {
-    loading,
-    sending,
-    conversation,
-    messages,
-    send
-  } = useCloudChat('cloud', currentUserId)
+  // Reuse existing hook to resolve the user's cloud (some impls also auto-create)
+  const { loading, conversation } = useCloudChat('cloud', currentUserId)
 
-  if (loading) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <Loader2 className="size-5 animate-spin" />
-      </div>
-    )
-  }
+  const triedCreate = useRef(false)
 
-  // Conversation tối giản cho Cloud (có thể lấy từ API)
-  const convUi = {
-    displayName: conversation?.group?.name || 'My Cloud',
-    conversationAvatarUrl:
-      conversation?.group?.avatarUrl || '/cloud-note-icon.svg'
-  }
+  // When cloud conversation is available → redirect to MessagePage
+  useEffect(() => {
+    if (!loading && conversation?._id) {
+      navigate(`/chats/${conversation._id}`, { replace: true })
+    }
+  }, [loading, conversation?._id, navigate])
 
+  // Fallback: if not found after loading, create then redirect
+  useEffect(() => {
+    if (!loading && !conversation?._id && currentUserId && !triedCreate.current) {
+      triedCreate.current = true
+      ;(async () => {
+        try {
+          const res = await fetch('/api/conversations', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: 'cloud' })
+          })
+          const json = await res.json().catch(() => ({}))
+          const cid =
+            json?._id ||
+            json?.id ||
+            json?.conversation?._id ||
+            json?.data?._id
+          if (cid) {
+            navigate(`/chats/${cid}`, { replace: true })
+          }
+        } catch (e) {
+          // noop: keep loader or handle error UI if you want
+        }
+      })()
+    }
+  }, [loading, conversation?._id, currentUserId, navigate])
+
+  // Loading while resolving/creating and redirecting
   return (
-    <ChatArea
-      mode="cloud"
-      conversation={convUi}
-      messages={messages}
-      onSendMessage={send}
-      sending={sending}
-      loading={loading}
-    />
+    <div className="flex h-full items-center justify-center">
+      <Loader2 className="size-5 animate-spin" />
+    </div>
   )
 }
