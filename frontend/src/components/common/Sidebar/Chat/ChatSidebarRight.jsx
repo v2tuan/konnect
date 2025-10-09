@@ -14,6 +14,10 @@ function ChatSidebarRight({ conversation, isOpen }) {
   const navigate = useNavigate()
   const { conversationId: activeIdFromURL } = useParams()
 
+  const existingMemberIds = Array.isArray(conversation?.group?.members)
+    ? conversation.group.members.map(m => String(m?._id || m?.id)).filter(Boolean)
+    : []
+
   const handleDeleteConversation = async (conversationId) => {
     try {
       const confirmed = window.confirm('Bạn có chắc chắn muốn xóa lịch sử cuộc trò chuyện này? Hành động này không thể hoàn tác.')
@@ -102,7 +106,10 @@ function ChatSidebarRight({ conversation, isOpen }) {
               </div>
             </button>
             <div className="h-16 w-24 grid place-items-center">
-              {conversation?.type === 'direct' ? <CreateGroupDialog /> : <AddMemberDialog />}
+              {conversation?.type === 'direct' ? <CreateGroupDialog /> : <AddMemberDialog
+                conversationId={conversation?._id}
+                existingMemberIds={existingMemberIds}
+              />}
             </div>
           </div>
 
