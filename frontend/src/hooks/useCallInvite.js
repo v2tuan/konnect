@@ -34,7 +34,12 @@ export function useCallInvite(currentUserId) {
     try {
       if (ref.current) {
         ref.current.pause()
-        ref.current.currentTime = 0
+        try { ref.current.currentTime = 0 } catch {}
+        // Giải phóng buffer để không tự phát lại
+        ref.current.src = ''
+        ref.current.srcObject = null
+        ref.current.load?.()
+        ref.current = null
       }
     } catch {}
   }
@@ -50,47 +55,41 @@ export function useCallInvite(currentUserId) {
     const s = getWebRTCSocket(currentUserId)
     socketRef.current = s
 
-    console.log('[useCallInvite] Setting up socket listeners for user:', currentUserId)
-
     // ===== Callee nhận cuộc gọi =====
     const onRinging = ({ callId, conversationId, mode, from }) => {
-      console.log('[useCallInvite] call:ringing received:', { callId, conversationId, mode, from })
-
       // Bắt đầu chuông dành cho người được gọi
       startLoop(calleeAudioRef, CALLEE_RING_SRC)
 
       const toastId = toast.info(
         createElement(ToastIncoming, {
           from,
-            mode,
+          mode,
           onAccept: () => accept(callId, conversationId, mode, from),
           onDecline: () => decline(callId, from?.id)
         }),
         {
           autoClose: false,
           closeOnClick: false,
-          toastId: callId
+          toastId: callId,
+          // Nếu user tự tắt toast bằng nút X -> vẫn dừng âm
+          onClose: () => stopAllAudio()
         }
       )
       toastMapRef.current.set(callId, toastId)
     }
 
     const onCanceled = ({ callId }) => {
-      console.log('[useCallInvite] call:canceled received:', callId)
       toast.dismiss(callId)
       toastMapRef.current.delete(callId)
-      stopLoop(calleeAudioRef)
+      // Đảm bảo dừng mọi âm
+      stopAllAudio()
     }
 
     const onAccepted = ({ callId, conversationId, mode, acceptedAt }) => {
-      console.log('[useCallInvite] call:accepted received:', { callId, conversationId, mode, acceptedAt })
-
       toast.dismiss(callId)
       toastMapRef.current.delete(callId)
-
-      // Dừng mọi âm thanh
+      // Dừng mọi âm thanh (callee + caller)
       stopAllAudio()
-
       setRinging(prev => {
         if (prev?.callId === callId) {
           if (prev.timer) clearInterval(prev.timer)
@@ -98,16 +97,15 @@ export function useCallInvite(currentUserId) {
         }
         return prev
       })
-
       if (typeof onOpenCallRef.current === 'function') {
         onOpenCallRef.current(conversationId, mode, acceptedAt, callId)
       }
     }
 
     const onDeclined = ({ callId }) => {
-      console.log('[useCallInvite] call:declined received:', callId)
       toast.dismiss(callId)
       toastMapRef.current.delete(callId)
+      // Dừng mọi âm thanh ngay khi nhận declined
       stopAllAudio()
       toast.warn('Call was declined')
       setRinging(prev => {
