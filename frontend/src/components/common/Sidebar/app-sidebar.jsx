@@ -32,7 +32,7 @@ const data = {
   navMain: [
     { title: "Message", url: "/chats", icon: Inbox },
     { title: "Contact", url: "/contacts", icon: BookUser },
-    { title: "Cloud", url: "/cloud", icon: Cloud },
+    { title: "Cloud", url: "/chats/cloud", icon: Cloud },
     { title: "Block", url: "/block", icon: Trash2 },
     { title: "Agent Chat", url: "/agent", icon: Brain }
   ]
