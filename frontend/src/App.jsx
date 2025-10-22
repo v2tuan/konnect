@@ -1,25 +1,25 @@
-import { useSelector } from "react-redux"
-import { Navigate, Outlet, Route, Routes } from "react-router-dom"
-import Auth from "./pages/AuthPage/Auth"
-import OtpPage from "./pages/OtpPage/OtpPage"
-import ProfilePage from "./pages/ProfilePage/ProfilePage"
-import { selectCurrentUser } from "./redux/user/userSlice"
+import { useSelector } from "react-redux";
+import { Navigate, Outlet, Route, Routes } from "react-router-dom";
+import Auth from "./pages/AuthPage/Auth";
+import OtpPage from "./pages/OtpPage/OtpPage";
+import ProfilePage from "./pages/ProfilePage/ProfilePage";
+import { selectCurrentUser } from "./redux/user/userSlice";
 
-import MainLayout from "./pages/HomePage/HomePage"
-import MessagePage from "./pages/MessagePage/MessagePage"
-import ContactPage from "./pages/ContactPage/ContactPage"
-import CloudPage from "./pages/CloudPage/CloudPage"
+import MainLayout from "./pages/HomePage/HomePage";
+import MessagePage from "./pages/MessagePage/MessagePage";
+import ContactPage from "./pages/ContactPage/ContactPage";
+import CloudPage from "./pages/CloudPage/CloudPage";
+
 
 // ✅ Toast
-import { ToastContainer } from "react-toastify"
-import "react-toastify/dist/ReactToastify.css"
+import { ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 const ProtectedRoute = () => {
-  const currentUser = useSelector(selectCurrentUser)
-  // có thể tuỳ biến state "đang check auth"
-  if (currentUser === undefined) return <div>Loading...</div>
-  return currentUser ? <Outlet /> : <Navigate to="/login" replace />
-}
+  const currentUser = useSelector(selectCurrentUser);
+  if (currentUser === undefined) return <div>Loading...</div>;
+  return currentUser ? <Outlet /> : <Navigate to="/login" replace />;
+};
 
 export default function App() {
   return (
@@ -44,6 +44,13 @@ export default function App() {
           <Route element={<MainLayout />}>
             <Route path="chats" element={<MessagePage />} />
             <Route path="chats/:conversationId" element={<MessagePage />} />
+
+            {/* ⭐ Xem tất cả media của 1 cuộc trò chuyện:
+                - /chats/:conversationId/media?cat=media   (Ảnh/Video)
+                - /chats/:conversationId/media?cat=audio   (Audio)
+                - /chats/:conversationId/media?cat=file    (File)
+            */}
+
             <Route path="contacts/*" element={<ContactPage />} />
             <Route path="cloud" element={<CloudPage />} />
           </Route>
@@ -64,5 +71,5 @@ export default function App() {
         theme="colored"
       />
     </>
-  )
+  );
 }

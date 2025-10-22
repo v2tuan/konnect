@@ -3,7 +3,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogClose, DialogContent, DialogTrigger } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
-import { connectSocket } from '@/lib/socket'; // + thêm
+import { connectSocket } from '@/lib/socket';
 import { selectCurrentUser } from "@/redux/user/userSlice"
 import { Camera, Image, Search, Users, X } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
@@ -11,7 +11,8 @@ import { useSelector } from "react-redux"
 import { useNavigate } from "react-router-dom"
 import { toast } from "react-toastify"
 
-export default function CreateGroupDialog() {
+// Thêm 'asChild = false' và 'children' vào props
+export default function CreateGroupDialog({ asChild = false, children }) {
   const [selectedMembers, setSelectedMembers] = useState([]) // Mảng tên thành viên đã chọn
   const [groupName, setGroupName] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
@@ -190,112 +191,116 @@ export default function CreateGroupDialog() {
   )
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <form>
-        <DialogTrigger asChild>
+      {/* Thẻ <form> đã bị xóa khỏi đây */}
+      <DialogTrigger asChild={asChild}>
+        {asChild ? (
+          children
+        ) : (
           <button className="flex flex-col items-center p-3 rounded-lg transition-colors cursor-pointer">
             <Users size={24} className="mb-1" />
             <span className="text-xs">Create group</span>
           </button>
-        </DialogTrigger>
-        <DialogContent className="max-w-[800px] min-w-[800px] w-[800px] h-[600px] p-0">
-          <div className="fixed inset-0 bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-background rounded-lg shadow-xl w-[800px] h-[600px] flex flex-col">
-              {/* Header */}
-              <div className="flex items-center justify-between p-4 border-b">
-                <h2 className="font-semibold">Create Group</h2>
-                <DialogClose asChild>
-                  <button className="p-1 rounded-full hover:bg-primary/50 hover:text-primary-foreground">
-                    <X size={20} />
-                  </button>
-                </DialogClose>
-              </div>
+        )}
+      </DialogTrigger>
+      <DialogContent className="max-w-[800px] min-w-[800px] w-[800px] h-[600px] p-0">
+        <div className="fixed inset-0 bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-background rounded-lg shadow-xl w-[800px] h-[600px] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b">
+              <h2 className="font-semibold">Create Group</h2>
+              <DialogClose asChild>
+                <button className="p-1 rounded-full hover:bg-primary/50 hover:text-primary-foreground">
+                  <X size={20} />
+                </button>
+              </DialogClose>
+            </div>
 
-              {/* Group Name Input */}
-              <div className="p-4 border-b">
-                <div className="flex items-center space-x-3">
-                  <div
-                    className="relative w-12 h-12 bg-secondary rounded-full flex items-center justify-center cursor-pointer hover:bg-secondary/80 group"
-                    onClick={handleImageClick}
-                  >
-                    {groupImage ? (
-                      <>
-                        <img
-                          src={groupImage}
-                          alt="Group"
-                          className="w-12 h-12 rounded-full object-cover"
-                        />
-                        <div className="absolute inset-0 bg-black/50 rounded-full opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                          <Camera size={16} className="text-white" />
-                        </div>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            removeImage()
-                          }}
-                          className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600"
-                        >
-                          <X size={10} />
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <Camera size={20} className="text-gray-400 group-hover:text-gray-600" />
-                        <div className="absolute inset-0 rounded-full border-2 border-dashed border-transparent group-hover:border-primary/50"></div>
-                      </>
-                    )}
-                  </div>
-                  <input
-                    type="text"
-                    placeholder="Nhập tên nhóm..."
-                    value={groupName}
-                    onChange={(e) => setGroupName(e.target.value)}
-                    className="flex-1 border-b border-blue-400 outline-none text-muted-foreground"
-                  />
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={handleImageSelect}
-                    className="hidden"
-                  />
+            {/* Group Name Input */}
+            <div className="p-4 border-b">
+              <div className="flex items-center space-x-3">
+                <div
+                  className="relative w-12 h-12 bg-secondary rounded-full flex items-center justify-center cursor-pointer hover:bg-secondary/80 group"
+                  onClick={handleImageClick}
+                >
+                  {groupImage ? (
+                    <>
+                      <img
+                        src={groupImage}
+                        alt="Group"
+                        className="w-12 h-12 rounded-full object-cover"
+                      />
+                      <div className="absolute inset-0 bg-black/50 rounded-full opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                        <Camera size={16} className="text-white" />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          removeImage()
+                        }}
+                        className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600"
+                      >
+                        <X size={10} />
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <Camera size={20} className="text-gray-400 group-hover:text-gray-600" />
+                      <div className="absolute inset-0 rounded-full border-2 border-dashed border-transparent group-hover:border-primary/50"></div>
+                    </>
+                  )}
                 </div>
-                {groupImage && (
-                  <div className="mt-2 text-xs text-muted-foreground flex items-center">
-                    <Image size={12} className="mr-1" />
-                    Ảnh đại diện nhóm đã được chọn
-                  </div>
-                )}
+                <input
+                  type="text"
+                  placeholder="Nhập tên nhóm..."
+                  value={groupName}
+                  onChange={(e) => setGroupName(e.target.value)}
+                  className="flex-1 border-b border-blue-400 outline-none text-muted-foreground"
+                />
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageSelect}
+                  className="hidden"
+                />
               </div>
-
-              {/* Search */}
-              <div className="p-4">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4" />
-                  <Input
-                    placeholder="Nhập tên, số điện thoại, hoặc danh sách số điện thoại."
-                    className="pl-10 rounded-full border border-border"
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
+              {groupImage && (
+                <div className="mt-2 text-xs text-muted-foreground flex items-center">
+                  <Image size={12} className="mr-1" />
+                  Ảnh đại diện nhóm đã được chọn
                 </div>
-              </div>
+              )}
+            </div>
 
-              {/* Main Content - Split Layout */}
-              <div className="flex flex-1 overflow-hidden">
-                {/* Left Side - Contacts */}
-                <div className="flex-1 flex flex-col border-r">
-                  {/* Contacts List */}
-                  <div className="flex-1 overflow-y-auto">
-                    {/* Recent Contacts */}
-                    {/* <div className="px-4 py-2">
+            {/* Search */}
+            <div className="p-4">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                <Input
+                  placeholder="Nhập tên, số điện thoại, hoặc danh sách số điện thoại."
+                  className="pl-10 rounded-full border border-border"
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+            </div>
+
+            {/* Main Content - Split Layout */}
+            <div className="flex flex-1 overflow-hidden">
+              {/* Left Side - Contacts */}
+              <div className="flex-1 flex flex-col border-r">
+                {/* Contacts List */}
+                <div className="flex-1 overflow-y-auto">
+                  {/* Recent Contacts */}
+                  {/* <div className="px-4 py-2">
                       <h3 className="text-sm font-semibold mb-2">Trò chuyện gần đây</h3>
                       {recentContacts.map(contact => (
                         <ContactItem key={contact.name} contact={contact} />
                       ))}
                     </div> */}
 
-                    {/* Alphabetical Contacts */}
-                    {/* {Object.entries(alphabetContacts).map(([letter, contacts]) => (
+                  {/* Alphabetical Contacts */}
+                  {/* {Object.entries(alphabetContacts).map(([letter, contacts]) => (
                       <div key={letter} className="px-4 py-2">
                         <h3 className="text-sm font-semibold mb-2">{letter}</h3>
                         {contacts.map(contact => (
@@ -304,69 +309,69 @@ export default function CreateGroupDialog() {
                       </div>
                     ))} */}
 
-                    {/* Friends from API */}
-                    {friends.length > 0 && (
-                      <div className="px-4 py-2">
-                        {friends.map(friend => (
-                          <ContactItem key={friend.id} contact={friend} section="alphabet" />
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Right Side - Selected Members */}
-                <div className="w-80 flex flex-col">
-                  <div className="px-4 py-3 border-b">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-muted-foreground">Đã chọn</span>
-                      <span className="text-sm text-blue-600">{selectedMembers.length}/100</span>
+                  {/* Friends from API */}
+                  {friends.length > 0 && (
+                    <div className="px-4 py-2">
+                      {friends.map(friend => (
+                        <ContactItem key={friend.id} contact={friend} section="alphabet" />
+                      ))}
                     </div>
-                  </div>
-
-                  <div className="flex-1 overflow-y-auto p-4">
-                    {selectedMembers.length > 0 ? (
-                      <div className="flex flex-wrap gap-2">
-                        {selectedMembers.map(member => (
-                          <div key={member} className="inline-flex items-center bg-blue-100 rounded-full px-3 py-1">
-                            <span className="text-sm text-blue-700">{member.name}</span>
-                            <button
-                              onClick={() => removeMember(member)}
-                              className="text-blue-500 hover:text-blue-700 ml-1"
-                            >
-                              <X size={12} />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-center text-gray-400 mt-8">
-                        <p className="text-sm">Chưa có thành viên nào được chọn</p>
-                      </div>
-                    )}
-                  </div>
+                  )}
                 </div>
               </div>
 
-              {/* Footer */}
-              <div className="flex justify-end space-x-3 p-4 border-t">
-                <Button variant={"outline"} className={`px-6 py-2`} onClick={() => setOpen(false)}>
-                  Hủy
-                </Button>
+              {/* Right Side - Selected Members */}
+              <div className="w-80 flex flex-col">
+                <div className="px-4 py-3 border-b">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-muted-foreground">Đã chọn</span>
+                    <span className="text-sm text-blue-600">{selectedMembers.length}/100</span>
+                  </div>
+                </div>
 
-                <Button
-                  className={`px-6 py-2`}
-                  disabled={selectedMembers.length === 0 || !groupName.trim() || sending}
-                  onClick={handleCreateGroup}
-                >
-                  {sending ? 'Creating Group...' : 'Create Group'}
-                </Button>
-
+                <div className="flex-1 overflow-y-auto p-4">
+                  {selectedMembers.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {selectedMembers.map(member => (
+                        <div key={member} className="inline-flex items-center bg-blue-100 rounded-full px-3 py-1">
+                          <span className="text-sm text-blue-700">{member.name}</span>
+                          <button
+                            onClick={() => removeMember(member)}
+                            className="text-blue-500 hover:text-blue-700 ml-1"
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center text-gray-400 mt-8">
+                      <p className="text-sm">Chưa có thành viên nào được chọn</p>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
+
+            {/* Footer */}
+            <div className="flex justify-end space-x-3 p-4 border-t">
+              <Button variant={"outline"} className={`px-6 py-2`} onClick={() => setOpen(false)}>
+                Hủy
+              </Button>
+
+              <Button
+                className={`px-6 py-2`}
+                disabled={selectedMembers.length === 0 || !groupName.trim() || sending}
+                onClick={handleCreateGroup}
+              >
+                {sending ? 'Creating Group...' : 'Create Group'}
+              </Button>
+
+            </div>
           </div>
-        </DialogContent>
-      </form>
+        </div>
+      </DialogContent>
+      {/* Thẻ </form> đã bị xóa khỏi đây */}
     </Dialog>
   )
 }

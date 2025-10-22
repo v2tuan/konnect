@@ -77,47 +77,51 @@ async function assertCanAccessConversation(userId, convo) {
  * @param {import("socket.io").Server} params.io
  */
 async function sendMessage({ userId, conversationId, type, text, repliedMessage, file, io }) {
-  // 1) Kiểm tra quyền
-  const conversation = await Conversation.findById(conversationId).lean()
-  await assertCanAccessConversation(userId, conversation)
+  // 1) Quyền
+  const conversation = await Conversation.findById(conversationId).lean();
+  await assertCanAccessConversation(userId, conversation);
 
-  // 2) Tăng seq atomically
+  // 2) seq
   const updatedConvo = await Conversation.findOneAndUpdate(
     { _id: conversationId },
     { $inc: { messageSeq: 1 } },
     { new: true, lean: true }
-  )
+  );
   if (!updatedConvo) {
-    const err = new Error(`Conversation not found when incrementing: ${conversationId}`)
-    err.status = 404
-    throw err
+    const err = new Error(`Conversation not found when incrementing: ${conversationId}`);
+    err.status = 404;
+    throw err;
   }
-  const seq = updatedConvo.messageSeq
-  const now = new Date()
+  const seq = updatedConvo.messageSeq;
+  const now = new Date();
 
   // 3) Upload & lưu media (nếu có)
-  let mediaDocs = []
+  let mediaDocs = [];
   if (["image", "file", "audio", "video"].includes(type) && file) {
-    // normalize về mảng
-    const files = Array.isArray(file)
-      ? file
-      : (file?.length ? Array.from(file) : (file ? [file] : []))
-
+    const files = Array.isArray(file) ? file : (file?.length ? Array.from(file) : (file ? [file] : []));
     if (files.length) {
-      const uploaded = await mediaService.uploadMultiple(files, conversationId)
-      // Lưu vào Media collection
+      const uploaded = await mediaService.uploadMultiple(files, conversationId);
+
+      // ✅ LƯU THÊM senderId và sentAt
       mediaDocs = await Promise.all(
         uploaded.map((u) =>
           Media.create({
             conversationId: new mongoose.Types.ObjectId(conversationId),
             uploaderId: new mongoose.Types.ObjectId(userId),
+            senderId: new mongoose.Types.ObjectId(userId),   // <-- người gửi tin nhắn
             type,
             url: u.url,
-            metadata: u.metadata,
+            sentAt: now,                                      // <-- thời điểm gửi
+            metadata: {
+              ...(u.metadata || {}),
+              // lưu kèm trong metadata để FE dễ đọc nếu muốn
+              senderId: userId,
+              sentAt: now
+            },
             uploadedAt: now
           })
         )
-      )
+      );
     }
   }
 
@@ -129,16 +133,14 @@ async function sendMessage({ userId, conversationId, type, text, repliedMessage,
     media: mediaDocs.map((m) => m._id),
     type,
     repliedMessage: repliedMessage ? new mongoose.Types.ObjectId(repliedMessage) : null,
-    body: {
-      text: type === "text" ? (text || "") : `Đã gửi/nhận một tin nhắn ${type}`
-    },
+    body: { text: type === "text" ? (text || "") : `Đã gửi/nhận một tin nhắn ${type}` },
     createdAt: now
-  })
+  });
 
-  // populate media sau khi create
-  msg = await msg.populate("media")
+  // populate media để trả về ngay cho FE
+  msg = await msg.populate("media");
 
-  // 5) Cập nhật lastMessage cho conversation
+  // 5) Cập nhật lastMessage
   await Conversation.updateOne(
     { _id: conversationId },
     {
@@ -154,9 +156,9 @@ async function sendMessage({ userId, conversationId, type, text, repliedMessage,
         updatedAt: now
       }
     }
-  )
+  );
 
-  // BẢO ĐẢM membership cho cloud owner (đồng thời cập nhật lastRead)
+  // 6) Bảo đảm membership cloud & badge cho người gửi
   await ConversationMember.updateOne(
     { conversation: conversationId, userId },
     {
@@ -165,69 +167,59 @@ async function sendMessage({ userId, conversationId, type, text, repliedMessage,
     },
     { upsert: conversation.type === "cloud" }
   );
-
   await ConversationMember.updateOne(
     { conversation: conversationId, userId },
-    { $max: { lastReadMessageSeq: seq } }  // không bao giờ lùi tiến độ
+    { $max: { lastReadMessageSeq: seq } }
   );
-
-// Emit badge = 0 cho CHÍNH người gửi (để các tab tự xóa badge ngay)
   if (io) {
     io.to(`user:${userId}`).emit("badge:update", { conversationId, unread: 0 });
   }
-  const payload = { conversationId, message: toPublicMessage(msg) }
 
-  // 6) Emit "message:new" cho room
+  const payload = { conversationId, message: toPublicMessage(msg) };
+
+  // 7) Emit message:new cho room + revive deleted members
   if (io) {
-    io.to(`conversation:${conversationId}`).emit("message:new", payload)
+    io.to(`conversation:${conversationId}`).emit("message:new", payload);
   }
-  
   try {
     const deletedMembers = await ConversationMember.find({
       conversation: conversationId,
       deletedAt: { $ne: null }
-    }).select("userId").lean()
+    }).select("userId").lean();
 
     if (deletedMembers.length) {
-      // Clear cờ deleted để hội thoại xuất hiện lại ở danh sách
       await ConversationMember.updateMany(
         { conversation: conversationId, deletedAt: { $ne: null } },
         { $set: { deletedAt: null, deletedAtSeq: null } }
-      )
-
-      // Gửi message:new trực tiếp tới user-room để FE có thể thêm lại vào list ngay
+      );
       if (io) {
         deletedMembers.forEach(m => {
-          io.to(`user:${m.userId}`).emit("message:new", payload)
-        })
+          io.to(`user:${m.userId}`).emit("message:new", payload);
+        });
       }
     }
   } catch (e) {
-    console.error("[messageService][reviveOnNewMessage] failed:", e.message)
+    console.error("[messageService][reviveOnNewMessage] failed:", e.message);
   }
 
-  // 7) Emit badge:update cho các thành viên khác
+  // 8) badge cho các thành viên khác
   if (io) {
     const members = await ConversationMember.find({
       conversation: conversationId,
       userId: { $ne: userId }
-    })
-    .select("userId lastReadMessageSeq")
-    .lean()
+    }).select("userId lastReadMessageSeq").lean();
 
     members.forEach((m) => {
-      const unread = Math.max(0, seq - (m.lastReadMessageSeq || 0))
-      io.to(`user:${m.userId}`).emit("badge:update", { conversationId, unread })
-    })
+      const unread = Math.max(0, seq - (m.lastReadMessageSeq || 0));
+      io.to(`user:${m.userId}`).emit("badge:update", { conversationId, unread });
+    });
   }
 
-  // 8) Notification (kèm tên / avatar người gửi) + emit notification:new
+  // 9) Notification
   try {
-    const sender = await User.findById(userId)
-    .select("fullName username avatarUrl")
-    .lean()
-    const senderName = sender?.fullName || sender?.username || "Người dùng"
-    const senderAvatar = sender?.avatarUrl || ""
+    const sender = await User.findById(userId).select("fullName username avatarUrl").lean();
+    const senderName = sender?.fullName || sender?.username || "Người dùng";
+    const senderAvatar = sender?.avatarUrl || "";
 
     const notifs = await notificationService.notifyMessage({
       conversationId,
@@ -235,20 +227,21 @@ async function sendMessage({ userId, conversationId, type, text, repliedMessage,
       senderId: userId,
       senderName,
       senderAvatar
-    })
+    });
 
     if (io && Array.isArray(notifs)) {
       notifs.forEach((n) => {
-        if (!n) return
-        io.to(`user:${n.receiverId}`).emit("notification:new", n)
-      })
+        if (!n) return;
+        io.to(`user:${n.receiverId}`).emit("notification:new", n);
+      });
     }
   } catch (e) {
-    console.error("[messageService][notifyMessage] failed:", e.message)
+    console.error("[messageService][notifyMessage] failed:", e.message);
   }
 
-  return { ok: true, ...payload }
+  return { ok: true, ...payload };
 }
+
 
 async function setReaction({ userId, messageId, emoji, io }) {
   if (!mongoose.isValidObjectId(messageId)) throw new Error("Invalid messageId")

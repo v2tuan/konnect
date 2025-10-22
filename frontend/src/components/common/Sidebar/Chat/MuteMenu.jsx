@@ -1,4 +1,5 @@
 // components/chat/MuteMenu.jsx
+
 import { useState } from "react";
 import { Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -8,11 +9,12 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator
-} from "@/components/ui/dropdown-menu"; // no .jsx extension
+} from "@/components/ui/dropdown-menu";
 import { muteConversation, unmuteConversation } from "@/apis";
 import { useMuteStore } from "@/store/useMuteStore";
 
-export default function MuteMenu({ conversationId }) {
+// CHANGED: Thêm 'asChild = false' và 'children' vào props
+export default function MuteMenu({ conversationId, asChild = false, children }) {
   const isMutedLocal = useMuteStore((s) => s.isMuted(conversationId));
   const setMutedLocal = useMuteStore((s) => s.setMuted);
   const [loading, setLoading] = useState(false);
@@ -45,23 +47,30 @@ export default function MuteMenu({ conversationId }) {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          disabled={loading}
-          // 🔽 stack vertically + fixed width so text wraps instead of clipping
-          className="
-            flex flex-col items-center justify-center gap-1
-            p-2 rounded-lg h-auto w-auto
-            text-center text-xs leading-tight
-          "
-          title={isMutedLocal ? "Notifications off" : "Mute"}
-        >
-          <Bell className="h-6 w-6" />
-          <span className="text-xs">
-            {isMutedLocal ? "Notifications off" : "Mute"}
-          </span>
-        </Button>
+      {/* CHANGED: Truyền 'asChild' prop vào đây */}
+      <DropdownMenuTrigger asChild={asChild}>
+        {/* CHANGED: Render 'children' nếu 'asChild' là true,
+            nếu không thì render button mặc định */}
+        {asChild ? (
+          children
+        ) : (
+          <Button
+            variant="ghost"
+            disabled={loading}
+            // 🔽 stack vertically + fixed width so text wraps instead of clipping
+            className="
+              flex flex-col items-center justify-center gap-1
+              p-2 rounded-lg h-auto w-auto
+              text-center text-xs leading-tight
+            "
+            title={isMutedLocal ? "Notifications off" : "Mute"}
+          >
+            <Bell className="h-6 w-6" />
+            <span className="text-xs">
+              {isMutedLocal ? "Notifications off" : "Mute"}
+            </span>
+          </Button>
+        )}
       </DropdownMenuTrigger>
 
       {/* Renders in a portal → won’t be clipped by the panel */}
