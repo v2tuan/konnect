@@ -67,7 +67,11 @@ const createConversation = async (conversationData, file, userId, io) => {
   let membersToAdd = []
 
   if (type === 'cloud') {
-    conversationDataToCreate.cloud = { ownerId: userId }
+    conversationDataToCreate.cloud = {
+      ownerId: userId,
+      name: 'My Cloud',
+      avatarUrl: 'https://cdn-icons-png.flaticon.com/512/8038/8038388.png'
+    }
     membersToAdd = [{ userId, role: 'owner' }]
   } else if (type === 'direct') {
     if (memberIds.length > 2) {
@@ -228,7 +232,7 @@ const createConversation = async (conversationData, file, userId, io) => {
         type,
         displayName:
           type === 'cloud'
-            ? 'Cloud Chat'
+            ? 'My Cloud'
             : undefined,
         conversationAvatarUrl:
           type === 'cloud'
@@ -364,7 +368,7 @@ const getConversation = async (page = 1, limit = 20, userId) => {
             branches: [
               { case: { $eq: ['$conversation.type', 'direct'] }, then: { $ifNull: [{ $ifNull: [{ $arrayElemAt: ['$otherUsers.fullName', 0] }, null] }, 'Unknown'] } },
               { case: { $eq: ['$conversation.type', 'group'] }, then: { $ifNull: ['$conversation.group.name', 'Group'] } },
-              { case: { $eq: ['$conversation.type', 'cloud'] }, then: 'Your Cloud' }
+              { case: { $eq: ['$conversation.type', 'cloud'] }, then: 'My Cloud' }
             ],
             default: 'Unknown'
           }
@@ -486,7 +490,8 @@ const fetchConversationDetail = async (userId, conversationId, limit = 30, befor
   }
 
   if (convo.type === 'cloud') {
-    displayName = 'Cloud Chat'
+    displayName = convo.cloud?.name || 'My Cloud'
+    conversationAvatarUrl = convo.cloud?.avatarUrl || "https://cdn-icons-png.flaticon.com/512/8038/8038388.png"
   }
 
   // ===== Messages (oldest -> newest) =====

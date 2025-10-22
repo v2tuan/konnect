@@ -52,7 +52,7 @@ export default function App() {
             */}
 
             <Route path="contacts/*" element={<ContactPage />} />
-            <Route path="cloud" element={<CloudPage />} />
+            <Route path="chats/cloud" element={<CloudPage />} />
           </Route>
         </Route>
 

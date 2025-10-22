@@ -22,17 +22,25 @@ export default function MessagePage() {
     loading, sending, messages, send,
     startTyping, stopTyping, othersTyping, conversation
   } = useCloudChat({
-    mode: "direct",
+    mode: "direct", // hook param unchanged
     currentUserId: currentUser?._id,
     conversationId
   })
 
   if (!conversationId) return <WelcomeScreen/>
 
+  // Infer UI mode from conversation.type (cloud/direct/group)
+  const chatMode =
+    conversation?.type === "cloud"
+      ? "cloud"
+      : conversation?.type === "group"
+      ? "group"
+      : "direct"
+
   return (
     <div className="h-full w-full">
       <ChatArea
-        mode="direct"
+        mode={chatMode}
         conversation={conversation || { _id: conversationId }}
         messages={messages}
         loading={loading}
