@@ -800,8 +800,7 @@ async function listConversationMedia({
                                        page = 1,
                                        limit = 24,
                                        q,
-                                       // Thêm các tham số mới
-                                       senderId,
+                                       senderId,     // <= từ query
                                        startDate,
                                        endDate
                                      }) {
@@ -835,70 +834,94 @@ async function listConversationMedia({
   const l = Math.max(1, Math.min(50, Number(limit) || 24));
   const skip = (p - 1) * l;
 
-  // Cập nhật đối tượng filter
-  const filter = { conversationId: convIdObj }; // Dùng convIdObj đã được chuẩn hóa
-
+  // ---- FILTER CỐT LÕI ----
+  const filter = { conversationId: convIdObj };
   if (type && ["image", "video", "audio", "file"].includes(type)) {
     filter.type = type;
   }
-  // search theo filename (tuỳ chọn)
   if (q && q.trim()) {
     filter.$text = { $search: q.trim() };
   }
 
-  // --- THÊM LOGIC LỌC MỚI ---
-  // Lọc theo người gửi
+  // ✅ ĐÚNG: lọc theo người gửi (senderId), không phải uploaderId
   if (senderId && mongoose.isValidObjectId(senderId)) {
-    filter.uploaderId = new mongoose.Types.ObjectId(senderId);
+    filter.senderId = new mongoose.Types.ObjectId(senderId);
   }
 
-  // Lọc theo ngày
-  if (startDate || endDate) {
-    filter.uploadedAt = {}; // Dùng `uploadedAt` (từ schema của Media)
-    if (startDate) {
-      // Đảm bảo $gte lấy từ đầu ngày
-      const start = new Date(startDate);
-      start.setHours(0, 0, 0, 0);
-      filter.uploadedAt.$gte = start;
-    }
-    if (endDate) {
-      // Đảm bảo $lte lấy đến cuối ngày
-      const end = new Date(endDate);
-      end.setHours(23, 59, 59, 999);
-      filter.uploadedAt.$lte = end;
-    }
+  // Lọc theo ngày (theo sentAt nếu có, fallback uploadedAt)
+  const timeCond = {};
+  if (startDate) {
+    const s = new Date(startDate); s.setHours(0,0,0,0);
+    timeCond.$gte = s;
   }
-  // --- KẾT THÚC LOGIC LỌC MỚI ---
+  if (endDate) {
+    const e = new Date(endDate); e.setHours(23,59,59,999);
+    timeCond.$lte = e;
+  }
+  if (timeCond.$gte || timeCond.$lte) {
+    // Ưu tiên sentAt; nếu không có sentAt thì vẫn lọc theo uploadedAt
+    filter.$or = [
+      { sentAt: timeCond },
+      { sentAt: { $exists: false }, uploadedAt: timeCond }
+    ];
+  }
 
+  // ---- QUERY ITEMS ----
   const [items, total] = await Promise.all([
-    Media.find(filter, {
-      url: 1,
-      type: 1,
-      uploadedAt: 1,
-      uploaderId: 1,
-      metadata: 1
-    })
-    .sort({ uploadedAt: -1, _id: -1 })
+    Media.find(
+      filter,
+      {
+        url: 1,
+        type: 1,
+        uploadedAt: 1,
+        senderId: 1,     // ✅ thêm
+        sentAt: 1,       // ✅ thêm
+        metadata: 1
+      }
+    )
+    .sort({ sentAt: -1, uploadedAt: -1, _id: -1 })
     .skip(skip)
     .limit(l)
     .lean(),
     Media.countDocuments(filter)
   ]);
-
   const hasMore = p * l < total;
 
-  // quick preview: 6 ảnh/video mới nhất để gắn vào “Ảnh/Video”
-  const quickPreview = await Media.find(
-    { conversationId: convIdObj, type: { $in: ["image", "video"] } }, // Dùng convIdObj
-    { url: 1, type: 1, uploadedAt: 1, metadata: 1 }
-  )
-  .sort({ uploadedAt: -1, _id: -1 })
-  .limit(6)
-  .lean();
+  // ---- PARTICIPANTS (để FE dựng combobox thành viên) ----
+  // Lấy theo điều kiện filter hiện tại (trừ điều kiện senderId — để không tự bó lại 1 người)
+  const filterForParticipants = { ...filter };
+  delete filterForParticipants.senderId;
 
-  // summary: đếm theo type (để render badge tab)
+  const participantsRaw = await Media.aggregate([
+    { $match: filterForParticipants },
+    { $group: { _id: "$senderId" } },
+    {
+      $lookup: {
+        from: "users",
+        localField: "_id",
+        foreignField: "_id",
+        as: "u"
+      }
+    },
+    { $unwind: { path: "$u", preserveNullAndEmptyArrays: true } },
+    {
+      $project: {
+        id: "$u._id",
+        fullName: "$u.fullName",
+        username: "$u.username",
+        avatarUrl: "$u.avatarUrl"
+      }
+    }
+  ]);
+
+  // Quick preview & summary giữ nguyên (nếu cần)
+  const quickPreview = await Media.find(
+    { conversationId: convIdObj, type: { $in: ["image", "video"] } },
+    { url: 1, type: 1, uploadedAt: 1, metadata: 1, sentAt: 1 }
+  ).sort({ sentAt: -1, uploadedAt: -1, _id: -1 }).limit(6).lean();
+
   const byTypeAgg = await Media.aggregate([
-    { $match: { conversationId: convIdObj } }, // Dùng convIdObj
+    { $match: { conversationId: convIdObj } },
     { $group: { _id: "$type", count: { $sum: 1 } } }
   ]);
   const summary = byTypeAgg.reduce((acc, it) => (acc[it._id] = it.count, acc), {});
@@ -910,7 +933,8 @@ async function listConversationMedia({
     hasMore,
     items,
     quickPreview,
-    summary // { image: n, video: n, audio: n, file: n }
+    summary,
+    participants: participantsRaw // ✅ FE sẽ dùng làm danh sách thành viên cho filter
   };
 }
 

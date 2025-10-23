@@ -2,11 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Switch } from "@/components/ui/switch";
-// IMPORT THÊM ICON
-import {
-  EyeOff, Pin, Shield, Trash, TriangleAlert, LogOut,
-  Bell, Users, UserPlus
-} from "lucide-react";
+import { Bell, Users, UserPlus, Pin, Shield, EyeOff, Trash, TriangleAlert, LogOut } from "lucide-react";
 import CreateGroupDialog from "../../Modal/CreateGroupModel";
 import MuteMenu from "@/components/common/Sidebar/Chat/MuteMenu.jsx";
 import ConversationMediaPanel from "./ConversationMediaPanel";
@@ -16,104 +12,89 @@ import { toast } from "react-toastify";
 import { useNavigate, useParams } from "react-router-dom";
 import AddMemberDialog from "../../Modal/AddMemberDialog";
 
-function ChatSidebarRight({ conversation, isOpen, onClose }) {
+export default function ChatSidebarRight({ conversation, isOpen, onClose }) {
   const navigate = useNavigate();
   const { conversationId: activeIdFromURL } = useParams();
-
   const panelRef = useRef(null);
 
   // Gallery state
   const [showGallery, setShowGallery] = useState(false);
-  const [galleryTab, setGalleryTab] = useState("media"); // 'media' | 'audio' | 'file'
+  const [galleryTab, setGalleryTab] = useState("media");
+  const openGallery = (tab) => { setGalleryTab(tab); setShowGallery(true); };
 
-  const openGallery = (tab) => {
-    setGalleryTab(tab);
-    setShowGallery(true);
-  };
-
-  // --- Các useEffect (cho Escape và Click out) đã sửa từ trước ---
+  // ESC: close gallery if open; otherwise close sidebar
   useEffect(() => {
     if (!isOpen) return;
     const onKey = (e) => {
       if (e.key === "Escape") {
-        if (!showGallery) {
-          onClose?.();
-        }
+        if (showGallery) setShowGallery(false);
+        else onClose?.();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [isOpen, showGallery, onClose]);
 
+  // Click outside FIX: ignore clicks on Popover/Command (shadcn/Radix)
   useEffect(() => {
     if (!isOpen) return;
     const handleDown = (e) => {
-      if (e.target.closest("#media-window-portal")) {
+      const t = e.target;
+      // 1) inside sidebar => ignore
+      if (panelRef.current?.contains(t)) return;
+      // 2) inside media viewer portal => ignore
+      if (t.closest("#media-window-portal")) return;
+      // 3) inside popper/command => ignore
+      if (
+        t.closest("[data-radix-popper-content-wrapper]") ||
+        t.closest("[cmdk-root]") ||
+        t.closest("[cmdk-list]") ||
+        t.closest('[role="listbox"]')
+      ) {
         return;
       }
-      if (panelRef.current && !panelRef.current.contains(e.target)) {
-        if (showGallery) setShowGallery(false);
-        else onClose?.();
-      }
+      // 4) outside => close
+      if (showGallery) setShowGallery(false);
+      else onClose?.();
     };
     document.addEventListener("mousedown", handleDown);
     return () => document.removeEventListener("mousedown", handleDown);
-  }, [isOpen, showGallery, onClose]);
+  }, [isOpen, onClose, showGallery]);
 
-  // --- Các hàm handle (Delete, Leave) không đổi ---
   const handleDeleteConversation = async (conversationId) => {
     try {
-      const confirmed = window.confirm(
-        "Bạn có chắc chắn muốn xóa lịch sử cuộc trò chuyện này? Hành động này không thể hoàn tác."
-      );
+      const confirmed = window.confirm("Are you sure you want to delete this conversation history? This action cannot be undone.");
       if (!confirmed) return;
       await deleteConversationAPI(conversationId, { action: "delete" });
-      window.dispatchEvent(
-        new CustomEvent("conversation:deleted", {
-          detail: { conversationId },
-        })
-      );
-      toast.success("Đã xóa cuộc trò chuyện thành công");
-      if (activeIdFromURL === conversationId) {
-        navigate("/");
-      }
+      window.dispatchEvent(new CustomEvent("conversation:deleted", { detail: { conversationId } }));
+      toast.success("Conversation deleted successfully");
+      if (activeIdFromURL === conversationId) navigate("/");
     } catch (error) {
       console.error("Error deleting conversation:", error);
-      toast.error(error.message || "Có lỗi xảy ra khi xóa cuộc trò chuyện");
+      toast.error(error.message || "An error occurred while deleting the conversation");
     }
   };
-
   const handleLeaveGroup = async (conversationId) => {
     try {
-      const confirmed = window.confirm("Bạn có chắc chắn muốn rời khỏi nhóm này?");
+      const confirmed = window.confirm("Are you sure you want to leave this group?");
       if (!confirmed) return;
       await leaveGroupAPI(conversationId, { action: "leave" });
-      window.dispatchEvent(
-        new CustomEvent("conversation:deleted", {
-          detail: { conversationId },
-        })
-      );
-      toast.success("Đã rời khỏi nhóm thành công");
-      if (activeIdFromURL === conversationId) {
-        navigate("/");
-      }
+      window.dispatchEvent(new CustomEvent("conversation:deleted", { detail: { conversationId } }));
+      toast.success("Left group successfully");
+      if (activeIdFromURL === conversationId) navigate("/");
     } catch (error) {
       console.error("Error leaving group:", error);
-      toast.error(error.message || "Có lỗi xảy ra khi rời nhóm");
+      toast.error(error.message || "An error occurred while leaving the group");
     }
   };
 
-
-  // --- ĐỊNH NGHĨA STYLE CHUNG ---
-  // Thống nhất style cho cả 3 button
   const buttonStyle = "h-full w-full grid place-items-center rounded-lg hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
   const contentStyle = "flex flex-col items-center leading-none";
-  const textStyle = "text-xs font-medium"; // Dùng font-medium cho đồng bộ
+  const textStyle = "text-xs font-medium";
 
   return (
     <>
       {isOpen && <div className="fixed inset-0 z-[40] bg-black/30 pointer-events-none" />}
-
       <div
         ref={panelRef}
         className={`fixed z-[49] flex flex-col top-0 right-0 bg-sidebar h-full w-80 shadow-lg transform transition-transform duration-300 ease-in-out border-l overflow-hidden ${
@@ -125,12 +106,16 @@ function ChatSidebarRight({ conversation, isOpen, onClose }) {
             conversationId={conversation?._id}
             initialTab={galleryTab}
             onClose={() => setShowGallery(false)}
+            members={
+              conversation?.type === "group"
+                ? (conversation?.group?.members || [])
+                : (conversation?.members || [])
+            }
           />
         ) : (
           <div className="flex-1 overflow-y-auto overflow-x-hidden pb-4 max-w-full">
             {/* Info box */}
             <div className="p-6 text-center border-b">
-              {/* ... (Avatar và Tên không đổi) ... */}
               <div className="w-20 h-20 bg-blue-500 rounded-full flex items-center justify-center mx-auto mb-4 shrink-0">
                 {conversation?.conversationAvatarUrl ? (
                   <Avatar className="w-20 h-20">
@@ -149,12 +134,9 @@ function ChatSidebarRight({ conversation, isOpen, onClose }) {
                 </h3>
               </div>
 
-              {/* --- (CHANGED) SỬA LẠI TOÀN BỘ KHỐI 3 BUTTON --- */}
+              {/* 3 buttons */}
               <div className="grid grid-cols-3 gap-4 mb-4 place-items-center">
-
-                {/* 1. Nút Mute */}
                 <div className="h-16 w-24 grid place-items-center">
-                  {/* Dùng asChild để truyền style vào bên trong MuteMenu */}
                   <MuteMenu conversationId={conversation?._id} asChild>
                     <button className={buttonStyle}>
                       <div className={contentStyle}>
@@ -164,8 +146,6 @@ function ChatSidebarRight({ conversation, isOpen, onClose }) {
                     </button>
                   </MuteMenu>
                 </div>
-
-                {/* 2. Nút Pin */}
                 <div className="h-16 w-24 grid place-items-center">
                   <button className={buttonStyle}>
                     <div className={contentStyle}>
@@ -174,11 +154,8 @@ function ChatSidebarRight({ conversation, isOpen, onClose }) {
                     </div>
                   </button>
                 </div>
-
-                {/* 3. Nút Create/Add */}
                 <div className="h-16 w-24 grid place-items-center">
                   {conversation?.type === "direct" ? (
-                    /* Dùng asChild để truyền style vào bên trong CreateGroupDialog */
                     <CreateGroupDialog asChild>
                       <button className={buttonStyle}>
                         <div className={contentStyle}>
@@ -188,7 +165,6 @@ function ChatSidebarRight({ conversation, isOpen, onClose }) {
                       </button>
                     </CreateGroupDialog>
                   ) : (
-                    /* Dùng asChild để truyền style vào bên trong AddMemberDialog */
                     <AddMemberDialog asChild>
                       <button className={buttonStyle}>
                         <div className={contentStyle}>
@@ -200,21 +176,13 @@ function ChatSidebarRight({ conversation, isOpen, onClose }) {
                   )}
                 </div>
               </div>
-              {/* --- KẾT THÚC THAY ĐỔI --- */}
-
             </div>
 
-            {/* Accordion sections (Không đổi) */}
+            {/* Accordions */}
             <div className="overflow-hidden">
-              <Accordion
-                type="multiple"
-                className="w-full"
-                defaultValue={["media", "audio", "file", "members", "security"]}
-              >
-                {/* ... (Tất cả các AccordionItem không thay đổi) ... */}
-                {/* --- ẢNH/VIDEO --- */}
+              <Accordion type="multiple" className="w-full" defaultValue={["media", "audio", "file", "members", "security"]}>
                 <AccordionItem value="media">
-                  <AccordionTrigger className="text-base p-4">Ảnh/Video</AccordionTrigger>
+                  <AccordionTrigger className="text-base p-4">Photos/Videos</AccordionTrigger>
                   <AccordionContent className="overflow-hidden">
                     <div className="px-4">
                       {conversation?._id && (
@@ -233,13 +201,12 @@ function ChatSidebarRight({ conversation, isOpen, onClose }) {
                         onClick={() => openGallery("media")}
                         className="block w-full h-12 rounded-xl bg-muted hover:bg-muted/80 text-base font-medium mt-4"
                       >
-                        Xem tất cả
+                        View all
                       </button>
                     </div>
                   </AccordionContent>
                 </AccordionItem>
 
-                {/* --- AUDIO --- */}
                 <AccordionItem value="audio">
                   <AccordionTrigger className="text-base p-4">Audio</AccordionTrigger>
                   <AccordionContent className="overflow-hidden">
@@ -260,15 +227,14 @@ function ChatSidebarRight({ conversation, isOpen, onClose }) {
                         onClick={() => openGallery("audio")}
                         className="block w-full h-12 rounded-xl bg-muted hover:bg-muted/80 text-base font-medium mt-4"
                       >
-                        Xem tất cả
+                        View all
                       </button>
                     </div>
                   </AccordionContent>
                 </AccordionItem>
 
-                {/* --- FILE --- */}
                 <AccordionItem value="file">
-                  <AccordionTrigger className="text-base p-4">File</AccordionTrigger>
+                  <AccordionTrigger className="text-base p-4">Files</AccordionTrigger>
                   <AccordionContent className="overflow-hidden">
                     <div className="px-4">
                       {conversation?._id && (
@@ -287,22 +253,21 @@ function ChatSidebarRight({ conversation, isOpen, onClose }) {
                         onClick={() => openGallery("file")}
                         className="block w-full h-12 rounded-xl bg-muted hover:bg-muted/80 text-base font-medium mt-4"
                       >
-                        Xem tất cả
+                        View all
                       </button>
                     </div>
                   </AccordionContent>
                 </AccordionItem>
 
-                {/* --- THÀNH VIÊN NHÓM --- */}
                 <AccordionItem value="members">
-                  <AccordionTrigger className="text-base p-4">Thành viên nhóm</AccordionTrigger>
+                  <AccordionTrigger className="text-base p-4">Group members</AccordionTrigger>
                   <AccordionContent className="overflow-hidden">
                     <div className="px-4 pb-4 space-y-2">
                       {conversation?.type !== "group" ||
                       !Array.isArray(conversation?.group?.members) ||
                       !conversation.group.members.length ? (
                         <div className="text-sm text-muted-foreground">
-                          Cuộc trò chuyện này không phải nhóm hoặc chưa có thành viên.
+                          This conversation is not a group or has no members yet.
                         </div>
                       ) : (
                         conversation.group.members.map((m) => {
@@ -321,7 +286,7 @@ function ChatSidebarRight({ conversation, isOpen, onClose }) {
                                 <div className="text-sm font-medium truncate">{name}</div>
                                 {m?.status?.isOnline !== undefined && (
                                   <div className="text-xs text-muted-foreground">
-                                    {m.status.isOnline ? "Đang hoạt động" : "Ngoại tuyến"}
+                                    {m.status.isOnline ? "Online" : "Offline"}
                                   </div>
                                 )}
                               </div>
@@ -333,17 +298,16 @@ function ChatSidebarRight({ conversation, isOpen, onClose }) {
                   </AccordionContent>
                 </AccordionItem>
 
-                {/* --- BẢO MẬT --- */}
                 <AccordionItem value="security">
-                  <AccordionTrigger className="text-base p-4">Thiết lập bảo mật</AccordionTrigger>
+                  <AccordionTrigger className="text-base p-4">Security settings</AccordionTrigger>
                   <AccordionContent className="overflow-hidden">
                     <div className="px-4 pb-4 space-y-4">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center min-w-0 flex-1">
                           <Shield size={18} className="mr-3 shrink-0" />
                           <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium truncate">Tin nhắn tự xóa</p>
-                            <p className="text-xs truncate">Không bao giờ</p>
+                            <p className="text-sm font-medium truncate">Disappearing messages</p>
+                            <p className="text-xs truncate">Never</p>
                           </div>
                         </div>
                       </div>
@@ -351,7 +315,7 @@ function ChatSidebarRight({ conversation, isOpen, onClose }) {
                       <div className="flex items-center justify-between">
                         <div className="flex items-center min-w-0 flex-1">
                           <EyeOff size={18} className="mr-3 shrink-0" />
-                          <span className="text-sm font-medium truncate">Ẩn trò chuyện</span>
+                          <span className="text-sm font-medium truncate">Hide conversation</span>
                         </div>
                         <Switch className="data-[state=checked]:bg-primary data-[state=unchecked]:bg-muted-foreground shrink-0" />
                       </div>
@@ -359,7 +323,7 @@ function ChatSidebarRight({ conversation, isOpen, onClose }) {
                       <div className="pt-2 border-t">
                         <div className="flex items-center mb-5 min-w-0">
                           <TriangleAlert size={18} className="mr-3 shrink-0" />
-                          <span className="text-sm truncate">Báo xấu</span>
+                          <span className="text-sm truncate">Report</span>
                         </div>
 
                         <div
@@ -367,7 +331,7 @@ function ChatSidebarRight({ conversation, isOpen, onClose }) {
                           onClick={() => handleDeleteConversation(conversation?._id)}
                         >
                           <Trash size={18} className="mr-3 shrink-0" />
-                          <span className="text-sm truncate">Xóa lịch sử trò chuyện</span>
+                          <span className="text-sm truncate">Delete conversation history</span>
                         </div>
 
                         {conversation?.type === "group" && (
@@ -391,5 +355,3 @@ function ChatSidebarRight({ conversation, isOpen, onClose }) {
     </>
   );
 }
-
-export default ChatSidebarRight;
