@@ -13,6 +13,7 @@ import CloudPage from "./pages/CloudPage/CloudPage"
 // ✅ Toast
 import { ToastContainer } from "react-toastify"
 import "react-toastify/dist/ReactToastify.css"
+import GlobalCallModal from "./components/common/Modal/GlobalCallModal"
 
 const ProtectedRoute = () => {
   const currentUser = useSelector(selectCurrentUser)
@@ -24,6 +25,7 @@ const ProtectedRoute = () => {
 export default function App() {
   return (
     <>
+      <GlobalCallModal />
       <Routes>
         <Route path="/" element={<Navigate to="/chats" replace />} />
 

@@ -174,13 +174,7 @@ export function ChatArea({
   }
 
   // gọi điện
-  const [call, setCall] = useState(null)
   const { ringing, startCall, cancelCaller, setOnOpenCall } = useCallInvite(currentUser?._id)
-  useEffect(() => {
-    setOnOpenCall((conversationId, mode, acceptedAt, callId) => {
-      setCall({ conversationId, mode, startedAt: acceptedAt, callId })
-    })
-  }, [setOnOpenCall])
 
   const toUserIds = isDirect
     ? [otherUserId].filter(Boolean)
@@ -674,6 +668,7 @@ export function ChatArea({
       {/* Slide Panel */}
       <ChatSidebarRight conversation={conversation} isOpen={isOpen} />
 
+      {/* ✅ GIỮ ringing banner */}
       {ringing && (
         <div className="fixed left-1/2 -translate-x-1/2 bottom-4 z-50 bg-card border rounded-xl shadow-lg px-4 py-3 flex items-center gap-3">
           <img src={ringing.peer?.avatarUrl} alt="" className="w-10 h-10 rounded-full object-cover" />
@@ -689,7 +684,8 @@ export function ChatArea({
         </div>
       )}
 
-      {call && (
+      {/* ❌ XÓA CallModal local này */}
+      {/* {call && (
         <CallModal
           open={!!call}
           onOpenChange={(o) => setCall(o ? call : null)}
@@ -699,7 +695,7 @@ export function ChatArea({
           callStartedAt={call.acceptedAt}
           callId={call.callId}
         />
-      )}
+      )} */}
     </div>
   )
 }
