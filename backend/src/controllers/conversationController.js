@@ -30,13 +30,22 @@ const fetchConversationDetail = async (req, res, next) => {
   try {
     const userId = req.userId
     const conversationId = req.params.conversationId
+    
+    const { beforeSeq, limit = 30 } = req.query
 
-    const result = await conversationService.fetchConversationDetail(userId, conversationId)
+    const result = await conversationService.fetchConversationDetail(
+      userId, 
+      conversationId, 
+      parseInt(limit), 
+      beforeSeq ? parseInt(beforeSeq) : undefined
+    )
+    
     return res.status(StatusCodes.OK).json(result)
   } catch (error) {
     next(error)
   }
 }
+
 // PATCH /v1/api/conversations/:id/read-to-latest
 const readToLatest = async (req, res, next) => {
   try {

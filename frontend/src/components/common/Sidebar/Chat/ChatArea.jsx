@@ -1,4 +1,3 @@
-// src/components/chat/ChatArea.jsx
 import { submitFriendRequestAPI, updateFriendRequestStatusAPI } from '@/apis'
 import { muteConversation, unmuteConversation } from "@/apis/index.js"
 import { useTheme } from '@/components/theme-provider'
@@ -33,7 +32,7 @@ import {
   Video,
   X
 } from 'lucide-react'
-import { use, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { use, useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react'
 import { useSelector } from 'react-redux'
 import CallModal from '../../Modal/CallModal'
 import { MessageBubble } from './MessageBubble'
@@ -49,7 +48,9 @@ export function ChatArea({
   sending,
   onStartTyping,
   onStopTyping,
-  othersTyping = false
+  othersTyping = false,
+  onLoadOlder, // ✅ New prop
+  hasMore = false // ✅ New prop
 }) {
   const [messageText, setMessageText] = useState('')
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
@@ -63,6 +64,9 @@ export function ChatArea({
   const pickerRef = useRef(null)
   const fileRef = useRef(null)
   const imageRef = useRef(null)
+  const messagesContainerRef = useRef(null)
+  const [loadingOlder, setLoadingOlder] = useState(false)
+  const previousScrollHeightRef = useRef(0)
 
   const { theme, systemTheme } = useTheme()
   const currentTheme = theme === "system" ? systemTheme : theme
@@ -353,6 +357,43 @@ export function ChatArea({
     setIsRecording(false)
   }
 
+  // ✅ Scroll listener để load older messages
+  const handleScroll = useCallback(async () => {
+    const container = messagesContainerRef.current
+    if (!container || !onLoadOlder) return
+    
+    // Kiểm tra xem đã scroll gần đến đầu chưa (100px từ top)
+    if (container.scrollTop < 100 && hasMore && !loadingOlder) {
+      setLoadingOlder(true)
+      previousScrollHeightRef.current = container.scrollHeight
+      
+      try {
+        const result = await onLoadOlder()
+        
+        // Maintain scroll position sau khi load
+        requestAnimationFrame(() => {
+          if (container) {
+            const newScrollHeight = container.scrollHeight
+            const scrollDiff = newScrollHeight - previousScrollHeightRef.current
+            container.scrollTop = scrollDiff
+          }
+        })
+      } catch (error) {
+        console.error('Failed to load older messages:', error)
+      } finally {
+        setLoadingOlder(false)
+      }
+    }
+  }, [hasMore, loadingOlder, onLoadOlder])
+  
+  useEffect(() => {
+    const container = messagesContainerRef.current
+    if (!container) return
+    
+    container.addEventListener('scroll', handleScroll)
+    return () => container.removeEventListener('scroll', handleScroll)
+  }, [handleScroll])
+
   return (
     <div className="flex flex-col h-full bg-background">
       {/* Main */}
@@ -400,39 +441,21 @@ export function ChatArea({
         </div>
 
         {/* Messages Area */}
-        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden relative py-4">
-          {shouldShowFriendBanner && (
-            <div className="sticky top-0 z-20 border-b">
-              <div className="pointer-events-none absolute -bottom-6 left-0 right-0 h-6 from-card to-transparent" />
-              <div className="flex items-center justify-between w-full p-3 bg-card">
-                <div className="flex items-center text-sm">
-                  <UserPlus className="w-4 h-4 mr-2" />
-                  {outgoingSent ? (
-                    <span>Bạn đã gửi yêu cầu kết bạn đến người này</span>
-                  ) : (
-                    <span>Gửi yêu cầu kết bạn tới người này</span>
-                  )}
-                </div>
-
-                {outgoingSent ? (
-                  <Button
-                    variant="outline"
-                    className="px-3 py-1 text-sm font-medium cursor-pointer"
-                    disabled={friendReq.loading}
-                    onClick={handleCancelFriendRequest}
-                  >
-                    Huỷ
-                  </Button>
-                ) : (
-                  <Button
-                    className="px-3 py-1 text-sm font-medium cursor-pointer"
-                    disabled={friendReq.loading}
-                    onClick={handleSendFriendRequest}
-                  >
-                    Gửi kết bạn
-                  </Button>
-                )}
-              </div>
+        <div 
+          ref={messagesContainerRef}
+          className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden relative py-4"
+        >
+          {/* ✅ Loading indicator khi load older messages */}
+          {loadingOlder && (
+            <div className="flex justify-center py-2">
+              <LoaderCircle className="w-5 h-5 animate-spin text-muted-foreground" />
+            </div>
+          )}
+          
+          {/* ✅ No more messages indicator */}
+          {!hasMore && messages.length > 0 && (
+            <div className="text-center text-xs text-muted-foreground py-2">
+              Không còn tin nhắn cũ hơn
             </div>
           )}
 
@@ -683,19 +706,6 @@ export function ChatArea({
           </Button>
         </div>
       )}
-
-      {/* ❌ XÓA CallModal local này */}
-      {/* {call && (
-        <CallModal
-          open={!!call}
-          onOpenChange={(o) => setCall(o ? call : null)}
-          conversationId={conversation?._id}
-          currentUserId={currentUser?._id}
-          initialMode={call.mode}
-          callStartedAt={call.acceptedAt}
-          callId={call.callId}
-        />
-      )} */}
     </div>
   )
 }

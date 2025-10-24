@@ -109,30 +109,30 @@ export const fetchConversationMedia = async ({ conversationId, type, page = 1, l
   if (q) params.q = q
   const { data } = await authorizeAxiosInstance.get(`${API_ROOT}/api/conversation/${conversationId}/media`, { params })
   return data
-};
+}
 
 // 🔕 Mute
 export const muteConversation = async (conversationId, duration) => {
   // (tuỳ chọn) validate runtime cho an toàn
-  const allowed = [2, 4, 8, 12, 24, "forever"];
+  const allowed = [2, 4, 8, 12, 24, "forever"]
   if (!allowed.includes(duration)) {
-    throw new Error("duration must be one of 2,4,8,12,24,'forever'");
+    throw new Error("duration must be one of 2,4,8,12,24,'forever'")
   }
 
   const { data } = await authorizeAxiosInstance.patch(
     `${API_ROOT}/api/conversation/${conversationId}/notifications`,
     { muted: true, duration }
-  );
-  return data;
-};
+  )
+  return data
+}
 
 export const unmuteConversation = async (conversationId) => {
   const { data } = await authorizeAxiosInstance.patch(
     `${API_ROOT}/api/conversation/${conversationId}/notifications`,
     { muted: false }
-  );
-  return data;
-};
+  )
+  return data
+}
 
 /**
  * Lấy conversation từ userId
@@ -186,7 +186,9 @@ export const setReaction = async (messageId, emoji) => {
 }
 
 export const fetchConversationDetail = async (conversationId, params = {}) => {
+  console.log('🌐 API call: fetchConversationDetail', conversationId, params) // Debug log
   const response = await authorizeAxiosInstance.get(`${API_ROOT}/api/conversation/chats/${conversationId}`, { params })
+  console.log('✅ API response:', response.data) // Debug log
   return response.data
 }
 

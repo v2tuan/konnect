@@ -473,10 +473,9 @@ const fetchConversationDetail = async (userId, conversationId, limit = 30, befor
         otherUser: {
           _id: other._id,
           fullName: other.fullName || null,
-          username: other.username || null,
+          username: other.username || null, // ✅ Sửa user thành other
           avatarUrl: other.avatarUrl || null,
-          status: other.status || null // { isOnline, lastActiveAt }
-          // friendship sẽ gắn sau, không có isFriend nữa
+          status: other.status || null
         }
       }
     } else {
@@ -495,8 +494,15 @@ const fetchConversationDetail = async (userId, conversationId, limit = 30, befor
   }
 
   // ===== Messages (oldest -> newest) =====
-  const messages = await messageService.listMessages({ userId, conversationId, limit, beforeSeq })
+  const messages = await messageService.listMessages({ 
+    userId, 
+    conversationId, 
+    limit, 
+    beforeSeq 
+  })
+  
   const nextBeforeSeq = messages.length > 0 ? messages[0].seq : null
+  const hasMore = messages.length === limit
 
   // ===== Group members =====
   let groupMembers = []
@@ -513,7 +519,7 @@ const fetchConversationDetail = async (userId, conversationId, limit = 30, befor
       .map(id => String(id))
   }
 
-  // ===== Load users (senders + members) =====
+  // ===== Load users =====
   const senderIds = [
     ...new Set(
       messages
@@ -543,7 +549,7 @@ const fetchConversationDetail = async (userId, conversationId, limit = 30, befor
           fullName: u.fullName || null,
           username: u.username || null,
           avatarUrl: u.avatarUrl || null,
-          status: u.status || null // friendship sẽ gắn sau
+          status: u.status || null
         }
         : {
           id: uid,
@@ -592,10 +598,14 @@ const fetchConversationDetail = async (userId, conversationId, limit = 30, befor
       updatedAt: convo.updatedAt
     },
     messages: messagesWithSender,
-    pageInfo: { limit, beforeSeq, nextBeforeSeq }
+    pageInfo: { 
+      limit, 
+      beforeSeq, 
+      nextBeforeSeq, 
+      hasMore
+    }
   }
 
-  // Gắn FRIENDSHIP (không còn isFriend)
   await markFriendshipOnConversation(userId, result.conversation)
 
   return result
