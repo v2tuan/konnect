@@ -18,7 +18,6 @@ import {
   FileText,
   Image,
   LoaderCircle,
-  MessageSquareQuote,
   Mic,
   MoreHorizontal,
   Music,
@@ -28,17 +27,14 @@ import {
   Search as SearchIcon,
   Send,
   Smile,
-  UserPlus,
   Video,
   X
 } from 'lucide-react'
-import { use, useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react'
 import { useSelector } from 'react-redux'
-import CallModal from '../../Modal/CallModal'
 import { MessageBubble } from './MessageBubble'
 import { io } from 'socket.io-client'
 import ChatSidebarRight from './ChatSidebarRight'
-import { set } from 'date-fns'
 
 export function ChatArea({
   mode = 'direct',
@@ -49,52 +45,17 @@ export function ChatArea({
   onStartTyping,
   onStopTyping,
   othersTyping = false,
-  onLoadOlder, // ✅ New prop
-  hasMore = false // ✅ New prop
+  onLoadOlder,
+  hasMore = false
 }) {
+  // ==================== STATE ====================
   const [messageText, setMessageText] = useState('')
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
   const [audioUrl, setAudioUrl] = useState(null)
-  const mediaRecorderRef = useRef(null)
-  const audioChunksRef = useRef([])
   const [isOpen, setIsOpen] = useState(false)
-  const messagesEndRef = useRef(null)
-  const inputRef = useRef(null)
-  const pickerRef = useRef(null)
-  const fileRef = useRef(null)
-  const imageRef = useRef(null)
-  const messagesContainerRef = useRef(null)
   const [loadingOlder, setLoadingOlder] = useState(false)
-  const previousScrollHeightRef = useRef(0)
-
-  const { theme, systemTheme } = useTheme()
-  const currentTheme = theme === "system" ? systemTheme : theme
-
-  const [replyingTo, setReplyingTo] = useState({
-    sender: 'Dang Duy',
-    content: 'Nộp Project cuối kỳ lần 2Bài tập Opened: Thứ Bảy, 19 tháng 7 2025, 2:04 PM Due: Thứ Bảy, 4 tháng 10 2025, 12:45 PM Nộp các nội dung sau: 1. Danh sác...'
-  })
-
-  const handleCloseReply = () => {
-    setReplyingTo(null)
-  }
-
-  useEffect(() => {
-    setReplyingTo(null)
-  }, [conversation?._id])
-
-  // loại cuộc trò chuyện
-  const type = conversation?.type || mode
-  const isCloud = type === 'cloud'
-  const isDirect = type === 'direct'
-  const isGroup = type === 'group'
-
-  // other user + friendship
-  const otherUser = isDirect ? conversation?.direct?.otherUser : null
-  const otherUserId = otherUser?._id || otherUser?.id || null
-  const friendship = (otherUser && otherUser.friendship) || { status: 'none' }
-
+  const [replyingTo, setReplyingTo] = useState(null)
   const [uiFriendship, setUiFriendship] = useState({
     status: 'none',
     direction: null,
@@ -106,6 +67,57 @@ export function ChatArea({
     loading: false
   })
 
+  // ==================== REFS ====================
+  const mediaRecorderRef = useRef(null)
+  const audioChunksRef = useRef([])
+  const messagesEndRef = useRef(null)
+  const inputRef = useRef(null)
+  const pickerRef = useRef(null)
+  const fileRef = useRef(null)
+  const imageRef = useRef(null)
+  const messagesContainerRef = useRef(null)
+  const socketRef = useRef(null)
+  const isLoadingOlderRef = useRef(false)
+  const shouldScrollToBottomRef = useRef(true)
+
+  // ==================== SELECTORS ====================
+  const currentUser = useSelector(selectCurrentUser)
+  const usersById = useSelector(state => state.user.usersById || {})
+  const { theme, systemTheme } = useTheme()
+  const currentTheme = theme === "system" ? systemTheme : theme
+
+  // ==================== DERIVED STATE ====================
+  const type = conversation?.type || mode
+  const isCloud = type === 'cloud'
+  const isDirect = type === 'direct'
+  const isGroup = type === 'group'
+
+  const otherUser = isDirect ? conversation?.direct?.otherUser : null
+  const otherUserId = otherUser?._id || otherUser?.id || null
+  const friendship = (otherUser && otherUser.friendship) || { status: 'none' }
+
+  const safeName = conversation?.displayName ?? (isCloud ? 'Cloud Chat' : 'Conversation')
+  const initialChar = safeName?.charAt(0)?.toUpperCase?.() || 'C'
+
+  const { isOnline, lastActiveAt } = pickPeerStatus(conversation, usersById)
+  const presenceText = usePresenceText({ isOnline, lastActiveAt })
+  const tone = (presenceText || '').toLowerCase() === 'away' ? 'away' : (isOnline ? 'online' : 'offline')
+  const presenceTextClass = tone === 'online' ? 'text-emerald-500' : tone === 'away' ? 'text-amber-500' : 'text-muted-foreground'
+  const dotStyle = {
+    backgroundColor: tone === 'online' ? 'var(--status-online)' : tone === 'away' ? 'var(--status-away)' : 'var(--status-offline)'
+  }
+
+  const toUserIds = isDirect
+    ? [otherUserId].filter(Boolean)
+    : ((conversation?.group?.members || []).map(m => m?._id || m?.id).filter(id => id && id !== currentUser?._id))
+
+  const isMutedLocal = useMuteStore(s => s.isMuted(conversation?._id))
+  const setMutedLocal = useMuteStore(s => s.setMuted)
+
+  // ==================== CALL INVITE ====================
+  const { ringing, startCall, cancelCaller } = useCallInvite(currentUser?._id)
+
+  // ==================== FRIENDSHIP SYNC ====================
   useEffect(() => {
     setUiFriendship({
       status: friendship?.status ?? 'none',
@@ -121,97 +133,127 @@ export function ChatArea({
     }))
   }, [conversation?._id, otherUserId, friendship?.status, friendship?.direction, friendship?.requestId])
 
-  const shouldShowFriendBanner = isDirect && !!otherUserId && uiFriendship.status !== 'accepted'
-  const outgoingSent = uiFriendship.status === 'pending' && uiFriendship.direction === 'outgoing'
+  // ==================== RESET REPLY ON CONVERSATION CHANGE ====================
+  useEffect(() => {
+    setReplyingTo(null)
+    shouldScrollToBottomRef.current = true
+  }, [conversation?._id])
 
-  const handleSendFriendRequest = async () => {
-    if (!otherUserId || friendReq.loading) return
-    try {
-      setFriendReq(s => ({ ...s, loading: true }))
-      const res = await submitFriendRequestAPI(otherUserId)
-      const requestId = res?.requestId || res?.data?.requestId || res?.data?._id || res?._id || null
-      setUiFriendship({ status: 'pending', direction: 'outgoing', requestId })
-      setFriendReq({ sent: true, requestId, loading: false })
-    } catch (e) {
-      setFriendReq(s => ({ ...s, loading: false }))
+  // ==================== SOCKET CONNECTION ====================
+  useEffect(() => {
+    socketRef.current = io(import.meta.env.VITE_WS_URL, { withCredentials: true })
+    const s = socketRef.current
+
+    if (conversation?._id) {
+      s.emit('conversation:join', conversation._id)
     }
-  }
 
-  const handleCancelFriendRequest = async () => {
-    const rid = uiFriendship.requestId
-    if (!rid || friendReq.loading) return
-    try {
-      setFriendReq(s => ({ ...s, loading: true }))
-      // optimistic
-      setUiFriendship({ status: 'none', direction: null, requestId: null })
-      setFriendReq(s => ({ ...s, sent: false }))
-      await updateFriendRequestStatusAPI({ requestId: rid, action: 'delete' })
-      setFriendReq({ sent: false, requestId: null, loading: false })
-    } catch (e) {
-      // rollback
-      setUiFriendship({ status: 'pending', direction: 'outgoing', requestId: rid })
-      setFriendReq(s => ({ ...s, sent: true, loading: false }))
+    const onMessageNew = (payload) => {
+      if (!payload || payload.conversationId !== conversation?._id) return
+      const t = payload.message?.type
+      if (['image', 'video', 'audio', 'file'].includes(t)) {
+        window.dispatchEvent(new CustomEvent('conversation-media:refresh', {
+          detail: { conversationId: conversation._id, type: t }
+        }))
+      }
     }
-  }
 
-  const currentUser = useSelector(selectCurrentUser)
-  const safeName = conversation?.displayName ?? (isCloud ? 'Cloud Chat' : 'Conversation')
-  const initialChar = safeName?.charAt(0)?.toUpperCase?.() || 'C'
+    s.on('message:new', onMessageNew)
 
-  // presence (✅ gọn: chỉ định nghĩa 1 lần, tránh trùng biến)
-  const usersById = useSelector(state => state.user.usersById || {})
-  const { isOnline, lastActiveAt } = pickPeerStatus(conversation, usersById)
-  const presenceText = usePresenceText({ isOnline, lastActiveAt })
-  const tone =
-    (presenceText || '').toLowerCase() === 'away'
-      ? 'away'
-      : (isOnline ? 'online' : 'offline')
-  const presenceTextClass =
-    tone === 'online' ? 'text-emerald-500'
-      : tone === 'away' ? 'text-amber-500'
-        : 'text-muted-foreground'
-  const dotStyle = {
-    backgroundColor:
-      tone === 'online' ? 'var(--status-online)'
-        : tone === 'away' ? 'var(--status-away)'
-          : 'var(--status-offline)'
-  }
+    return () => {
+      s.off('message:new', onMessageNew)
+      if (conversation?._id) s.emit('conversation:leave', conversation._id)
+      s.disconnect()
+    }
+  }, [conversation?._id])
 
-  // gọi điện
-  const { ringing, startCall, cancelCaller, setOnOpenCall } = useCallInvite(currentUser?._id)
+  // ==================== SCROLL TO BOTTOM ====================
+  useLayoutEffect(() => {
+    if (shouldScrollToBottomRef.current && messagesEndRef.current) {
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+      }, 0)
+    }
+  }, [messages])
 
-  const toUserIds = isDirect
-    ? [otherUserId].filter(Boolean)
-    : ((conversation?.group?.members || [])
-      .map(m => m?._id || m?.id)
-      .filter(id => id && id !== currentUser?._id))
+  // ==================== AUTO SCROLL TO BOTTOM ON INITIAL LOAD ====================
+  useEffect(() => {
+    shouldScrollToBottomRef.current = true
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'auto' })
+    }
+  }, [conversation?._id])
 
-  const handleStartCall = (mode) => {
-    if (!toUserIds.length) return
-    const callId = `${conversation._id}:${Date.now()}`
-    startCall({
-      callId,
-      conversationId: conversation._id,
-      mode,
-      toUserIds,
-      me: {
-        id: currentUser._id,
-        name: currentUser.displayName || currentUser.username,
-        avatarUrl: currentUser.avatarUrl
-      },
-      peer: otherUser ? {
-        name: otherUser.displayName || otherUser.username,
-        avatarUrl: otherUser.avatarUrl
-      } : null
-    })
-  }
+  // ==================== LAZY LOAD OLDER MESSAGES ====================
+  const handleScroll = useCallback(async () => {
+    const container = messagesContainerRef.current
+    if (!container || !onLoadOlder || isLoadingOlderRef.current) return
 
-  // link mẫu (giữ tạm nếu bạn chưa có API link)
-  const links = [
-    { title: 'Property Details 01 || Homelenggo - Real...', url: 'homelenggonetjs.vercel.app', date: '29/08' },
-    { title: 'Home || Homelenggo - Real Estate React...', url: 'homelenggonetjs.vercel.app', date: '26/08' },
-    { title: 'Zillow: Real Estate, Apartments, Mortg...', url: 'www.zillow.com', date: '26/08' }
-  ]
+    if (container.scrollTop < 100 && hasMore) {
+      isLoadingOlderRef.current = true
+      setLoadingOlder(true)
+      shouldScrollToBottomRef.current = false
+
+      const scrollTopBefore = container.scrollTop
+      const scrollHeightBefore = container.scrollHeight
+
+      try {
+        const result = await onLoadOlder()
+
+        await new Promise(resolve => setTimeout(resolve, 50))
+
+        if (container && result?.loadedCount > 0) {
+          const scrollHeightAfter = container.scrollHeight
+          const heightDiff = scrollHeightAfter - scrollHeightBefore
+          container.scrollTop = scrollTopBefore + heightDiff
+        }
+      } catch (error) {
+        console.error('Failed to load older messages:', error)
+      } finally {
+        setLoadingOlder(false)
+        isLoadingOlderRef.current = false
+      }
+    }
+  }, [hasMore, onLoadOlder])
+
+  useEffect(() => {
+    const container = messagesContainerRef.current
+    if (!container) return
+
+    container.addEventListener('scroll', handleScroll)
+    return () => container.removeEventListener('scroll', handleScroll)
+  }, [handleScroll])
+
+  // ==================== DETECT USER SCROLL POSITION ====================
+  const handleUserScroll = useCallback(() => {
+    const container = messagesContainerRef.current
+    if (!container) return
+
+    const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 50
+    shouldScrollToBottomRef.current = isAtBottom
+  }, [])
+
+  useEffect(() => {
+    const container = messagesContainerRef.current
+    if (!container) return
+
+    container.addEventListener('scroll', handleUserScroll)
+    return () => container.removeEventListener('scroll', handleUserScroll)
+  }, [handleUserScroll])
+
+  // ==================== EMOJI PICKER OUTSIDE CLICK ====================
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (pickerRef.current && !pickerRef.current.contains(e.target) && !e.target.closest("button")) {
+        setShowEmojiPicker(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
+
+  // ==================== HANDLERS ====================
+  const handleCloseReply = () => setReplyingTo(null)
 
   const togglePanel = () => setIsOpen(!isOpen)
 
@@ -222,7 +264,6 @@ export function ChatArea({
     setMessageText('')
     setShowEmojiPicker(false)
     setReplyingTo(null)
-    console.log({ type: 'text', content: value, repliedMessage: replyingTo?.messageId || null })
   }
 
   const handleSendAudioMessage = () => {
@@ -255,41 +296,6 @@ export function ChatArea({
       }, 0)
     }
   }
-  const isMutedLocal = useMuteStore(s => s.isMuted(conversation?._id))
-  const setMutedLocal = useMuteStore(s => s.setMuted)
-
-  async function handleMute(duration) {
-    if (!conversation?._id) return
-    setMutedLocal(conversation._id, true) // optimistic
-    try {
-      await muteConversation(conversation._id, duration) // "forever" | 2 | 4 | 8 | 12 | 24
-    } catch {
-      setMutedLocal(conversation._id, false) // rollback
-    }
-  }
-
-  async function handleUnmute() {
-    if (!conversation?._id) return
-    setMutedLocal(conversation._id, false)
-    try { await unmuteConversation(conversation._id) }
-    catch { setMutedLocal(conversation._id, true) }
-  }
-
-  useEffect(() => {
-    function handleClickOutside(e) {
-      if (pickerRef.current && !pickerRef.current.contains(e.target) && !(e.target).closest("button")) {
-        setShowEmojiPicker(false)
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside)
-    return () => document.removeEventListener("mousedown", handleClickOutside)
-  }, [])
-
-  useLayoutEffect(() => {
-    setTimeout(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-    }, 0)
-  }, [messages])
 
   const handleFileClick = () => fileRef.current?.click()
   const handleImageClick = () => imageRef.current?.click()
@@ -316,7 +322,9 @@ export function ChatArea({
       const mediaRecorder = new MediaRecorder(stream)
       mediaRecorderRef.current = mediaRecorder
       audioChunksRef.current = []
-      mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data) }
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data)
+      }
       mediaRecorder.onstop = () => {
         const blob = new Blob(audioChunksRef.current, { type: "audio/webm" })
         const url = URL.createObjectURL(blob)
@@ -328,75 +336,85 @@ export function ChatArea({
       console.error("Error accessing microphone", err)
     }
   }
-  const socketRef = useRef(null)
 
-
-  useEffect(() => {
-    socketRef.current = io(import.meta.env.VITE_WS_URL, { withCredentials: true })
-    const s = socketRef.current
-    if (conversation?._id) {
-      s.emit('conversation:join', conversation._id)
-    }
-    const onMessageNew = (payload) => {
-      if (!payload || payload.conversationId !== conversation?._id) return
-      const t = payload.message?.type
-      if (['image','video','audio','file'].includes(t)) {
-        window.dispatchEvent(new CustomEvent('conversation-media:refresh', { detail: { conversationId: conversation._id, type: t } }))
-      }
-    }
-    s.on('message:new', onMessageNew)
-    return () => {
-      s.off('message:new', onMessageNew)
-      if (conversation?._id) s.emit('conversation:leave', conversation._id)
-      s.disconnect()
-    }
-  }, [conversation?._id])
   const stopRecording = () => {
     mediaRecorderRef.current?.stop()
     mediaRecorderRef.current?.stream.getTracks().forEach(track => track.stop())
     setIsRecording(false)
   }
 
-  // ✅ Scroll listener để load older messages
-  const handleScroll = useCallback(async () => {
-    const container = messagesContainerRef.current
-    if (!container || !onLoadOlder) return
-    
-    // Kiểm tra xem đã scroll gần đến đầu chưa (100px từ top)
-    if (container.scrollTop < 100 && hasMore && !loadingOlder) {
-      setLoadingOlder(true)
-      previousScrollHeightRef.current = container.scrollHeight
-      
-      try {
-        const result = await onLoadOlder()
-        
-        // Maintain scroll position sau khi load
-        requestAnimationFrame(() => {
-          if (container) {
-            const newScrollHeight = container.scrollHeight
-            const scrollDiff = newScrollHeight - previousScrollHeightRef.current
-            container.scrollTop = scrollDiff
-          }
-        })
-      } catch (error) {
-        console.error('Failed to load older messages:', error)
-      } finally {
-        setLoadingOlder(false)
-      }
-    }
-  }, [hasMore, loadingOlder, onLoadOlder])
-  
-  useEffect(() => {
-    const container = messagesContainerRef.current
-    if (!container) return
-    
-    container.addEventListener('scroll', handleScroll)
-    return () => container.removeEventListener('scroll', handleScroll)
-  }, [handleScroll])
+  const handleStartCall = (callMode) => {
+    if (!toUserIds.length) return
+    const callId = `${conversation._id}:${Date.now()}`
+    startCall({
+      callId,
+      conversationId: conversation._id,
+      mode: callMode,
+      toUserIds,
+      me: {
+        id: currentUser._id,
+        name: currentUser.displayName || currentUser.username,
+        avatarUrl: currentUser.avatarUrl
+      },
+      peer: otherUser ? {
+        name: otherUser.displayName || otherUser.username,
+        avatarUrl: otherUser.avatarUrl
+      } : null
+    })
+  }
 
+  const handleSendFriendRequest = async () => {
+    if (!otherUserId || friendReq.loading) return
+    try {
+      setFriendReq(s => ({ ...s, loading: true }))
+      const res = await submitFriendRequestAPI(otherUserId)
+      const requestId = res?.requestId || res?.data?.requestId || res?.data?._id || res?._id || null
+      setUiFriendship({ status: 'pending', direction: 'outgoing', requestId })
+      setFriendReq({ sent: true, requestId, loading: false })
+    } catch (e) {
+      setFriendReq(s => ({ ...s, loading: false }))
+    }
+  }
+
+  const handleCancelFriendRequest = async () => {
+    const rid = uiFriendship.requestId
+    if (!rid || friendReq.loading) return
+    try {
+      setFriendReq(s => ({ ...s, loading: true }))
+      setUiFriendship({ status: 'none', direction: null, requestId: null })
+      setFriendReq(s => ({ ...s, sent: false }))
+      await updateFriendRequestStatusAPI({ requestId: rid, action: 'delete' })
+      setFriendReq({ sent: false, requestId: null, loading: false })
+    } catch (e) {
+      setUiFriendship({ status: 'pending', direction: 'outgoing', requestId: rid })
+      setFriendReq(s => ({ ...s, sent: true, loading: false }))
+    }
+  }
+
+  async function handleMute(duration) {
+    if (!conversation?._id) return
+    setMutedLocal(conversation._id, true)
+    try {
+      await muteConversation(conversation._id, duration)
+    } catch {
+      setMutedLocal(conversation._id, false)
+    }
+  }
+
+  async function handleUnmute() {
+    if (!conversation?._id) return
+    setMutedLocal(conversation._id, false)
+    try {
+      await unmuteConversation(conversation._id)
+    } catch {
+      setMutedLocal(conversation._id, true)
+    }
+  }
+
+  // ==================== RENDER ====================
   return (
     <div className="flex flex-col h-full bg-background">
-      {/* Main */}
+      {/* Main Chat Area */}
       <div className={`flex flex-col flex-1 min-h-0 transition-all duration-300 ease-in-out ${isOpen ? 'mr-80' : 'mr-0'}`}>
         {/* Header */}
         <div className="flex items-center justify-between p-4 bg-sidebar backdrop-blur-sm border-b border-border shadow-soft">
@@ -441,18 +459,16 @@ export function ChatArea({
         </div>
 
         {/* Messages Area */}
-        <div 
+        <div
           ref={messagesContainerRef}
           className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden relative py-4"
         >
-          {/* ✅ Loading indicator khi load older messages */}
           {loadingOlder && (
-            <div className="flex justify-center py-2">
+            <div className="flex justify-center py-2 sticky top-0 bg-background/80 backdrop-blur-sm z-10">
               <LoaderCircle className="w-5 h-5 animate-spin text-muted-foreground" />
             </div>
           )}
-          
-          {/* ✅ No more messages indicator */}
+
           {!hasMore && messages.length > 0 && (
             <div className="text-center text-xs text-muted-foreground py-2">
               Không còn tin nhắn cũ hơn
@@ -480,7 +496,7 @@ export function ChatArea({
                   {group.items.map((m, mi) => {
                     const showAvatar = true
                     const showMeta = count > 1 && mi === count - 1
-                    return MessageBubble ? (
+                    return (
                       <MessageBubble
                         key={m.id || m._id || `${gi}-${mi}`}
                         message={{ ...m }}
@@ -489,30 +505,19 @@ export function ChatArea({
                         conversation={conversation}
                         setReplyingTo={setReplyingTo}
                       />
-                    ) : (
-                      <div
-                        key={m.id || m._id || `${gi}-${mi}`}
-                        className={`max-w-[75%] rounded-md border p-3 text-sm ${m.isOwn ? 'ml-auto bg-primary/10' : 'mr-auto bg-card'}`}
-                      >
-                        <div className="whitespace-pre-wrap">{m.text ?? m.body?.text}</div>
-                        {showMeta && (
-                          <div className="mt-1 text-[10px] opacity-60">
-                            {new Date(m.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </div>
-                        )}
-                      </div>
                     )
                   })}
                 </div>
               )
             })}
+
             <div ref={messagesEndRef} />
+
             {othersTyping && (
               <div className='flex items-end space-x-2 py-2 px-1 animate-fadeIn'>
                 <Avatar className="w-8 h-8">
                   <AvatarImage src={conversation?.direct?.otherUser?.avatarUrl} />
                 </Avatar>
-
                 <div className="relative p-3 rounded-lg bg-secondary text-gray-900 rounded-bl-sm">
                   <div className="flex items-center space-x-2">
                     <div className="flex space-x-1">
@@ -531,51 +536,39 @@ export function ChatArea({
                     </div>
                   </div>
                 </div>
-              </ div>
+              </div>
             )}
           </div>
         </div>
 
-        {/* Input */}
+        {/* Input Area */}
         <div className="p-4 bg-sidebar backdrop-blur-sm border-t border-border shrink-0">
-          {/* Reply Preview Bar */}
+          {/* Reply Preview */}
           {replyingTo && (
             <div className="mb-3 bg-primary/5 border-l-4 border-primary rounded p-3 flex items-start justify-between">
               <div className="flex flex-1 items-center gap-3">
-                {/* Thumbnail ảnh nếu có */}
                 {replyingTo.media && (
                   <>
                     {(() => {
                       const images = replyingTo.media.filter(m => m.type === 'image')
                       const files = replyingTo.media.filter(m => m.type === 'file')
                       const audios = replyingTo.media.filter(m => m.type === 'audio')
+
                       if (images.length > 0) {
                         return (
                           <div className="flex-shrink-0">
-                            <img
-                              src={images[0]?.url}
-                              alt="Preview"
-                              className="w-12 h-12 rounded object-cover"
-                            />
+                            <img src={images[0]?.url} alt="Preview" className="w-12 h-12 rounded object-cover" />
                           </div>
                         )
                       } else if (files.length > 0) {
                         const mimetype = files[0].metadata?.mimetype || ''
-                        if (mimetype.includes('pdf')) {
-                          return <FileText className="w-8 h-8 text-red-500" />
-                        } else if (mimetype.includes('word') || mimetype.includes('document')) {
-                          return <FileText className="w-8 h-8 text-blue-500" />
-                        } else if (mimetype.includes('sheet') || mimetype.includes('excel')) {
-                          return <FileSpreadsheet className="w-8 h-8 text-green-500" />
-                        } else if (mimetype.includes('zip') || mimetype.includes('rar') || mimetype.includes('archive')) {
-                          return <Archive className="w-8 h-8 text-yellow-600" />
-                        } else if (mimetype.includes('video')) {
-                          return <Video className="w-8 h-8 text-purple-500" />
-                        } else if (mimetype.includes('audio')) {
-                          return <Music className="w-8 h-8 text-pink-500" />
-                        } else {
-                          return <File className="w-8 h-8 text-gray-500" />
-                        }
+                        if (mimetype.includes('pdf')) return <FileText className="w-8 h-8 text-red-500" />
+                        if (mimetype.includes('word') || mimetype.includes('document')) return <FileText className="w-8 h-8 text-blue-500" />
+                        if (mimetype.includes('sheet') || mimetype.includes('excel')) return <FileSpreadsheet className="w-8 h-8 text-green-500" />
+                        if (mimetype.includes('zip') || mimetype.includes('rar') || mimetype.includes('archive')) return <Archive className="w-8 h-8 text-yellow-600" />
+                        if (mimetype.includes('video')) return <Video className="w-8 h-8 text-purple-500" />
+                        if (mimetype.includes('audio')) return <Music className="w-8 h-8 text-pink-500" />
+                        return <File className="w-8 h-8 text-gray-500" />
                       } else if (audios.length > 0) {
                         return (
                           <div className="flex-shrink-0">
@@ -584,12 +577,12 @@ export function ChatArea({
                             </div>
                           </div>
                         )
-                      } else {
-                        return null
                       }
+                      return null
                     })()}
                   </>
                 )}
+
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="flex text-sm font-semibold items-center gap-1">
@@ -599,17 +592,16 @@ export function ChatArea({
                   <p className="text-xs truncate overflow-hidden whitespace-nowrap max-w-4xl">
                     {replyingTo.content}
                   </p>
-
                 </div>
-                <button
-                  onClick={handleCloseReply}
-                  className="ml-3 tion-colors flex-shrink-0 cursor-pointer"
-                >
+
+                <button onClick={handleCloseReply} className="ml-3 flex-shrink-0 cursor-pointer">
                   <X className="w-4 h-4" />
                 </button>
               </div>
             </div>
           )}
+
+          {/* Input Row */}
           <div className="flex items-end gap-2">
             <Input type="file" ref={fileRef} onChange={handleFileChange} className="hidden" />
             <Input type="file" ref={imageRef} onChange={handleImageChange} accept="image/*" className="hidden" multiple />
@@ -667,6 +659,7 @@ export function ChatArea({
             )}
           </div>
 
+          {/* Recording Indicator */}
           {isRecording && (
             <div className="flex items-center gap-2 mt-2 text-destructive">
               <div className="w-2 h-2 bg-destructive rounded-full animate-pulse"></div>
@@ -674,8 +667,9 @@ export function ChatArea({
             </div>
           )}
 
+          {/* Audio Preview */}
           {audioUrl && (
-            <div className="flex items-center space-x-2 p-2 bg-background rounded-md">
+            <div className="flex items-center space-x-2 p-2 bg-background rounded-md mt-2">
               <Button onClick={() => setAudioUrl(null)} className="shrink-0 p-2 bg-red-100 hover:bg-red-200 rounded-full">
                 <X className="w-4 h-4 text-red-600" />
               </Button>
@@ -688,10 +682,10 @@ export function ChatArea({
         </div>
       </div>
 
-      {/* Slide Panel */}
+      {/* Right Sidebar */}
       <ChatSidebarRight conversation={conversation} isOpen={isOpen} />
 
-      {/* ✅ GIỮ ringing banner */}
+      {/* Call Ringing Banner */}
       {ringing && (
         <div className="fixed left-1/2 -translate-x-1/2 bottom-4 z-50 bg-card border rounded-xl shadow-lg px-4 py-3 flex items-center gap-3">
           <img src={ringing.peer?.avatarUrl} alt="" className="w-10 h-10 rounded-full object-cover" />
