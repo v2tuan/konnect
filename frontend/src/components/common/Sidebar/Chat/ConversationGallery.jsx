@@ -14,6 +14,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
+import { getSocket, connectSocket } from "@/lib/socket";
 
 /* ---------------- helpers ---------------- */
 const norm = (t = "") => String(t).toLowerCase();
@@ -21,7 +22,6 @@ const isVisual = (m) => (m?.url && (norm(m?.type) === "image" || norm(m?.type) =
 const isAudio  = (m) => (m?.url && norm(m?.type) === "audio");
 const isFile   = (m) => (m?.url && norm(m?.type) === "file");
 
-/* ---- filename helpers to show & download with correct name ---- */
 const EXT_FROM_MIME = {
   "image/jpeg": "jpg","image/png": "png","image/webp": "webp","image/gif": "gif","image/heic": "heic","image/heif": "heif",
   "application/pdf": "pdf","application/zip": "zip","application/x-7z-compressed": "7z","application/x-rar-compressed": "rar",
@@ -48,7 +48,7 @@ const getBaseName = (m) =>
   );
 const getNameWithExt = (m, mimeGuess) => {
   const base = getBaseName(m);
-  if (/\.[A-Za-z0-9]{2,5}$/.test(base)) return base; // already has extension
+  if (/\.[A-Za-z0-9]{2,5}$/.test(base)) return base; // đã có đuôi
   const ext = extFromMime(mimeGuess) || "bin";
   return `${base}.${ext}`;
 };
@@ -71,7 +71,7 @@ async function downloadMediaFile(m) {
     a.remove();
     URL.revokeObjectURL(obj);
   } catch {
-    // Fallback: mở thẳng URL, vẫn gợi ý tên base nếu trình duyệt tôn trọng 'download'
+    // fallback
     const a = document.createElement("a");
     a.href = url;
     a.download = getBaseName(m);
@@ -330,19 +330,37 @@ export default function ConversationGallery({
                                               conversationId,
                                               initialTab = "media",
                                               onClose,
-                                              members: membersFromProps
+                                              members: membersFromProps,
+                                              currentUserId // optional
                                             }) {
   const [tab, setTab] = useState(initialTab); // "media" | "file" | "audio"
   const [page, setPage] = useState(1);
-  const [items, setItems] = useState([]);
+  const [items, setItems] = useState([]);      // chứa ALL media; render sẽ lọc theo tab
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // userId fallback nếu parent không truyền
+  const resolvedUserId = useMemo(() => {
+    try {
+      if (currentUserId) return String(currentUserId);
+      if (typeof window !== "undefined") {
+        if (window.__CURRENT_USER?.id) return String(window.__CURRENT_USER.id);
+        const raw = localStorage.getItem("auth");
+        const parsed = raw ? JSON.parse(raw) : null;
+        if (parsed?.user?.id) return String(parsed.user.id);
+        const uid = localStorage.getItem("uid");
+        if (uid) return String(uid);
+      }
+    } catch { /* empty */ }
+    return "";
+  }, [currentUserId]);
 
   // filters
   const [filterSender, setFilterSender] = useState(null);
   const [filterDateRange, setFilterDateRange] = useState(undefined);
 
+  // members
   const [membersFromApi, setMembersFromApi] = useState([]);
   const members = useMemo(() => {
     const normalize = (arr = []) =>
@@ -371,10 +389,6 @@ export default function ConversationGallery({
   }, []);
 
   // fetch + reset
-  const isMediaTab = tab === "media";
-  const isAudioTab = tab === "audio";
-  const isFileTab  = tab === "file";
-
   const queryKey = useMemo(() => {
     const from = filterDateRange?.from ? format(filterDateRange.from, "yyyy-MM-dd") : null;
     const to   = filterDateRange?.to   ? format(filterDateRange.to,   "yyyy-MM-dd") : (from || null);
@@ -400,12 +414,13 @@ export default function ConversationGallery({
       setLoading(true);
       setError("");
       try {
-        const limit = isMediaTab ? 36 : 30;
+        const limit = tab === "media" ? 36 : 30;
 
         const from = filterDateRange?.from ? format(filterDateRange.from, "yyyy-MM-dd") : undefined;
         const to   = filterDateRange?.to   ? format(filterDateRange.to,   "yyyy-MM-dd") : (from || undefined);
         const params = new URLSearchParams({
-          type: isMediaTab ? "image,video" : isAudioTab ? "audio" : "file",
+          // lấy ALL media; render sẽ lọc theo tab
+          type: "image,video,audio,file",
           page: String(page),
           limit: String(limit),
           ts: String(Date.now())
@@ -421,11 +436,7 @@ export default function ConversationGallery({
         if (aborted) return;
 
         const raw = data?.items || [];
-        const filtered = raw.filter((m) =>
-          isMediaTab ? isVisual(m) : isAudioTab ? isAudio(m) : isFile(m)
-        );
-
-        setItems(prev => (page === 1 || queryChanged ? filtered : [...prev, ...filtered]));
+        setItems(prev => (page === 1 || queryChanged ? raw : [...prev, ...raw]));
         setHasMore(Boolean(data?.hasMore));
         setMembersFromApi(data?.participants || []);
       } catch (e) {
@@ -436,16 +447,76 @@ export default function ConversationGallery({
     })();
 
     return () => { aborted = true; };
-  }, [conversationId, tab, page, queryKey, isMediaTab, isAudioTab, isFileTab]);
+  }, [conversationId, tab, page, queryKey, filterDateRange, filterSender]);
 
-  const dayGroups = useMemo(() => groupByDay(items), [items]);
+  // socket: cập nhật ngay khi có media mới
+  useEffect(() => {
+    if (!conversationId) return;
+
+    let s = getSocket();
+    if (!s || !s.connected) {
+      s = connectSocket(resolvedUserId || "");
+    }
+    if (!s) return;
+
+    const upsertIncoming = (incomingArr = []) => {
+      if (!incomingArr.length) return;
+      setItems(prev => {
+        const seen = new Set(prev.map(x => String(x._id || x.url)));
+        const newOnes = incomingArr
+        .filter(Boolean)
+        .map((m) => ({
+          _id: m._id || m.id,
+          conversationId: m.conversationId || conversationId,
+          type: m.type,
+          url: m.url,
+          sentAt: m.sentAt || m.uploadedAt || m?.metadata?.sentAt,
+          uploadedAt: m.uploadedAt,
+          metadata: m.metadata || {}
+        }))
+        .filter((m) => m.url && !seen.has(String(m._id || m.url)));
+        return newOnes.length ? [...newOnes, ...prev] : prev;
+      });
+    };
+
+    const onMediaNew = (payload) => {
+      if (!payload || payload.conversationId !== conversationId) return;
+      upsertIncoming(Array.isArray(payload.items) ? payload.items : []);
+    };
+
+    const onMessageNew = (payload) => {
+      if (!payload || payload.conversationId !== conversationId) return;
+      const msg = payload.message;
+      const media = Array.isArray(msg?.media) ? msg.media : [];
+      const usable = media.filter((m) => m && m.url && m.type);
+      upsertIncoming(usable);
+    };
+
+    s.emit("conversation:join", { conversationId });
+    s.on("media:new", onMediaNew);
+    s.on("message:new", onMessageNew);
+
+    return () => {
+      s.off("media:new", onMediaNew);
+      s.off("message:new", onMessageNew);
+    };
+  }, [conversationId, resolvedUserId]);
+
+  // render theo tab
+  const itemsForTab = useMemo(() => {
+    if (tab === "media") return items.filter(isVisual);
+    if (tab === "audio") return items.filter(isAudio);
+    return items.filter(isFile);
+  }, [items, tab]);
+
+  const dayGroups = useMemo(() => groupByDay(itemsForTab), [itemsForTab]);
 
   // viewer
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerIndex, setViewerIndex] = useState(0);
-  const flatVisual = useMemo(() => (isMediaTab ? items.filter(isVisual) : []), [items, isMediaTab]);
+  const flatVisual = useMemo(() => (tab === "media" ? itemsForTab.filter(isVisual) : []), [itemsForTab, tab]);
   const openViewerAt = (m) => {
-    if (!isMediaTab) return;
+    if (tab !== "media") return;
     const idx = flatVisual.findIndex(x => (x._id || x.id || x.url) === (m._id || m.id || m.url));
     setViewerIndex(Math.max(0, idx));
     setViewerOpen(true);
@@ -504,9 +575,9 @@ export default function ConversationGallery({
           </>
         )}
 
-        {!loading && !error && items.length === 0 && (
+        {!loading && !error && itemsForTab.length === 0 && (
           <div className="text-sm text-muted-foreground p-3 text-center">
-            {tab === "media" ? "No photos/videos yet." : tab === "file" ? "No files yet." : "No audio yet."}
+            {tab === "media" ? "" : tab === "file" ? "" : ""}
           </div>
         )}
 
@@ -536,5 +607,6 @@ ConversationGallery.propTypes = {
   conversationId: PropTypes.string.isRequired,
   initialTab: PropTypes.oneOf(["media", "file", "audio"]),
   onClose: PropTypes.func.isRequired,
-  members: PropTypes.array
+  members: PropTypes.array,
+  currentUserId: PropTypes.oneOfType([PropTypes.string, PropTypes.number])
 };

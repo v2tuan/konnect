@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import MediaWindowViewer from "./MediaWindowViewer";
 import { API_ROOT } from "@/utils/constant.js";
 import { Download } from "lucide-react";
+import { getSocket, connectSocket } from "@/lib/socket";
 
 const EXT_FROM_MIME = {
   "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif",
@@ -117,6 +118,7 @@ async function downloadMediaFile(m) {
     a.remove();
   }
 }
+
 export default function ConversationMediaPanel({
                                                  conversationId,
                                                  kind = "visual",
@@ -175,6 +177,7 @@ export default function ConversationMediaPanel({
           limit: String(limit),
           ts: String(Date.now()),
         }).toString();
+        // ✅ đúng URL (plural)
         const url = `${API_ROOT}/api/conversation/${conversationId}/media?${qs}`;
         const res = await fetch(url, {
           credentials: "include",
@@ -211,6 +214,74 @@ export default function ConversationMediaPanel({
       aborted = true;
     };
   }, [conversationId, tab, page, limit]);
+
+  // ===== Socket live update (prepend media mới) =====
+  useEffect(() => {
+    if (!conversationId) return;
+
+    // kết nối nếu cần
+    let s = getSocket();
+    if (!s || !s.connected) {
+      s = connectSocket();
+    }
+    if (!s) return;
+
+    const isMatchTab = (m) => {
+      const t = (m?.type || "").toLowerCase();
+      return t === tab;
+    };
+
+    // thêm mảng media mới vào state (tránh trùng)
+    const prependItems = (incoming = []) => {
+      if (!incoming.length) return;
+      const usable = incoming.filter(Boolean).filter(isMatchTab);
+      if (!usable.length) return;
+      setItems((prev) => {
+        const seen = new Set(prev.map((x) => String(x._id || x.id || x.url)));
+        const fresh = [];
+        for (const m of usable) {
+          const key = String(m._id || m.id || m.url);
+          if (!key || seen.has(key)) continue;
+          fresh.push(m);
+          seen.add(key);
+        }
+        return fresh.length ? [...fresh, ...prev] : prev;
+      });
+    };
+
+    const onMediaNew = (payload) => {
+      if (!payload || payload.conversationId !== conversationId) return;
+      const arr = Array.isArray(payload.items) ? payload.items : [];
+      prependItems(arr);
+    };
+
+    const onMessageNew = (payload) => {
+      if (!payload || payload.conversationId !== conversationId) return;
+      const msg = payload.message;
+      const media = Array.isArray(msg?.media) ? msg.media : [];
+      // chuẩn hóa về shape Media mà API trả
+      const normalized = media.map((m) => ({
+        _id: m._id || m.id,
+        conversationId: m.conversationId || conversationId,
+        type: (m.type || "").toLowerCase(),
+        url: m.url,
+        sentAt: m.sentAt || m.uploadedAt || m?.metadata?.sentAt,
+        uploadedAt: m.uploadedAt,
+        metadata: m.metadata || {}
+      }));
+      prependItems(normalized);
+    };
+
+    // join room
+    s.emit("conversation:join", { conversationId });
+    s.on("media:new", onMediaNew);
+    s.on("message:new", onMessageNew);
+
+    return () => {
+      s.off("media:new", onMediaNew);
+      s.off("message:new", onMessageNew);
+    };
+  }, [conversationId, tab]);
 
   const onLoadMore = useCallback(() => {
     if (!loading && hasMore) setPage((p) => p + 1);

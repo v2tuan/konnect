@@ -24,6 +24,7 @@ Router.use('/messages', messageRoutes)
 Router.use('/conversation', conversationRoutes)
 
 Router.use('/contacts', contactRoutes)
+
 Router.use('/notification/', notificationRoute)
 
 

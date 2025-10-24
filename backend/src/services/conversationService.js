@@ -800,7 +800,7 @@ async function listConversationMedia({
                                        page = 1,
                                        limit = 24,
                                        q,
-                                       senderId,     // <= từ query
+                                       senderId,
                                        startDate,
                                        endDate
                                      }) {
@@ -836,37 +836,42 @@ async function listConversationMedia({
 
   // ---- FILTER CỐT LÕI ----
   const filter = { conversationId: convIdObj };
-  if (type && ["image", "video", "audio", "file"].includes(type)) {
-    filter.type = type;
+
+  if (type) {
+    // Cho phép "image,video,audio,file" OR 1 loại
+    const types = String(type).split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
+    if (types.length) filter.type = { $in: types };
   }
+
   if (q && q.trim()) {
     filter.$text = { $search: q.trim() };
   }
 
-  // ✅ ĐÚNG: lọc theo người gửi (senderId), không phải uploaderId
+  // ✅ Lọc theo người gửi (senderId)
   if (senderId && mongoose.isValidObjectId(senderId)) {
     filter.senderId = new mongoose.Types.ObjectId(senderId);
   }
 
-  // Lọc theo ngày (theo sentAt nếu có, fallback uploadedAt)
+  // ✅ Lọc theo khoảng ngày: ưu tiên sentAt, fallback uploadedAt
   const timeCond = {};
   if (startDate) {
-    const s = new Date(startDate); s.setHours(0,0,0,0);
+    const s = new Date(startDate);
+    s.setHours(0, 0, 0, 0);
     timeCond.$gte = s;
   }
   if (endDate) {
-    const e = new Date(endDate); e.setHours(23,59,59,999);
+    const e = new Date(endDate);
+    e.setHours(23, 59, 59, 999);
     timeCond.$lte = e;
   }
   if (timeCond.$gte || timeCond.$lte) {
-    // Ưu tiên sentAt; nếu không có sentAt thì vẫn lọc theo uploadedAt
     filter.$or = [
       { sentAt: timeCond },
       { sentAt: { $exists: false }, uploadedAt: timeCond }
     ];
   }
 
-  // ---- QUERY ITEMS ----
+  // ---- QUERY ----
   const [items, total] = await Promise.all([
     Media.find(
       filter,
@@ -874,8 +879,8 @@ async function listConversationMedia({
         url: 1,
         type: 1,
         uploadedAt: 1,
-        senderId: 1,     // ✅ thêm
-        sentAt: 1,       // ✅ thêm
+        senderId: 1,
+        sentAt: 1,
         metadata: 1
       }
     )
@@ -885,10 +890,11 @@ async function listConversationMedia({
     .lean(),
     Media.countDocuments(filter)
   ]);
+
   const hasMore = p * l < total;
 
-  // ---- PARTICIPANTS (để FE dựng combobox thành viên) ----
-  // Lấy theo điều kiện filter hiện tại (trừ điều kiện senderId — để không tự bó lại 1 người)
+  // ---- PARTICIPANTS: danh sách người đã từng gửi media (để FE filter theo người gửi)
+  // (không áp điều kiện senderId để danh sách không bị bó chỉ còn 1 người)
   const filterForParticipants = { ...filter };
   delete filterForParticipants.senderId;
 
@@ -914,11 +920,14 @@ async function listConversationMedia({
     }
   ]);
 
-  // Quick preview & summary giữ nguyên (nếu cần)
+  // ---- Quick preview & summary (tùy chọn) ----
   const quickPreview = await Media.find(
     { conversationId: convIdObj, type: { $in: ["image", "video"] } },
     { url: 1, type: 1, uploadedAt: 1, metadata: 1, sentAt: 1 }
-  ).sort({ sentAt: -1, uploadedAt: -1, _id: -1 }).limit(6).lean();
+  )
+  .sort({ sentAt: -1, uploadedAt: -1, _id: -1 })
+  .limit(6)
+  .lean();
 
   const byTypeAgg = await Media.aggregate([
     { $match: { conversationId: convIdObj } },
@@ -934,7 +943,7 @@ async function listConversationMedia({
     items,
     quickPreview,
     summary,
-    participants: participantsRaw // ✅ FE sẽ dùng làm danh sách thành viên cho filter
+    participants: participantsRaw
   };
 }
 

@@ -107,8 +107,7 @@ const getUnreadSummary = async (req, res, next) => {
     next(e)
   }
 }
-// GET /v1/api/conversations/:id/media?type=image&limit=24&page=1
-// GET /v1/api/conversations/:id/media?type=image&limit=24&page=1
+
 const listConversationMedia = async (req, res, next) => {
   try {
     const userId = req.userId;
