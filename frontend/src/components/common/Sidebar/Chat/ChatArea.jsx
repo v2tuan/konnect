@@ -28,7 +28,8 @@ import {
   Send,
   Smile,
   Video,
-  X
+  X,
+  UserPlus // ✅ thêm lại icon cho banner friendship
 } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react'
 import { useSelector } from 'react-redux'
@@ -152,6 +153,10 @@ export function ChatArea({
       loading: false
     }))
   }, [conversation?._id, otherUserId, friendship?.status, friendship?.direction, friendship?.requestId])
+
+  // ✅ tính toán hiển thị banner (giống UI cũ)
+  const shouldShowFriendBanner = isDirect && !!otherUserId && uiFriendship.status !== 'accepted'
+  const outgoingSent = uiFriendship.status === 'pending' && uiFriendship.direction === 'outgoing'
 
   // ==================== RESET REPLY ON CONVERSATION CHANGE ====================
   useEffect(() => {
@@ -512,6 +517,42 @@ export function ChatArea({
           ref={messagesContainerRef}
           className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden relative py-4"
         >
+          {/* ✅ Friendship Banner (khôi phục như cũ) */}
+          {shouldShowFriendBanner && (
+            <div className="sticky top-0 z-20 border-b">
+              <div className="pointer-events-none absolute -bottom-6 left-0 right-0 h-6 from-card to-transparent" />
+              <div className="flex items-center justify-between w-full p-3 bg-card">
+                <div className="flex items-center text-sm">
+                  <UserPlus className="w-4 h-4 mr-2" />
+                  {outgoingSent ? (
+                    <span>Bạn đã gửi yêu cầu kết bạn đến người này</span>
+                  ) : (
+                    <span>Gửi yêu cầu kết bạn tới người này</span>
+                  )}
+                </div>
+
+                {outgoingSent ? (
+                  <Button
+                    variant="outline"
+                    className="px-3 py-1 text-sm font-medium cursor-pointer"
+                    disabled={friendReq.loading}
+                    onClick={handleCancelFriendRequest}
+                  >
+                    Huỷ
+                  </Button>
+                ) : (
+                  <Button
+                    className="px-3 py-1 text-sm font-medium cursor-pointer"
+                    disabled={friendReq.loading}
+                    onClick={handleSendFriendRequest}
+                  >
+                    Gửi kết bạn
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+
           {loadingOlder && (
             <div className="flex justify-center py-2 sticky top-0 bg-background/80 backdrop-blur-sm z-10">
               <LoaderCircle className="w-5 h-5 animate-spin text-muted-foreground" />

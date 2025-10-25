@@ -473,7 +473,7 @@ const fetchConversationDetail = async (userId, conversationId, limit = 30, befor
         otherUser: {
           _id: other._id,
           fullName: other.fullName || null,
-          username: other.username || null, // ✅ Sửa user thành other
+          username: other.username || null,
           avatarUrl: other.avatarUrl || null,
           status: other.status || null
         }
@@ -606,6 +606,7 @@ const fetchConversationDetail = async (userId, conversationId, limit = 30, befor
     }
   }
 
+  // ✅ CRITICAL: Mark friendship BEFORE returning
   await markFriendshipOnConversation(userId, result.conversation)
 
   return result
