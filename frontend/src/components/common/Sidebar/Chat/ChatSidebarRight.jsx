@@ -101,6 +101,9 @@ export default function ChatSidebarRight({ conversation, isOpen, onClose }) {
           isOpen ? "translate-x-0" : "translate-x-full"
         }`}
       >
+        <div className="flex items-center justify-center p-4 border-b h-18 shrink-0">
+          <h2 className="text-lg font-semibold truncate">Conversation information</h2>
+        </div>
         {showGallery ? (
           <ConversationGallery
             conversationId={conversation?._id}
