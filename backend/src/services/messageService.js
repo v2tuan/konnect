@@ -9,6 +9,7 @@ import { CloudinaryProvider } from '~/providers/CloudinaryProvider'
 import Media from '~/models/medias'
 import { mediaService } from './mediaService'
 import User from "~/models/user"
+import { populate } from 'dotenv'
 function toPublicMessage(m, currentUserId = null) {
   // Kiểm tra xem user hiện tại có delete tin nhắn này không
   const isDeletedForCurrentUser = currentUserId && m.deletedFor?.some(
@@ -47,6 +48,7 @@ function toPublicMessage(m, currentUserId = null) {
     reactions: m.reactions || [],
     senderId: m.senderId,
     recalled: false,
+    repliedMessage: m.repliedMessage,
     createdAt: m.createdAt
   };
 }
@@ -73,6 +75,7 @@ async function assertCanAccessConversation(userId, convo) {
  * @param {string} params.conversationId
  * @param {"text"|"image"|"file"|"audio"} params.type
  * @param {string} [params.text]
+ * @param {string} [params.repliedMessage]  // messageId của tin nhắn được trả lời (nếu có)
  * @param {any} [params.file]  // có thể là req.file hoặc req.files
  * @param {import("socket.io").Server} params.io
  */
@@ -136,7 +139,20 @@ async function sendMessage({ userId, conversationId, type, text, repliedMessage,
   })
 
   // populate media sau khi create
-  msg = await msg.populate("media")
+  await msg.populate([
+    { path: 'media' },
+    {
+      path: 'repliedMessage',
+      select: '_id conversationId seq type body',
+      populate: {
+        path: 'media'
+      },
+      populate: {
+        path: 'senderId',
+        select: 'fullName username'
+      }
+    }
+  ]);
 
   // 5) Cập nhật lastMessage cho conversation
   await Conversation.updateOne(
@@ -171,7 +187,7 @@ async function sendMessage({ userId, conversationId, type, text, repliedMessage,
     { $max: { lastReadMessageSeq: seq } }  // không bao giờ lùi tiến độ
   );
 
-// Emit badge = 0 cho CHÍNH người gửi (để các tab tự xóa badge ngay)
+  // Emit badge = 0 cho CHÍNH người gửi (để các tab tự xóa badge ngay)
   if (io) {
     io.to(`user:${userId}`).emit("badge:update", { conversationId, unread: 0 });
   }
@@ -181,7 +197,7 @@ async function sendMessage({ userId, conversationId, type, text, repliedMessage,
   if (io) {
     io.to(`conversation:${conversationId}`).emit("message:new", payload)
   }
-  
+
   try {
     const deletedMembers = await ConversationMember.find({
       conversation: conversationId,
@@ -212,8 +228,8 @@ async function sendMessage({ userId, conversationId, type, text, repliedMessage,
       conversation: conversationId,
       userId: { $ne: userId }
     })
-    .select("userId lastReadMessageSeq")
-    .lean()
+      .select("userId lastReadMessageSeq")
+      .lean()
 
     members.forEach((m) => {
       const unread = Math.max(0, seq - (m.lastReadMessageSeq || 0))
@@ -224,8 +240,8 @@ async function sendMessage({ userId, conversationId, type, text, repliedMessage,
   // 8) Notification (kèm tên / avatar người gửi) + emit notification:new
   try {
     const sender = await User.findById(userId)
-    .select("fullName username avatarUrl")
-    .lean()
+      .select("fullName username avatarUrl")
+      .lean()
     const senderName = sender?.fullName || sender?.username || "Người dùng"
     const senderAvatar = sender?.avatarUrl || ""
 
@@ -255,8 +271,8 @@ async function setReaction({ userId, messageId, emoji, io }) {
   if (typeof emoji !== 'string' || !emoji) throw new Error("Invalid emoji")
 
   const message = await Message.findById(messageId)
-  .populate('conversationId')
-  .populate('media')
+    .populate('conversationId')
+    .populate('media')
   if (!message) throw new Error("Message not found")
 
   const convoId = message.conversationId?._id || message.conversationId
@@ -315,12 +331,12 @@ async function listMessages({ userId, conversationId, limit = 30, beforeSeq }) {
   }
 
   const q = { conversationId: new mongoose.Types.ObjectId(conversationId) }
-  
+
   // Tạm thời comment phần này để test
   // if (member.deletedAtSeq !== null) {
   //   q.seq = { $gt: member.deletedAtSeq }
   // }
-  
+
   if (beforeSeq != null) {
     const n = Number(beforeSeq)
     if (Number.isFinite(n)) {
@@ -330,7 +346,10 @@ async function listMessages({ userId, conversationId, limit = 30, beforeSeq }) {
 
   const _limit = Math.min(Number(limit) || 30, MAX_LIMIT_MESSAGE)
 
-  const docs = await Message.find(q).populate("media").sort({ seq: -1 }).limit(_limit).lean()
+  const docs = await Message.find(q).populate("media")
+  .populate({path: 'repliedMessage', select: '_id conversationId seq type body',
+    populate: { path: 'senderId', select: 'fullName username' }}
+  ).sort({ seq: -1 }).limit(_limit).lean()
 
   const items = docs.reverse()
 
@@ -408,8 +427,8 @@ async function recallMessage({ userId, messageId, io }) {
     )
   }
 
-  return { 
-    ok: true, 
+  return {
+    ok: true,
     messageId,
     message: toPublicMessage(message)
   }
@@ -464,8 +483,8 @@ async function deleteMessage({ userId, messageId, io }) {
     }
   }
 
-  return { 
-    ok: true, 
+  return {
+    ok: true,
     messageId,
     action: 'deleted'
   }
