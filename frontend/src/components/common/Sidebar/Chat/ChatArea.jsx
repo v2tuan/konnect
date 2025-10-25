@@ -42,15 +42,15 @@ import ChatSidebarRight from './ChatSidebarRight'
 import { set } from 'date-fns'
 
 export function ChatArea({
-  mode = 'direct',
-  conversation = {},
-  messages = [],
-  onSendMessage,
-  sending,
-  onStartTyping,
-  onStopTyping,
-  othersTyping = false
-}) {
+                           mode = 'direct',
+                           conversation = {},
+                           messages = [],
+                           onSendMessage,
+                           sending,
+                           onStartTyping,
+                           onStopTyping,
+                           othersTyping = false
+                         }) {
   const [messageText, setMessageText] = useState('')
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
@@ -185,8 +185,8 @@ export function ChatArea({
   const toUserIds = isDirect
     ? [otherUserId].filter(Boolean)
     : ((conversation?.group?.members || [])
-      .map(m => m?._id || m?.id)
-      .filter(id => id && id !== currentUser?._id))
+    .map(m => m?._id || m?.id)
+    .filter(id => id && id !== currentUser?._id))
 
   const handleStartCall = (mode) => {
     if (!toUserIds.length) return
