@@ -580,13 +580,13 @@ export function ChatSidebar({ currentView, onViewChange }) {
         return [updated, ...next]
       })
 
-      const myId = String(currentUser?._id || '')
-      const senderId = String((msg.senderId && msg.senderId._id) || msg.senderId || '')
-      const isMine = myId && senderId && myId === senderId
-      if (convId !== activeIdFromURL && !isMine) {
-        const curr = useUnreadStore.getState().map?.[convId] || 0
-        setUnread(convId, curr + 1)
-      }
+      // const myId = String(currentUser?._id || '')
+      // const senderId = String((msg.senderId && msg.senderId._id) || msg.senderId || '')
+      // const isMine = myId && senderId && myId === senderId
+      // if (convId !== activeIdFromURL && !isMine) {
+      //   const curr = useUnreadStore.getState().map?.[convId] || 0
+      //   setUnread(convId, curr + 1)
+      // }
     }
 
     const onMemberLeft = (payload) => {
