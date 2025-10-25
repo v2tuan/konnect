@@ -68,8 +68,8 @@ export function ChatArea({
   const currentTheme = theme === "system" ? systemTheme : theme
 
   const [replyingTo, setReplyingTo] = useState({
-    sender: 'Dang Duy',
-    content: 'Nộp Project cuối kỳ lần 2Bài tập Opened: Thứ Bảy, 19 tháng 7 2025, 2:04 PM Due: Thứ Bảy, 4 tháng 10 2025, 12:45 PM Nộp các nội dung sau: 1. Danh sác...'
+    sender: '',
+    content: ''
   })
 
   const handleCloseReply = () => {
@@ -117,9 +117,13 @@ export function ChatArea({
     }))
   }, [conversation?._id, otherUserId, friendship?.status, friendship?.direction, friendship?.requestId])
 
+  // ✅ banner flags (giữ outgoing, thêm incoming)
   const shouldShowFriendBanner = isDirect && !!otherUserId && uiFriendship.status !== 'accepted'
   const outgoingSent = uiFriendship.status === 'pending' && uiFriendship.direction === 'outgoing'
+  const isIncoming = uiFriendship.status === 'pending' && uiFriendship.direction === 'incoming'
+  const otherName = otherUser?.fullName || otherUser?.username || 'Người dùng'
 
+  // handlers friend request (giữ cũ + thêm incoming accept/decline)
   const handleSendFriendRequest = async () => {
     if (!otherUserId || friendReq.loading) return
     try {
@@ -147,6 +151,33 @@ export function ChatArea({
       // rollback
       setUiFriendship({ status: 'pending', direction: 'outgoing', requestId: rid })
       setFriendReq(s => ({ ...s, sent: true, loading: false }))
+    }
+  }
+
+  // ✅ NEW: người nhận Accept / Decline
+  const handleAcceptIncomingRequest = async () => {
+    const rid = uiFriendship.requestId
+    if (!rid || friendReq.loading) return
+    try {
+      setFriendReq(s => ({ ...s, loading: true }))
+      await updateFriendRequestStatusAPI({ requestId: rid, action: 'accept' })
+      setUiFriendship({ status: 'accepted', direction: null, requestId: rid })
+      setFriendReq(s => ({ ...s, loading: false }))
+    } catch (e) {
+      setFriendReq(s => ({ ...s, loading: false }))
+    }
+  }
+
+  const handleDeclineIncomingRequest = async () => {
+    const rid = uiFriendship.requestId
+    if (!rid || friendReq.loading) return
+    try {
+      setFriendReq(s => ({ ...s, loading: true }))
+      await updateFriendRequestStatusAPI({ requestId: rid, action: 'delete' })
+      setUiFriendship({ status: 'none', direction: null, requestId: null })
+      setFriendReq({ sent: false, requestId: null, loading: false })
+    } catch (e) {
+      setFriendReq(s => ({ ...s, loading: false }))
     }
   }
 
@@ -332,7 +363,6 @@ export function ChatArea({
   }
   const socketRef = useRef(null)
 
-
   useEffect(() => {
     socketRef.current = io(import.meta.env.VITE_WS_URL, { withCredentials: true })
     const s = socketRef.current
@@ -413,14 +443,36 @@ export function ChatArea({
               <div className="flex items-center justify-between w-full p-3 bg-card">
                 <div className="flex items-center text-sm">
                   <UserPlus className="w-4 h-4 mr-2" />
-                  {outgoingSent ? (
+                  {isIncoming ? (
+                    <span><b>{otherName}</b> đã gửi lời mời kết bạn cho bạn</span>
+                  ) : outgoingSent ? (
                     <span>Bạn đã gửi yêu cầu kết bạn đến người này</span>
                   ) : (
                     <span>Gửi yêu cầu kết bạn tới người này</span>
                   )}
                 </div>
 
-                {outgoingSent ? (
+                {isIncoming ? (
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      className="px-3 py-1 text-sm font-medium cursor-pointer"
+                      disabled={friendReq.loading}
+                      onClick={handleAcceptIncomingRequest}
+                    >
+                      Accept
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="px-3 py-1 text-sm font-medium cursor-pointer"
+                      disabled={friendReq.loading}
+                      onClick={handleDeclineIncomingRequest}
+                    >
+                      Decline
+                    </Button>
+                  </div>
+                ) : outgoingSent ? (
                   <Button
                     variant="outline"
                     className="px-3 py-1 text-sm font-medium cursor-pointer"

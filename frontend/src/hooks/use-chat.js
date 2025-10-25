@@ -26,7 +26,15 @@ export const useCloudChat = (options = {}) => {
   const [sending, setSending] = useState(false)
   const [othersTyping, setOthersTyping] = useState(false)
   const [cursor, setCursor] = useState(null) // cursor để load tin nhắn cũ
+  const [hasMore, setHasMore] = useState(true)
   const socketRef = useRef(null)
+
+  // ===============================
+  // ✅ Typing heartbeat (NEW ONLY)
+  // ===============================
+  const typingKeepAliveRef = useRef(null)
+  const isTypingActiveRef = useRef(false)
+  const TYPING_KEEPALIVE_MS = 4000 // nên nhỏ hơn server timeout (thường 5–10s)
 
   // -------------------------------
   // 2) Helper: Chuẩn hóa tin nhắn
@@ -41,7 +49,8 @@ export const useCloudChat = (options = {}) => {
       reactions: m.reactions || [],
       text: m.body?.text ?? m.text ?? "",
       senderId: m.senderId,
-      type: m.type
+      type: m.type,
+      repliedMessage: m.repliedMessage || null
     }
 
     // Cloud mode mặc định là own
@@ -68,11 +77,26 @@ export const useCloudChat = (options = {}) => {
 
           const convo = data?.conversation
           const items = Array.isArray(data?.messages) ? data.messages : []
+          const pageInfo = data?.pageInfo || {}
 
           setConversation(convo || { id: externalConversationId, type: mode })
           setCid(externalConversationId)
           setMessages(items.map(normalizeIncoming))
-          setCursor(data?.pageInfo?.nextBeforeSeq ?? null)
+          setCursor(pageInfo.nextBeforeSeq ?? null) // ✅ Sửa từ nextBeforeReq
+          
+          // ✅ FIX: Nếu backend không trả về hasMore, default là true (trừ khi không có messages)
+          const shouldHaveMore = pageInfo.hasMore !== undefined 
+            ? pageInfo.hasMore 
+            : items.length > 0
+          
+          setHasMore(shouldHaveMore)
+          
+          console.log('📊 Pagination info:', {
+            cursor: pageInfo.nextBeforeSeq,
+            hasMore: shouldHaveMore,
+            messagesCount: items.length
+          })
+          
           return
         }
 
@@ -84,11 +108,18 @@ export const useCloudChat = (options = {}) => {
           const convo = res?.conversation
           const id = extractId(convo)
           const items = Array.isArray(res?.messages) ? res.messages : []
+          const pageInfo = res?.pageInfo || {}
 
           setConversation(convo || null)
           setCid(id)
           setMessages(items.map(normalizeIncoming))
-          setCursor(res?.paging?.nextBeforeReq ?? null)
+          setCursor(pageInfo.nextBeforeSeq ?? null) // Cloud có thể dùng tên khác
+          
+          const shouldHaveMore = pageInfo.hasMore !== undefined 
+            ? pageInfo.hasMore 
+            : items.length > 0
+          
+          setHasMore(shouldHaveMore)
           return
         }
 
@@ -115,6 +146,10 @@ export const useCloudChat = (options = {}) => {
     // Join room conversation
     socket.on("connect", () => {
       socket.emit("conversation:join", { conversationId: cid })
+      // ✅ Nếu đang typing trước đó, khôi phục ngay sau khi reconnect
+      if (isTypingActiveRef.current) {
+        socket.emit("typing:start", { conversationId: cid })
+      }
     })
 
     // -------------------------------
@@ -168,6 +203,14 @@ export const useCloudChat = (options = {}) => {
       socket.off("typing:stop", handleTypingStop)
       socket.disconnect()
       socketRef.current = null
+
+      // ✅ Ngắt heartbeat nếu đang bật khi unmount/chuyển phòng
+      if (typingKeepAliveRef.current) {
+        clearInterval(typingKeepAliveRef.current)
+        typingKeepAliveRef.current = null
+      }
+      isTypingActiveRef.current = false
+      setOthersTyping(false)
     }
   }, [cid, mode, currentUserId])
 
@@ -260,31 +303,63 @@ export const useCloudChat = (options = {}) => {
 
 
   // -------------------------------
-  // 6) Typing emitters
+  // 6) Typing emitters (HEARTBEAT)
   // -------------------------------
   const startTyping = () => {
     if (!cid) return
-    socketRef.current?.emit("typing:start", { conversationId: cid })
+    if (!socketRef.current) return
+    if (isTypingActiveRef.current) return // đã bật rồi thì bỏ qua
+
+    // bật cờ + emit ngay lập tức
+    isTypingActiveRef.current = true
+    socketRef.current.emit("typing:start", { conversationId: cid })
+
+    // duy trì trạng thái bằng heartbeat định kỳ
+    typingKeepAliveRef.current = setInterval(() => {
+      socketRef.current?.emit("typing:start", { conversationId: cid })
+    }, TYPING_KEEPALIVE_MS)
   }
 
   const stopTyping = () => {
     if (!cid) return
-    socketRef.current?.emit("typing:stop", { conversationId: cid })
+    if (!socketRef.current) return
+
+    // dừng heartbeat
+    if (typingKeepAliveRef.current) {
+      clearInterval(typingKeepAliveRef.current)
+      typingKeepAliveRef.current = null
+    }
+    isTypingActiveRef.current = false
+
+    // thông báo đã dừng
+    socketRef.current.emit("typing:stop", { conversationId: cid })
   }
 
   // -------------------------------
   // 7) Load tin nhắn cũ
   // -------------------------------
   const loadOlder = async () => {
-    if (!cid || cursor === null) return { hasMore: false }
+    if (!cid || !cursor || !hasMore) {
+      console.log('⚠️ Cannot load older:', { cid, cursor, hasMore })
+      return { hasMore: false }
+    }
+
+    console.log('🔄 Loading older messages with cursor:', cursor)
 
     try {
-      const data = await fetchConversationDetail(cid, { beforeReq: cursor, limit: 30 })
-      console.log('Load older messages data:', data)
+      const data = await fetchConversationDetail(cid, { 
+        beforeSeq: cursor, // ✅ Sửa từ beforeReq sang beforeSeq
+        limit: 30 
+      })
+      
+      console.log('📦 Load older response:', data)
+      
       const older = Array.isArray(data?.messages) ? data.messages : []
+      const pageInfo = data?.pageInfo || {}
 
       if (!older.length) {
-        setCursor(null)
+        console.log('✅ No more messages')
+        setHasMore(false)
         return { hasMore: false }
       }
 
@@ -294,10 +369,24 @@ export const useCloudChat = (options = {}) => {
         return merged
       })
 
-      setCursor(data?.pageInfo?.nextBeforeSeq ?? null)
-      return { hasMore: data?.pageInfo?.nextBeforeSeq != null }
+      const newCursor = pageInfo.nextBeforeSeq ?? null
+      const newHasMore = pageInfo.hasMore ?? false
+      
+      setCursor(newCursor)
+      setHasMore(newHasMore)
+      
+      console.log('✅ Loaded older messages:', {
+        count: older.length,
+        newCursor,
+        newHasMore
+      })
+      
+      return { 
+        hasMore: newHasMore,
+        loadedCount: older.length 
+      }
     } catch (error) {
-      console.error("Load older messages failed:", error)
+      console.error("❌ Load older messages failed:", error)
       return { hasMore: false }
     }
   }
@@ -321,10 +410,10 @@ export const useCloudChat = (options = {}) => {
     conversationId: cid,
     messages: normalizedMessages,
     send,
-    startTyping,
-    stopTyping,
+    startTyping,   // gọi khi input focus
+    stopTyping,    // gọi khi input blur / rời trang
     othersTyping,
-    loadOlder,
-    hasMore: cursor != null
+    loadOlder, // ✅ Export loadOlder
+    hasMore
   }
 }

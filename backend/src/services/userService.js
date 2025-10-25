@@ -22,8 +22,8 @@ const getDisplayUsers = async (userIds) => {
         let users = await User.find({
             _id: { $in: userIds }
         }).select('status avatarUrl fullName username dateOfBirth bio id')
-        console.log('getDisplayUsers', users)
-        console.log('userIds', userIds)
+        // console.log('getDisplayUsers', users)
+        // console.log('userIds', userIds)
         return users
     }
     catch (e) {

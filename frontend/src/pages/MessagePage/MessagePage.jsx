@@ -3,33 +3,30 @@
 import { ChatArea } from "@/components/common/Sidebar/Chat/ChatArea"
 import WelcomeScreen from "@/components/common/WelcomeScreen"
 import { useCloudChat } from "@/hooks/use-chat"
+import { useConversationFocus, useMarkConversationRead } from "@/hooks/use-conversation"
 import { selectCurrentUser } from "@/redux/user/userSlice"
 import { useSelector } from "react-redux"
 import { useParams } from "react-router-dom"
-
-// ⭐ import hook mark read
-import { useConversationFocus, useMarkConversationRead } from "@/hooks/use-conversation.js"
 
 export default function MessagePage() {
   const { conversationId } = useParams()
   const currentUser = useSelector(selectCurrentUser)
 
-  // ⭐ Gọi hook: đánh dấu đã đọc + clear notification của phòng
   useMarkConversationRead(conversationId)
   useConversationFocus(conversationId)
 
   const {
     loading, sending, messages, send,
-    startTyping, stopTyping, othersTyping, conversation
+    startTyping, stopTyping, othersTyping, conversation,
+    loadOlder, hasMore // ✅ Get loadOlder & hasMore
   } = useCloudChat({
-    mode: "direct", // hook param unchanged
+    mode: "direct",
     currentUserId: currentUser?._id,
     conversationId
   })
 
   if (!conversationId) return <WelcomeScreen/>
 
-  // Infer UI mode from conversation.type (cloud/direct/group)
   const chatMode =
     conversation?.type === "cloud"
       ? "cloud"
@@ -43,12 +40,13 @@ export default function MessagePage() {
         mode={chatMode}
         conversation={conversation || { _id: conversationId }}
         messages={messages}
-        loading={loading}
-        sending={sending}
         onSendMessage={send}
+        sending={sending}
         onStartTyping={startTyping}
         onStopTyping={stopTyping}
         othersTyping={othersTyping}
+        onLoadOlder={loadOlder} // ✅ Pass loadOlder
+        hasMore={hasMore} // ✅ Pass hasMore
       />
     </div>
   )

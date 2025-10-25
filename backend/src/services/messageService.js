@@ -9,6 +9,7 @@ import { MAX_LIMIT_MESSAGE } from '~/utils/constant'
 import { notificationService } from '~/services/notificationService'
 import { mediaService } from './mediaService'
 
+import { populate } from 'dotenv'
 function toPublicMessage(m, currentUserId = null) {
   const isDeletedForCurrentUser = currentUserId && m.deletedFor?.some(
     del => String(del.userId) === String(currentUserId)
@@ -39,6 +40,7 @@ function toPublicMessage(m, currentUserId = null) {
     reactions: m.reactions || [],
     senderId: m.senderId,
     recalled: false,
+    repliedMessage: m.repliedMessage,
     createdAt: m.createdAt
   }
 }
@@ -71,7 +73,15 @@ function pickMediaForClient(m) {
 }
 
 /**
- * Gửi tin nhắn (text / image / file / audio / video)
+ * Gửi tin nhắn (text / image / file / audio)
+ * @param {Object} params
+ * @param {string} params.userId
+ * @param {string} params.conversationId
+ * @param {"text"|"image"|"file"|"audio"} params.type
+ * @param {string} [params.text]
+ * @param {string} [params.repliedMessage]  // messageId của tin nhắn được trả lời (nếu có)
+ * @param {any} [params.file]  // có thể là req.file hoặc req.files
+ * @param {import("socket.io").Server} params.io
  */
 async function sendMessage({ userId, conversationId, type, text, repliedMessage, file, io }) {
   const conversation = await Conversation.findById(conversationId).lean()
@@ -132,7 +142,23 @@ async function sendMessage({ userId, conversationId, type, text, repliedMessage,
   })
   msg = await msg.populate('media')
 
-  // 5) Cập nhật lastMessage
+  // populate media sau khi create
+  await msg.populate([
+    { path: 'media' },
+    {
+      path: 'repliedMessage',
+      select: '_id conversationId seq type body',
+      populate: {
+        path: 'media'
+      },
+      populate: {
+        path: 'senderId',
+        select: 'fullName username'
+      }
+    }
+  ]);
+
+  // 5) Cập nhật lastMessage cho conversation
   await Conversation.updateOne(
     { _id: conversationId },
     {
@@ -165,12 +191,17 @@ async function sendMessage({ userId, conversationId, type, text, repliedMessage,
   )
   if (io) io.to(`user:${userId}`).emit('badge:update', { conversationId, unread: 0 })
 
+  // Emit badge = 0 cho CHÍNH người gửi (để các tab tự xóa badge ngay)
+  if (io) {
+    io.to(`user:${userId}`).emit("badge:update", { conversationId, unread: 0 });
+  }
   const payload = { conversationId, message: toPublicMessage(msg) }
 
-  // 7) Emit message:new cho room
-  if (io) io.to(`conversation:${conversationId}`).emit('message:new', payload)
+  // 6) Emit "message:new" cho room
+  if (io) {
+    io.to(`conversation:${conversationId}`).emit("message:new", payload)
+  }
 
-  // Revive deleted members (không bắt buộc)
   try {
     const deletedMembers = await ConversationMember.find({
       conversation: conversationId,
@@ -196,7 +227,9 @@ async function sendMessage({ userId, conversationId, type, text, repliedMessage,
     const members = await ConversationMember.find({
       conversation: conversationId,
       userId: { $ne: userId }
-    }).select('userId lastReadMessageSeq').lean()
+    })
+      .select("userId lastReadMessageSeq")
+      .lean()
 
     members.forEach(m => {
       const unread = Math.max(0, seq - (m.lastReadMessageSeq || 0))
@@ -206,9 +239,12 @@ async function sendMessage({ userId, conversationId, type, text, repliedMessage,
 
   // 9) Notification
   try {
-    const sender = await User.findById(userId).select('fullName username avatarUrl').lean()
-    const senderName = sender?.fullName || sender?.username || 'Người dùng'
-    const senderAvatar = sender?.avatarUrl || ''
+    const sender = await User.findById(userId)
+      .select("fullName username avatarUrl")
+      .lean()
+    const senderName = sender?.fullName || sender?.username || "Người dùng"
+    const senderAvatar = sender?.avatarUrl || ""
+
     const notifs = await notificationService.notifyMessage({
       conversationId,
       message: msg.toJSON ? msg.toJSON() : msg,
@@ -234,8 +270,8 @@ async function setReaction({ userId, messageId, emoji, io }) {
   if (typeof emoji !== 'string' || !emoji) throw new Error('Invalid emoji')
 
   const message = await Message.findById(messageId)
-  .populate('conversationId')
-  .populate('media')
+    .populate('conversationId')
+    .populate('media')
   if (!message) throw new Error('Message not found')
 
   const convoId = message.conversationId?._id || message.conversationId
@@ -283,7 +319,11 @@ async function listMessages({ userId, conversationId, limit = 30, beforeSeq }) {
   }
 
   const q = { conversationId: new mongoose.Types.ObjectId(conversationId) }
-  // if (member.deletedAtSeq !== null) q.seq = { $gt: member.deletedAtSeq } // nếu cần
+
+  // Tạm thời comment phần này để test
+  // if (member.deletedAtSeq !== null) {
+  //   q.seq = { $gt: member.deletedAtSeq }
+  // }
 
   if (beforeSeq != null) {
     const n = Number(beforeSeq)
@@ -291,7 +331,12 @@ async function listMessages({ userId, conversationId, limit = 30, beforeSeq }) {
   }
 
   const _limit = Math.min(Number(limit) || 30, MAX_LIMIT_MESSAGE)
-  const docs = await Message.find(q).populate('media').sort({ seq: -1 }).limit(_limit).lean()
+
+  const docs = await Message.find(q).populate("media")
+  .populate({path: 'repliedMessage', select: '_id conversationId seq type body',
+    populate: { path: 'senderId', select: 'fullName username' }}
+  ).sort({ seq: -1 }).limit(_limit).lean()
+
   const items = docs.reverse()
 
   const filteredItems = items.map(m => toPublicMessage(m, userId)).filter(m => m !== null)
@@ -348,7 +393,11 @@ async function recallMessage({ userId, messageId, io }) {
     )
   }
 
-  return { ok: true, messageId, message: toPublicMessage(message) }
+  return {
+    ok: true,
+    messageId,
+    message: toPublicMessage(message)
+  }
 }
 
 async function deleteMessage({ userId, messageId, io }) {
@@ -389,7 +438,11 @@ async function deleteMessage({ userId, messageId, io }) {
     })
   }
 
-  return { ok: true, messageId, action: 'deleted' }
+  return {
+    ok: true,
+    messageId,
+    action: 'deleted'
+  }
 }
 
 export const messageService = {
