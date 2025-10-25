@@ -80,6 +80,26 @@ export function ChatArea({
   const isLoadingOlderRef = useRef(false)
   const shouldScrollToBottomRef = useRef(true)
 
+  // ✅ NEW: Typing heartbeat
+  const typingIntervalRef = useRef(null)
+  const isInputFocusedRef = useRef(false)
+
+  function startTypingHeartbeat() {
+    if (typingIntervalRef.current) return
+    onStartTyping?.() // bật ngay
+    typingIntervalRef.current = setInterval(() => {
+      onStartTyping?.()
+    }, 4000) // 4s để giữ trạng thái trên server
+  }
+
+  function stopTypingHeartbeat() {
+    if (typingIntervalRef.current) {
+      clearInterval(typingIntervalRef.current)
+      typingIntervalRef.current = null
+    }
+    onStopTyping?.()
+  }
+
   // ==================== SELECTORS ====================
   const currentUser = useSelector(selectCurrentUser)
   const usersById = useSelector(state => state.user.usersById || {})
@@ -252,6 +272,13 @@ export function ChatArea({
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [])
 
+  // ==================== CLEANUP TYPING ON UNMOUNT ====================
+  useEffect(() => {
+    return () => {
+      stopTypingHeartbeat()
+    }
+  }, [conversation?._id])
+
   // ==================== HANDLERS ====================
   const handleCloseReply = () => setReplyingTo(null)
 
@@ -260,10 +287,16 @@ export function ChatArea({
   const handleSendMessage = () => {
     const value = messageText.trim()
     if (!value || sending) return
+
+    // ❌ Không gọi onStopTyping ở đây để giữ trạng thái đang nhập khi vẫn còn focus
     onSendMessage?.({ type: 'text', content: value, repliedMessage: replyingTo?.messageId || null })
     setMessageText('')
     setShowEmojiPicker(false)
     setReplyingTo(null)
+
+    setTimeout(() => {
+      inputRef.current?.focus() // duy trì focus -> heartbeat tiếp tục
+    }, 0)
   }
 
   const handleSendAudioMessage = () => {
@@ -411,6 +444,22 @@ export function ChatArea({
     }
   }
 
+  // ==================== TYPING HANDLERS (Focus-based) ====================
+  const handleInputChange = (e) => {
+    const value = e.target.value
+    setMessageText(value)
+  }
+
+  const handleInputFocus = () => {
+    isInputFocusedRef.current = true
+    startTypingHeartbeat()
+  }
+
+  const handleInputBlur = () => {
+    isInputFocusedRef.current = false
+    stopTypingHeartbeat()
+  }
+
   // ==================== RENDER ====================
   return (
     <div className="flex flex-col h-full bg-background">
@@ -513,27 +562,28 @@ export function ChatArea({
 
             <div ref={messagesEndRef} />
 
+            {/* Typing Indicator */}
             {othersTyping && (
               <div className='flex items-end space-x-2 py-2 px-1 animate-fadeIn'>
-                <Avatar className="w-8 h-8">
+                <Avatar className="w-8 h-8 ring-2 ring-primary/20">
                   <AvatarImage src={conversation?.direct?.otherUser?.avatarUrl} />
+                  <AvatarFallback>
+                    {conversation?.direct?.otherUser?.displayName?.charAt(0) || 'U'}
+                  </AvatarFallback>
                 </Avatar>
-                <div className="relative p-3 rounded-lg bg-secondary text-gray-900 rounded-bl-sm">
-                  <div className="flex items-center space-x-2">
-                    <div className="flex space-x-1">
-                      {[0, 1, 2].map((i) => (
-                        <div
-                          key={i}
-                          className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse"
-                          style={{
-                            animationDelay: `${i * 200}ms`,
-                            animationDuration: '1.4s',
-                            animationTimingFunction: 'ease-in-out',
-                            animationIterationCount: 'infinite'
-                          }}
-                        />
-                      ))}
-                    </div>
+
+                <div className="relative px-4 py-3 rounded-2xl bg-muted/80 backdrop-blur-sm rounded-bl-sm">
+                  <div className="flex items-center space-x-1.5">
+                    {[0, 1, 2].map((i) => (
+                      <div
+                        key={i}
+                        className="w-2 h-2 bg-foreground/60 rounded-full"
+                        style={{
+                          animation: 'typing-dot 1.4s ease-in-out infinite',
+                          animationDelay: `${i * 0.2}s`
+                        }}
+                      />
+                    ))}
                   </div>
                 </div>
               </div>
@@ -617,10 +667,10 @@ export function ChatArea({
               <Input
                 ref={inputRef}
                 value={messageText}
-                onChange={(e) => setMessageText(e.target.value)}
+                onChange={handleInputChange}
                 onKeyDown={handleKeyDown}
-                onFocus={() => onStartTyping?.()}
-                onBlur={() => onStopTyping?.()}
+                onFocus={handleInputFocus}
+                onBlur={handleInputBlur}
                 placeholder={isCloud ? "Viết ghi chú..." : "Nhập tin nhắn..."}
                 className="pr-12"
               />
@@ -637,7 +687,13 @@ export function ChatArea({
 
               {showEmojiPicker && (
                 <div ref={pickerRef} className="absolute bottom-12 right-0 z-50">
-                  <EmojiPicker theme={currentTheme === "dark" ? "dark" : "light"} onEmojiClick={handleEmojiClick} />
+                  <EmojiPicker
+                    theme={currentTheme === "dark" ? "dark" : "light"}
+                    onEmojiClick={(emojiData) => {
+                      handleEmojiClick(emojiData)
+                      setTimeout(() => inputRef.current?.focus(), 0)
+                    }}
+                  />
                 </div>
               )}
             </div>
@@ -654,7 +710,7 @@ export function ChatArea({
                 className="shrink-0"
                 type="button"
               >
-                <Mic className={`w-5 h-5 ${isRecording ? 'animate-pulse' : ''}`} />
+                <Mic className={`${isRecording ? 'animate-pulse' : ''} w-5 h-5`} />
               </Button>
             )}
           </div>
@@ -700,6 +756,35 @@ export function ChatArea({
           </Button>
         </div>
       )}
+
+      {/* Typing animation CSS */}
+      <style>{`
+        @keyframes typing-dot {
+          0%, 60%, 100% {
+            transform: translateY(0);
+            opacity: 0.4;
+          }
+          30% {
+            transform: translateY(-8px);
+            opacity: 1;
+          }
+        }
+
+        .animate-fadeIn {
+          animation: fadeIn 0.3s ease-in-out;
+        }
+
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+            transform: translateY(10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `}</style>
     </div>
   )
 }

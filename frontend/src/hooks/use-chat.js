@@ -29,6 +29,13 @@ export const useCloudChat = (options = {}) => {
   const [hasMore, setHasMore] = useState(true)
   const socketRef = useRef(null)
 
+  // ===============================
+  // ✅ Typing heartbeat (NEW ONLY)
+  // ===============================
+  const typingKeepAliveRef = useRef(null)
+  const isTypingActiveRef = useRef(false)
+  const TYPING_KEEPALIVE_MS = 4000 // nên nhỏ hơn server timeout (thường 5–10s)
+
   // -------------------------------
   // 2) Helper: Chuẩn hóa tin nhắn
   // -------------------------------
@@ -138,6 +145,10 @@ export const useCloudChat = (options = {}) => {
     // Join room conversation
     socket.on("connect", () => {
       socket.emit("conversation:join", { conversationId: cid })
+      // ✅ Nếu đang typing trước đó, khôi phục ngay sau khi reconnect
+      if (isTypingActiveRef.current) {
+        socket.emit("typing:start", { conversationId: cid })
+      }
     })
 
     // -------------------------------
@@ -191,6 +202,14 @@ export const useCloudChat = (options = {}) => {
       socket.off("typing:stop", handleTypingStop)
       socket.disconnect()
       socketRef.current = null
+
+      // ✅ Ngắt heartbeat nếu đang bật khi unmount/chuyển phòng
+      if (typingKeepAliveRef.current) {
+        clearInterval(typingKeepAliveRef.current)
+        typingKeepAliveRef.current = null
+      }
+      isTypingActiveRef.current = false
+      setOthersTyping(false)
     }
   }, [cid, mode, currentUserId])
 
@@ -283,16 +302,36 @@ export const useCloudChat = (options = {}) => {
 
 
   // -------------------------------
-  // 6) Typing emitters
+  // 6) Typing emitters (HEARTBEAT)
   // -------------------------------
   const startTyping = () => {
     if (!cid) return
-    socketRef.current?.emit("typing:start", { conversationId: cid })
+    if (!socketRef.current) return
+    if (isTypingActiveRef.current) return // đã bật rồi thì bỏ qua
+
+    // bật cờ + emit ngay lập tức
+    isTypingActiveRef.current = true
+    socketRef.current.emit("typing:start", { conversationId: cid })
+
+    // duy trì trạng thái bằng heartbeat định kỳ
+    typingKeepAliveRef.current = setInterval(() => {
+      socketRef.current?.emit("typing:start", { conversationId: cid })
+    }, TYPING_KEEPALIVE_MS)
   }
 
   const stopTyping = () => {
     if (!cid) return
-    socketRef.current?.emit("typing:stop", { conversationId: cid })
+    if (!socketRef.current) return
+
+    // dừng heartbeat
+    if (typingKeepAliveRef.current) {
+      clearInterval(typingKeepAliveRef.current)
+      typingKeepAliveRef.current = null
+    }
+    isTypingActiveRef.current = false
+
+    // thông báo đã dừng
+    socketRef.current.emit("typing:stop", { conversationId: cid })
   }
 
   // -------------------------------
@@ -370,8 +409,8 @@ export const useCloudChat = (options = {}) => {
     conversationId: cid,
     messages: normalizedMessages,
     send,
-    startTyping,
-    stopTyping,
+    startTyping,   // gọi khi input focus
+    stopTyping,    // gọi khi input blur / rời trang
     othersTyping,
     loadOlder, // ✅ Export loadOlder
     hasMore
