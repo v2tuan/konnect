@@ -1,4 +1,3 @@
-// src/components/chat/ChatArea.jsx
 import { submitFriendRequestAPI, updateFriendRequestStatusAPI } from '@/apis'
 import { muteConversation, unmuteConversation } from "@/apis/index.js"
 import { useTheme } from '@/components/theme-provider'
@@ -296,13 +295,6 @@ export function ChatArea({
     })
   }
 
-  // link mẫu (giữ tạm nếu bạn chưa có API link)
-  const links = [
-    { title: 'Property Details 01 || Homelenggo - Real...', url: 'homelenggonetjs.vercel.app', date: '29/08' },
-    { title: 'Home || Homelenggo - Real Estate React...', url: 'homelenggonetjs.vercel.app', date: '26/08' },
-    { title: 'Zillow: Real Estate, Apartments, Mortg...', url: 'www.zillow.com', date: '26/08' }
-  ]
-
   const togglePanel = () => setIsOpen(!isOpen)
 
   const handleSendMessage = () => {
@@ -573,6 +565,28 @@ export function ChatArea({
 
   useEffect(() => { recomputeMentions(messageText) }, [messageText, recomputeMentions])
 
+  const typingTimerRef = useRef(null)
+  // thời gian không gõ nữa thì gửi stop (ms)
+  const TYPING_STOP_DELAY = 10000
+
+  const emitTypingStart = useCallback(() => {
+  // báo bắt đầu gõ
+    onStartTyping?.()
+
+    // reset timer; nếu trong vòng 2s không gõ nữa thì stop
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current)
+    typingTimerRef.current = setTimeout(() => {
+      onStopTyping?.()
+      typingTimerRef.current = null
+    }, TYPING_STOP_DELAY)
+  }, [onStartTyping, onStopTyping])
+
+
+  useEffect(() => {
+    return () => {
+      if (typingTimerRef.current) clearTimeout(typingTimerRef.current)
+    }
+  }, [])
 
   return (
     <div className="flex flex-col h-full bg-background">
@@ -899,7 +913,6 @@ export function ChatArea({
                 }}
               />
 
-              {/* ----------------------------- input gốc ----------------------------- */}
               <Input
                 ref={inputRef}
                 value={messageText}
@@ -907,12 +920,18 @@ export function ChatArea({
                   const v = e.target.value
                   setMessageText(v)
 
-                  // mở gợi ý khi là nhóm và đang gõ token bắt đầu bằng '@'
+                  // báo đang gõ (debounce qua emitTypingStart đã khai báo bên ngoài)
+                  emitTypingStart()
+
+                  // gợi ý @mention chỉ khi là nhóm
                   if (conversation?.type !== 'group') { setMentionOpen(false); return }
                   const caret = e.target.selectionStart || v.length
+
+                  // tìm token hiện tại (từ cuối lên đầu tới khi gặp space/newline)
                   let i = caret - 1
                   while (i >= 0 && v[i] !== ' ' && v[i] !== '\n') i--
                   const start = i + 1
+
                   if (v[start] !== '@') { setMentionOpen(false); return }
 
                   const q = v.slice(start + 1, caret).trim().toLowerCase()
@@ -930,9 +949,22 @@ export function ChatArea({
                   setMentionOpen(list.length > 0)
                 }}
                 onKeyDown={(e) => {
+                  // phím thường -> đang gõ
+                  if (e.key !== 'Enter') {
+                    emitTypingStart()
+                  }
+
                   if (mentionOpen) {
-                    if (e.key === 'ArrowDown') { e.preventDefault(); setMentionIndex(i => Math.min(i + 1, mentionList.length - 1)); return }
-                    if (e.key === 'ArrowUp') { e.preventDefault(); setMentionIndex(i => Math.max(i - 1, 0)); return }
+                    if (e.key === 'ArrowDown') {
+                      e.preventDefault()
+                      setMentionIndex(i => Math.min(i + 1, mentionList.length - 1))
+                      return
+                    }
+                    if (e.key === 'ArrowUp') {
+                      e.preventDefault()
+                      setMentionIndex(i => Math.max(i - 1, 0))
+                      return
+                    }
                     if (e.key === 'Enter') {
                       e.preventDefault()
                       const pick = mentionList[mentionIndex] || mentionList[0]
@@ -954,19 +986,30 @@ export function ChatArea({
                       }
                       return
                     }
-                    if (e.key === 'Escape') { setMentionOpen(false); return }
+                    if (e.key === 'Escape') {
+                      setMentionOpen(false)
+                      return
+                    }
                   }
-                  // hành vi enter gửi tin giữ nguyên
+
+                  // Enter để gửi (không Shift)
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault()
                     handleSendMessage()
                   }
                 }}
-                onFocus={() => onStartTyping?.()}
-                onBlur={() => onStopTyping?.()}
+                onFocus={() => {
+                  emitTypingStart()
+                }}
+                onBlur={() => {
+                  if (typingTimerRef.current) clearTimeout(typingTimerRef.current)
+                  typingTimerRef.current = null
+                  onStopTyping?.()
+                }}
                 placeholder={isCloud ? "Viết ghi chú..." : "Nhập tin nhắn..."}
                 className="pr-12 text-transparent caret-foreground bg-transparent relative"
               />
+
 
               {/* nút emoji giữ nguyên */}
               <Button
