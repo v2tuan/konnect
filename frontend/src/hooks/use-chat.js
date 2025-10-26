@@ -49,7 +49,8 @@ export const useCloudChat = (options = {}) => {
       reactions: m.reactions || [],
       text: m.body?.text ?? m.text ?? "",
       senderId: m.senderId,
-      type: m.type
+      type: m.type,
+      repliedMessage: m.repliedMessage || null
     }
 
     // Cloud mode mặc định là own

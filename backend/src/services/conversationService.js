@@ -804,8 +804,17 @@ async function assertIsMember(userId, conversationId) {
     throw err;
   }
 }
-
-async function listConversationMedia({ userId, conversationId, type, page = 1, limit = 24, q }) {
+async function listConversationMedia({
+                                       userId,
+                                       conversationId,
+                                       type,
+                                       page = 1,
+                                       limit = 24,
+                                       q,
+                                       senderId,
+                                       startDate,
+                                       endDate
+                                     }) {
   let cid = conversationId;
 
   // Fallback: nếu id không hợp lệ, coi là Cloud của user → tạo nếu chưa có
@@ -836,24 +845,57 @@ async function listConversationMedia({ userId, conversationId, type, page = 1, l
   const l = Math.max(1, Math.min(50, Number(limit) || 24));
   const skip = (p - 1) * l;
 
-  const filter = { conversationId: new mongoose.Types.ObjectId(conversationId) };
-  if (type && ["image", "video", "audio", "file"].includes(type)) {
-    filter.type = type;
+  // ---- FILTER CỐT LÕI ----
+  const filter = { conversationId: convIdObj };
+
+  if (type) {
+    // Cho phép "image,video,audio,file" OR 1 loại
+    const types = String(type).split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
+    if (types.length) filter.type = { $in: types };
   }
-  // search theo filename (tuỳ chọn)
+
   if (q && q.trim()) {
     filter.$text = { $search: q.trim() };
   }
 
+  // ✅ Lọc theo người gửi (senderId)
+  if (senderId && mongoose.isValidObjectId(senderId)) {
+    filter.senderId = new mongoose.Types.ObjectId(senderId);
+  }
+
+  // ✅ Lọc theo khoảng ngày: ưu tiên sentAt, fallback uploadedAt
+  const timeCond = {};
+  if (startDate) {
+    const s = new Date(startDate);
+    s.setHours(0, 0, 0, 0);
+    timeCond.$gte = s;
+  }
+  if (endDate) {
+    const e = new Date(endDate);
+    e.setHours(23, 59, 59, 999);
+    timeCond.$lte = e;
+  }
+  if (timeCond.$gte || timeCond.$lte) {
+    filter.$or = [
+      { sentAt: timeCond },
+      { sentAt: { $exists: false }, uploadedAt: timeCond }
+    ];
+  }
+
+  // ---- QUERY ----
   const [items, total] = await Promise.all([
-    Media.find(filter, {
-      url: 1,
-      type: 1,
-      uploadedAt: 1,
-      uploaderId: 1,
-      metadata: 1
-    })
-    .sort({ uploadedAt: -1, _id: -1 })
+    Media.find(
+      filter,
+      {
+        url: 1,
+        type: 1,
+        uploadedAt: 1,
+        senderId: 1,
+        sentAt: 1,
+        metadata: 1
+      }
+    )
+    .sort({ sentAt: -1, uploadedAt: -1, _id: -1 })
     .skip(skip)
     .limit(l)
     .lean(),
@@ -862,18 +904,44 @@ async function listConversationMedia({ userId, conversationId, type, page = 1, l
 
   const hasMore = p * l < total;
 
-  // quick preview: 6 ảnh/video mới nhất để gắn vào “Ảnh/Video”
+  // ---- PARTICIPANTS: danh sách người đã từng gửi media (để FE filter theo người gửi)
+  // (không áp điều kiện senderId để danh sách không bị bó chỉ còn 1 người)
+  const filterForParticipants = { ...filter };
+  delete filterForParticipants.senderId;
+
+  const participantsRaw = await Media.aggregate([
+    { $match: filterForParticipants },
+    { $group: { _id: "$senderId" } },
+    {
+      $lookup: {
+        from: "users",
+        localField: "_id",
+        foreignField: "_id",
+        as: "u"
+      }
+    },
+    { $unwind: { path: "$u", preserveNullAndEmptyArrays: true } },
+    {
+      $project: {
+        id: "$u._id",
+        fullName: "$u.fullName",
+        username: "$u.username",
+        avatarUrl: "$u.avatarUrl"
+      }
+    }
+  ]);
+
+  // ---- Quick preview & summary (tùy chọn) ----
   const quickPreview = await Media.find(
-    { conversationId, type: { $in: ["image", "video"] } },
-    { url: 1, type: 1, uploadedAt: 1, metadata: 1 }
+    { conversationId: convIdObj, type: { $in: ["image", "video"] } },
+    { url: 1, type: 1, uploadedAt: 1, metadata: 1, sentAt: 1 }
   )
-  .sort({ uploadedAt: -1, _id: -1 })
+  .sort({ sentAt: -1, uploadedAt: -1, _id: -1 })
   .limit(6)
   .lean();
 
-  // summary: đếm theo type (để render badge tab)
   const byTypeAgg = await Media.aggregate([
-    { $match: { conversationId: new mongoose.Types.ObjectId(conversationId) } },
+    { $match: { conversationId: convIdObj } },
     { $group: { _id: "$type", count: { $sum: 1 } } }
   ]);
   const summary = byTypeAgg.reduce((acc, it) => (acc[it._id] = it.count, acc), {});
@@ -885,7 +953,8 @@ async function listConversationMedia({ userId, conversationId, type, page = 1, l
     hasMore,
     items,
     quickPreview,
-    summary // { image: n, video: n, audio: n, file: n }
+    summary,
+    participants: participantsRaw
   };
 }
 

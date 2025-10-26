@@ -1,121 +1,161 @@
-import { addMemberToGroup, getFriendsAPI } from "@/apis"
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Button } from "@/components/ui/button"
-import { Dialog, DialogClose, DialogContent, DialogTrigger } from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { connectSocket } from '@/lib/socket'
-import { selectCurrentUser } from "@/redux/user/userSlice"
-import { Search, UserPlus, X } from "lucide-react"
-import { useEffect, useRef, useState, useMemo } from "react" // <-- thêm useMemo
-import { useSelector } from "react-redux"
-import { useNavigate } from "react-router-dom"
-import { toast } from "react-toastify"
+import { addMemberToGroup, getFriendsAPI } from "@/apis";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogClose, DialogContent, DialogTrigger } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { selectCurrentUser } from "@/redux/user/userSlice";
+import { Search, UserPlus, X } from "lucide-react";
+import { useEffect, useMemo, useCallback, useState } from "react";
+import { useSelector } from "react-redux";
+import { toast } from "react-toastify";
+import axios from "axios";
 
 export default function AddMemberDialog({ existingMemberIds = [], conversationId }) {
-  const [selectedMembers, setSelectedMembers] = useState([])
-  const [friends, setFriends] = useState([])
-  const [page, setPage] = useState(1)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [debouncedQ, setDebouncedQ] = useState('')
-  const [open, setOpen] = useState(false)
-  const [sending, setSending] = useState(false)
+  const [selectedMembers, setSelectedMembers] = useState([]);
+  const [friends, setFriends] = useState([]);
+  const [page, setPage] = useState(1);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedQ, setDebouncedQ] = useState("");
+  const [open, setOpen] = useState(false);
+  const [sending, setSending] = useState(false);
 
-  const currentUser = useSelector(selectCurrentUser)
+  const currentUser = useSelector(selectCurrentUser);
 
-  // Memo hóa để dependency ổn định
-  const excludeSet = useMemo(() => new Set([
-    String(currentUser?._id || ''),
-    ...existingMemberIds.map(String)
-  ]), [currentUser?._id, existingMemberIds])
+  // ⚠️ Nếu parent tạo mảng mới mỗi render, dùng join để ổn định deps
+  const existingIdsKey = useMemo(() => existingMemberIds.map(String).sort().join(","), [existingMemberIds]);
 
-  // debounce search
+  // Memo hóa excludeSet với deps ổn định
+  const excludeSet = useMemo(() => {
+    const set = new Set([String(currentUser?._id || "")]);
+    existingMemberIds.forEach(id => set.add(String(id)));
+    return set;
+  }, [currentUser?._id, existingIdsKey]); // <- dùng key thay vì mảng thô
+
+  // Debounce search
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedQ(searchQuery.trim()), 400)
-    return () => clearTimeout(t)
-  }, [searchQuery])
+    const t = setTimeout(() => setDebouncedQ(searchQuery.trim()), 400);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
 
-  // Fetch + filter luôn theo excludeSet
+  // Reset paging khi đổi query hoặc khi mở dialog
   useEffect(() => {
-    let cancelled = false
-    ;(async () => {
+    if (!open) return;
+    setPage(1);
+  }, [debouncedQ, open]);
+
+  // Re-filter danh sách hiện tại khi excludeSet thay đổi
+  useEffect(() => {
+    setFriends(prev => prev.filter(f => !excludeSet.has(String(f.id))));
+  }, [excludeSet]);
+
+  // Fetch friends: chỉ chạy khi dialog mở
+  useEffect(() => {
+    if (!open) return;
+
+    const ac = new AbortController();
+    let mounted = true;
+
+    (async () => {
       try {
-        const res = await getFriendsAPI({ page, limit: 30, q: debouncedQ })
-        if (cancelled) return
-        const mapped = (res?.data || []).map(r => ({
-          id: String(r.friend.id || r.friend._id),
-            name: r.friend.fullName || r.friend.username,
-          username: r.friend.username,
-          avatar: r.friend.avatarUrl
-        }))
-        const filtered = mapped.filter(u => !excludeSet.has(String(u.id)))
-        setFriends(prev => (page === 1 ? filtered : [...prev, ...filtered]))
+        const res = await getFriendsAPI(
+          { page, limit: 30, q: debouncedQ },
+          { signal: ac.signal } // <- nếu getFriendsAPI forward được signal
+        );
+
+        if (!mounted) return;
+
+        // Tùy API của bạn: data có thể là array hoặc {items:[]}
+        const list = Array.isArray(res?.data) ? res.data : (res?.data?.items || []);
+        const mapped = list.map(r => {
+          const f = r.friend || r; // fallback nếu API trả trực tiếp friend
+          return {
+            id: String(f.id || f._id),
+            name: f.fullName || f.username,
+            username: f.username,
+            avatar: f.avatarUrl
+          };
+        });
+
+        const filtered = mapped.filter(u => !excludeSet.has(String(u.id)));
+        setFriends(prev => (page === 1 ? filtered : [...prev, ...filtered]));
       } catch (e) {
-        console.error(e)
+        if (axios.isCancel?.(e) || e?.name === "AbortError") return;
+        console.error(e);
+        // Không toast liên tục ở đây để tránh loop UI; chỉ log.
       }
-    })()
-    return () => { cancelled = true }
-  }, [page, debouncedQ, excludeSet]) // <-- thêm excludeSet
+    })();
 
-  // Reset page khi search thay đổi
-  useEffect(() => { setPage(1) }, [debouncedQ])
+    return () => {
+      mounted = false;
+      ac.abort();
+    };
+  }, [open, page, debouncedQ, excludeSet]);
 
-  // Khi excludeSet đổi (VD: conversation.members cập nhật) re-filter danh sách hiện tại
+  // Dọn state khi đóng/mở dialog
   useEffect(() => {
-    setFriends(prev => prev.filter(f => !excludeSet.has(String(f.id))))
-  }, [excludeSet])
+    if (!open) {
+      // khi đóng: dọn rác để lần sau sạch sẽ
+      setFriends([]);
+      setSelectedMembers([]);
+      setSearchQuery("");
+      setDebouncedQ("");
+      setPage(1);
+    }
+  }, [open]);
 
-  const toggleMember = (member) => {
+  const toggleMember = useCallback((member) => {
     setSelectedMembers(prev =>
       prev.some(m => m.id === member.id)
         ? prev.filter(m => m.id !== member.id)
         : [...prev, member]
-    )
-  }
+    );
+  }, []);
 
-  const removeMember = (member) => {
-    setSelectedMembers(prev => prev.filter(m => m.id !== member.id))
-  }
+  const removeMember = useCallback((member) => {
+    setSelectedMembers(prev => prev.filter(m => m.id !== member.id));
+  }, []);
 
-  const handleAddMembers = async () => {
-    if (!conversationId) return toast.error('Thiếu conversationId')
-    if (!selectedMembers.length) return
+  const handleAddMembers = useCallback(async () => {
+    if (!conversationId) return toast.error("Thiếu conversationId");
+    if (!selectedMembers.length) return;
     try {
-      setSending(true)
-      const ids = selectedMembers.map(m => m.id)
-      const res = await addMemberToGroup(conversationId, ids)
-      const addedCount = res?.added?.length ?? ids.length
-      toast.success(`Đã thêm ${addedCount} thành viên vào nhóm`)
-      setSelectedMembers([])
-      setOpen(false)
+      setSending(true);
+      const ids = selectedMembers.map(m => m.id);
+      const res = await addMemberToGroup(conversationId, ids);
+      const addedCount = res?.added?.length ?? ids.length;
+      toast.success(`Đã thêm ${addedCount} thành viên vào nhóm`);
+      setSelectedMembers([]);
+      setOpen(false);
     } catch (err) {
-      console.error(err)
-      toast.error(err?.response?.data?.message || 'Không thể thêm thành viên')
+      console.error(err);
+      toast.error(err?.response?.data?.message || "Không thể thêm thành viên");
     } finally {
-      setSending(false)
+      setSending(false);
     }
-  }
+  }, [conversationId, selectedMembers]);
 
-  const ContactItem = ({ contact }) => (
-    <div
-      className="flex items-center p-3 rounded-md border border-transparent cursor-pointer hover:bg-primary/10 hover:border-primary/50"
-      onClick={() => toggleMember(contact)}
-    >
-      <div className={`w-4 h-4 rounded-full border-2 mr-3 flex items-center justify-center ${
-        selectedMembers.some(m => m.id == contact.id) ? 'bg-blue-500 border-blue-500' : 'border-gray-300'
-      }`}>
-        {selectedMembers.some(m => m.id == contact.id) && <div className="w-2 h-2 bg-white rounded-full" />}
+  const ContactItem = ({ contact }) => {
+    const checked = selectedMembers.some(m => m.id === contact.id);
+    return (
+      <div
+        className="flex items-center p-3 rounded-md border border-transparent cursor-pointer hover:bg-primary/10 hover:border-primary/50"
+        onClick={() => toggleMember(contact)}
+      >
+        <div className={`w-4 h-4 rounded-full border-2 mr-3 flex items-center justify-center ${checked ? "bg-blue-500 border-blue-500" : "border-gray-300"}`}>
+          {checked && <div className="w-2 h-2 bg-white rounded-full" />}
+        </div>
+        <Avatar className="w-10 h-10 mr-3">
+          <AvatarImage src={contact.avatar} />
+          <AvatarFallback>{contact.name?.[0]?.toUpperCase() || "U"}</AvatarFallback>
+        </Avatar>
+        <span className="font-medium text-sm">{contact.name}</span>
       </div>
-      <Avatar className="w-10 h-10 mr-3">
-        <AvatarImage src={contact.avatar} />
-        <AvatarFallback>{contact.name?.[0]?.toUpperCase() || 'U'}</AvatarFallback>
-      </Avatar>
-      <span className="font-medium text-sm">{contact.name}</span>
-    </div>
-  )
+    );
+  };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <form onSubmit={(e) => { e.preventDefault(); handleAddMembers() }}>
+      <form onSubmit={(e) => { e.preventDefault(); handleAddMembers(); }}>
         <DialogTrigger asChild>
           <button className="flex flex-col items-center p-3 rounded-lg transition-colors cursor-pointer">
             <UserPlus size={24} className="mb-1" />
@@ -128,8 +168,6 @@ export default function AddMemberDialog({ existingMemberIds = [], conversationId
             {/* Header */}
             <div className="flex items-center justify-between p-4 border-b">
               <h2 className="font-semibold">Add members</h2>
-              <DialogClose asChild>
-              </DialogClose>
             </div>
 
             {/* Search */}
@@ -151,6 +189,11 @@ export default function AddMemberDialog({ existingMemberIds = [], conversationId
                 <div className="flex-1 overflow-y-auto">
                   <div className="px-4 py-2">
                     {friends.map(f => (<ContactItem key={f.id} contact={f} />))}
+                    {open && friends.length >= 30 && (
+                      <div className="py-3 flex justify-center">
+                        <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)}>Tải thêm</Button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -169,7 +212,7 @@ export default function AddMemberDialog({ existingMemberIds = [], conversationId
                       {selectedMembers.map(m => (
                         <div key={m.id} className="inline-flex items-center bg-blue-100 rounded-full px-3 py-1">
                           <span className="text-sm text-blue-700">{m.name}</span>
-                          <button onClick={() => removeMember(m)} className="text-blue-500 hover:text-blue-700 ml-1">
+                          <button type="button" onClick={() => removeMember(m)} className="text-blue-500 hover:text-blue-700 ml-1">
                             <X size={12} />
                           </button>
                         </div>
@@ -186,14 +229,14 @@ export default function AddMemberDialog({ existingMemberIds = [], conversationId
 
             {/* Footer */}
             <div className="flex justify-end space-x-3 p-4 border-t">
-              <Button variant="outline" className="px-6" onClick={() => setOpen(false)}>Hủy</Button>
+              <Button variant="outline" className="px-6" type="button" onClick={() => setOpen(false)}>Hủy</Button>
               <Button className="px-6" disabled={!selectedMembers.length || sending} onClick={handleAddMembers}>
-                {sending ? 'Adding member...' : 'Add member'}
+                {sending ? "Adding member..." : "Add member"}
               </Button>
             </div>
           </div>
         </DialogContent>
       </form>
     </Dialog>
-  )
+  );
 }

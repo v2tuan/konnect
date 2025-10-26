@@ -3,9 +3,14 @@ export function registerChat(io) {
   io.on('connection', (socket) => {
     const userId = socket.user?.id
     if (userId) {
-      // JOIN user phòng để emit conversation:created
       socket.join(`user:${userId}`)
     }
+
+    // ⭐ Thêm handler user:join để FE chủ động join khi reconnect
+    socket.on('user:join', ({ userId }) => {
+      if (!userId) return
+      socket.join(`user:${userId}`)
+    })
 
     socket.on('conversation:join', ({ conversationId }) => {
       if (!conversationId) return

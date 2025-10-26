@@ -22,18 +22,19 @@ const createUser = async (data = {}) => {
   //const session = await mongoose.startSession(); // Tạo session cho transaction
   try {
     //session.startTransaction() // Bắt đầu transaction
-    const {email, password, fullName, dateOfBirth, gender, username} = data
-    if (!email || !password || !fullName || !dateOfBirth || !gender || !username) {
-      throw new Error("Missing required fields")
+    const {email, password, fullName, dateOfBirth, gender, username} = data //1
+    if (!email || !password || !fullName || !dateOfBirth || !gender || !username) { //2
+      throw new Error("Missing required fields")//3
     }
-    const existUser = await User.findOne({
+    const existUser = await User.findOne({ // 4
       $or: [{email}, {username}]
     })
-    if (existUser) throw new Error("Email or Username already registered")
+    if (existUser) //5
+      throw new Error("Email or Username already registered") // 6
 
-    const salt = bcrypt.genSaltSync(10)
-    const hashedPassword = bcrypt.hashSync(password, salt)
-    const newUser = new User({
+    const salt = bcrypt.genSaltSync(10) //7
+    const hashedPassword = bcrypt.hashSync(password, salt) //8
+    const newUser = new User({ // 9
       email,
       password: hashedPassword,
       fullName,
@@ -42,20 +43,18 @@ const createUser = async (data = {}) => {
       dateOfBirth: new Date(dateOfBirth)
     })
 
-    if (newUser) {
-      await newUser.save() // Lưu user trong transaction
-      const otp = generateOtp()
-      const text = `Your OTP is ${otp}. Please use this to complete your registration.`
-      const htmlContent = `Your OTP is <strong>${otp}</strong>. Please use this to complete your registration.`
-      await sendMail(email, "OTP for Registration", text, htmlContent)
-      await session.commitTransaction() // Commit transaction
+    if (newUser) {//10
+      await newUser.save() // Lưu user trong transaction //11
+      const otp = generateOtp()//2
+      const text = `Your OTP is ${otp}. Please use this to complete your registration.`//3
+      const htmlContent = `Your OTP is <strong>${otp}</strong>. Please use this to complete your registration.` //14
+      await sendMail(email, "OTP for Registration", text, htmlContent)/15
+      await session.commitTransaction() // Commit transaction/16
     }
-    return newUser
-  } catch (error) {
+    return newUser //17
+  } catch (error) { //18
     //await session.abortTransaction()
-    throw new Error(error.message || "Registration failed")
-  } finally {
-    // session.endSession() // Kết thúc session
+    throw new Error(error.message || "Registration failed") //19
   }
 }
 

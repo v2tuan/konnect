@@ -45,7 +45,6 @@ const fetchConversationDetail = async (req, res, next) => {
     next(error)
   }
 }
-
 // PATCH /v1/api/conversations/:id/read-to-latest
 const readToLatest = async (req, res, next) => {
   try {
@@ -116,17 +115,27 @@ const getUnreadSummary = async (req, res, next) => {
     next(e)
   }
 }
-// GET /v1/api/conversations/:id/media?type=image&limit=24&page=1
+
 const listConversationMedia = async (req, res, next) => {
   try {
     const userId = req.userId;
     if (!userId) return res.status(401).json({message: "Unauthorized"});
 
     const conversationId = req.params.id;
-    const {type, page, limit} = req.query;
+
+    // CHANGED: Lấy thêm senderId, startDate, endDate từ query
+    const {type, page, limit, senderId, startDate, endDate} = req.query;
 
     const result = await conversationService.listConversationMedia({
-      userId, conversationId, type, page, limit
+      userId,
+      conversationId,
+      type,
+      page,
+      limit,
+      // CHANGED: Truyền thêm tham số
+      senderId,
+      startDate,
+      endDate
     });
 
     return res.status(StatusCodes.OK).json(result);

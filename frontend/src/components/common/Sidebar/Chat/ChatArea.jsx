@@ -124,8 +124,8 @@ export function ChatArea({
   // ------------------------------------------------------
 
   const [replyingTo, setReplyingTo] = useState({
-    sender: 'Dang Duy',
-    content: 'Nộp Project cuối kỳ lần 2Bài tập Opened: Thứ Bảy, 19 tháng 7 2025, 2:04 PM Due: Thứ Bảy, 4 tháng 10 2025, 12:45 PM Nộp các nội dung sau: 1. Danh sác...'
+    sender: '',
+    content: ''
   })
 
   const handleCloseReply = () => {
@@ -272,8 +272,8 @@ export function ChatArea({
   const toUserIds = isDirect
     ? [otherUserId].filter(Boolean)
     : ((conversation?.group?.members || [])
-      .map(m => m?._id || m?.id)
-      .filter(id => id && id !== currentUser?._id))
+    .map(m => m?._id || m?.id)
+    .filter(id => id && id !== currentUser?._id))
 
   const handleStartCall = (mode) => {
     if (!toUserIds.length) return

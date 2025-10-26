@@ -11,6 +11,8 @@ const MediaSchema = new Schema(
       required: true,
       index: true
     },
+    senderId:       { type: mongoose.Types.ObjectId, ref: "User", required: true },
+    sentAt:   { type: Date },
     conversationId: {
       type: Schema.Types.ObjectId,
       ref: "Conversation",
@@ -37,7 +39,8 @@ const MediaSchema = new Schema(
     versionKey: false,
     timestamps: false,
     collection: "medias" // đặt rõ tên collection cho nhất quán
-  }
+  },
+
 )
 // các index truy vấn phổ biến
 MediaSchema.index({ conversationId: 1, type: 1, uploadedAt: -1 });
