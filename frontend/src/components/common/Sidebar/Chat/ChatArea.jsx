@@ -19,7 +19,7 @@ import {
   FileText,
   Image,
   LoaderCircle,
-  MessageSquareQuote,
+  Check,
   Mic,
   MoreHorizontal,
   Music,
@@ -33,7 +33,7 @@ import {
   Video,
   X
 } from 'lucide-react'
-import { use, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { use, useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react'
 import { useSelector } from 'react-redux'
 import CallModal from '../../Modal/CallModal'
 import { MessageBubble } from './MessageBubble'
@@ -49,7 +49,9 @@ export function ChatArea({
   sending,
   onStartTyping,
   onStopTyping,
-  othersTyping = false
+  othersTyping = false,
+  onLoadOlder,
+  hasMore = false
 }) {
   const [messageText, setMessageText] = useState('')
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
@@ -325,11 +327,88 @@ export function ChatArea({
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [])
 
+  const [loadingOlder, setLoadingOlder] = useState(false)
+  const messagesContainerRef = useRef(null)
+  const isLoadingOlderRef = useRef(false)
+  const shouldScrollToBottomRef = useRef(true)
+
+  // ✅ Lazy load older messages khi scroll lên top
+  const handleScroll = useCallback(async () => {
+    const container = messagesContainerRef.current
+    if (!container || !onLoadOlder || isLoadingOlderRef.current) return
+
+    // Khi scroll gần top (< 100px) và còn tin nhắn cũ
+    if (container.scrollTop < 100 && hasMore) {
+      isLoadingOlderRef.current = true
+      setLoadingOlder(true)
+      shouldScrollToBottomRef.current = false
+
+      // Lưu vị trí scroll trước khi load
+      const scrollTopBefore = container.scrollTop
+      const scrollHeightBefore = container.scrollHeight
+
+      try {
+        const result = await onLoadOlder()
+
+        // Đợi DOM update
+        await new Promise(resolve => setTimeout(resolve, 50))
+
+        // Giữ nguyên vị trí scroll
+        if (container && result?.loadedCount > 0) {
+          const scrollHeightAfter = container.scrollHeight
+          const heightDiff = scrollHeightAfter - scrollHeightBefore
+          container.scrollTop = scrollTopBefore + heightDiff
+        }
+      } catch (error) {
+        console.error('Failed to load older messages:', error)
+      } finally {
+        setLoadingOlder(false)
+        isLoadingOlderRef.current = false
+      }
+    }
+  }, [hasMore, onLoadOlder])
+
+  useEffect(() => {
+    const container = messagesContainerRef.current
+    if (!container) return
+
+    container.addEventListener('scroll', handleScroll)
+    return () => container.removeEventListener('scroll', handleScroll)
+  }, [handleScroll])
+
+  // ✅ Detect user scroll position
+  const handleUserScroll = useCallback(() => {
+    const container = messagesContainerRef.current
+    if (!container) return
+
+    const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 50
+    shouldScrollToBottomRef.current = isAtBottom
+  }, [])
+
+  useEffect(() => {
+    const container = messagesContainerRef.current
+    if (!container) return
+
+    container.addEventListener('scroll', handleUserScroll)
+    return () => container.removeEventListener('scroll', handleUserScroll)
+  }, [handleUserScroll])
+
+  // ✅ Auto scroll to bottom only if user is at bottom
   useLayoutEffect(() => {
-    setTimeout(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-    }, 0)
+    if (shouldScrollToBottomRef.current && messagesEndRef.current) {
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+      }, 0)
+    }
   }, [messages])
+
+  // ✅ Force scroll to bottom when conversation changes
+  useEffect(() => {
+    shouldScrollToBottomRef.current = true
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'auto' })
+    }
+  }, [conversation?._id])
 
   const handleFileClick = () => fileRef.current?.click()
   const handleImageClick = () => imageRef.current?.click()
@@ -442,62 +521,111 @@ export function ChatArea({
           </div>
         </div>
 
-        {/* Messages Area */}
-        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden relative py-4">
-          {shouldShowFriendBanner && (
-            <div className="sticky top-0 z-20 border-b">
-              <div className="pointer-events-none absolute -bottom-6 left-0 right-0 h-6 from-card to-transparent" />
-              <div className="flex items-center justify-between w-full p-3 bg-card">
-                <div className="flex items-center text-sm">
-                  <UserPlus className="w-4 h-4 mr-2" />
-                  {isIncoming ? (
-                    <span><b>{otherName}</b> đã gửi lời mời kết bạn cho bạn</span>
-                  ) : outgoingSent ? (
-                    <span>Bạn đã gửi yêu cầu kết bạn đến người này</span>
-                  ) : (
-                    <span>Gửi yêu cầu kết bạn tới người này</span>
-                  )}
+        {/* ✅ FRIEND REQUEST BANNER */}
+        {shouldShowFriendBanner && (
+          <div className="px-4 py-3 bg-primary/5 border-b border-primary/20">
+            {/* Case 1: Chưa gửi lời mời */}
+            {uiFriendship.status === 'none' && (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <UserPlus className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-sm">
+                    Gửi lời mời kết bạn đến người này
+                  </span>
                 </div>
-
-                {isIncoming ? (
-                  <div className="flex items-center gap-2">
-                    <Button
-                      size="sm"
-                      className="px-3 py-1 text-sm font-medium cursor-pointer"
-                      disabled={friendReq.loading}
-                      onClick={handleAcceptIncomingRequest}
-                    >
-                      Accept
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="px-3 py-1 text-sm font-medium cursor-pointer"
-                      disabled={friendReq.loading}
-                      onClick={handleDeclineIncomingRequest}
-                    >
-                      Decline
-                    </Button>
-                  </div>
-                ) : outgoingSent ? (
-                  <Button
-                    variant="outline"
-                    className="px-3 py-1 text-sm font-medium cursor-pointer"
-                    disabled={friendReq.loading}
-                    onClick={handleCancelFriendRequest}
-                  >
-                    Huỷ
-                  </Button>
-                ) : (
-                  <Button
-                    className="px-3 py-1 text-sm font-medium cursor-pointer"
-                    disabled={friendReq.loading}
-                    onClick={handleSendFriendRequest}
-                  >
-                    Gửi kết bạn
-                  </Button>
-                )}
+                <Button
+                  size="sm"
+                  onClick={handleSendFriendRequest}
+                  disabled={friendReq.loading}
+                  className="h-8"
+                >
+                  {friendReq.loading ? (
+                    <>
+                      <LoaderCircle className="w-3 h-3 mr-1 animate-spin" />
+                      Đang gửi...
+                    </>
+                  ) : (
+                    <>
+                      <UserPlus className="w-3 h-3 mr-1" />
+                      Thêm bạn bè
+                    </>
+                  )}
+                </Button>
               </div>
+            )}
+
+            {/* Case 2: Đã gửi lời mời (outgoing) */}
+            {outgoingSent && (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <LoaderCircle className="w-4 h-4 text-amber-500 animate-spin" />
+                  <span className="text-sm">
+                    Đã gửi lời mời kết bạn đến <strong>{otherName}</strong>
+                  </span>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleCancelFriendRequest}
+                  disabled={friendReq.loading}
+                  className="h-8"
+                >
+                  {friendReq.loading ? 'Đang hủy...' : 'Hủy lời mời'}
+                </Button>
+              </div>
+            )}
+
+            {/* Case 3: Nhận lời mời (incoming) */}
+            {isIncoming && (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <UserPlus className="w-4 h-4 text-blue-500" />
+                  <span className="text-sm">
+                    <strong>{otherName}</strong> đã gửi lời mời kết bạn
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    onClick={handleAcceptIncomingRequest}
+                    disabled={friendReq.loading}
+                    className="h-8"
+                  >
+                    <Check />
+                    {friendReq.loading ? 'Đang xử lý...' : 'Accept'}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleDeclineIncomingRequest}
+                    disabled={friendReq.loading}
+                    className="h-8"
+                  >
+                    <X/>
+                    Decline
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Messages Area */}
+        <div
+          ref={messagesContainerRef}
+          className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden relative py-4"
+        >
+          {/* Loading indicator */}
+          {loadingOlder && (
+            <div className="flex justify-center py-2 sticky top-0 bg-background/80 backdrop-blur-sm z-10">
+              <LoaderCircle className="w-5 h-5 animate-spin text-muted-foreground" />
+            </div>
+          )}
+
+          {/* No more messages */}
+          {!hasMore && messages.length > 0 && (
+            <div className="text-center text-xs text-muted-foreground py-2">
+              Không còn tin nhắn cũ hơn
             </div>
           )}
 
@@ -578,7 +706,7 @@ export function ChatArea({
           </div>
         </div>
 
-        {/* Input */}
+        {/* Input Area */}
         <div className="p-4 bg-sidebar backdrop-blur-sm border-t border-border shrink-0">
           {/* Reply Preview Bar */}
           {replyingTo && (
@@ -845,9 +973,10 @@ export function ChatArea({
         </div>
       </div>
 
-      {/* Slide Panel */}
+      {/* Right Sidebar */}
       <ChatSidebarRight conversation={conversation} isOpen={isOpen} />
 
+      {/* Call Ringing Banner */}
       {ringing && (
         <div className="fixed left-1/2 -translate-x-1/2 bottom-4 z-50 bg-card border rounded-xl shadow-lg px-4 py-3 flex items-center gap-3">
           <img src={ringing.peer?.avatarUrl} alt="" className="w-10 h-10 rounded-full object-cover" />
@@ -863,6 +992,7 @@ export function ChatArea({
         </div>
       )}
 
+      {/* Call Modal */}
       {call && (
         <CallModal
           open={!!call}
