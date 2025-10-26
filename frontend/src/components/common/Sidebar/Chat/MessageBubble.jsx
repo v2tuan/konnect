@@ -401,6 +401,7 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
             setOpen={setOpen}
             emojiCountMap={emojiCountMap}
             userEmojiMap={userEmojiMap}
+            reactions={message?.reactions || []}
             usersData={usersData}
             total={(message?.reactions || []).length}
           />
@@ -417,7 +418,7 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
   )
 }
 
-function ReactionsDialog({ open, setOpen, emojiCountMap, userEmojiMap, usersData, total }) {
+function ReactionsDialog({ open, setOpen, emojiCountMap, userEmojiMap, reactions, usersData, total }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="sm:max-w-[400px] max-h-[60vh] overflow-y-auto">
@@ -458,11 +459,10 @@ function ReactionsDialog({ open, setOpen, emojiCountMap, userEmojiMap, usersData
             </TabsContent>
 
             {Object.entries(
-              Object.entries(userEmojiMap).reduce((acc, [uid, { emoji }]) => {
-                emoji.forEach((e) => {
-                  if (!acc[e]) acc[e] = {}
-                  acc[e][uid] = (acc[e][uid] || 0) + 1
-                })
+              reactions.reduce((acc, { userId, emoji }) => {
+                if (!emoji) return acc
+                if (!acc[emoji]) acc[emoji] = {}
+                acc[emoji][userId] = (acc[emoji][userId] || 0) + 1 // ✅ giờ đếm thật
                 return acc
               }, {})
             ).map(([emoji, users]) => (
@@ -472,9 +472,13 @@ function ReactionsDialog({ open, setOpen, emojiCountMap, userEmojiMap, usersData
                     <div key={userId} className="flex items-center gap-2">
                       <Avatar className="w-8 h-8">
                         <AvatarImage src={usersData[userId]?.avatarUrl} />
-                        <AvatarFallback>{(usersData[userId]?.fullName || usersData[userId]?.username || "U").charAt(0)}</AvatarFallback>
+                        <AvatarFallback>
+                          {(usersData[userId]?.fullName || usersData[userId]?.username || "U").charAt(0)}
+                        </AvatarFallback>
                       </Avatar>
-                      <span className="font-medium flex-1 min-w-0 text-sm">{usersData[userId]?.fullName || usersData[userId]?.username || "User"}</span>
+                      <span className="font-medium flex-1 min-w-0 text-sm">
+                        {usersData[userId]?.fullName || usersData[userId]?.username || "User"}
+                      </span>
                       <span className="text-sm">{emoji}</span>
                       <span className="text-sm">{count}</span>
                     </div>
@@ -482,6 +486,7 @@ function ReactionsDialog({ open, setOpen, emojiCountMap, userEmojiMap, usersData
                 </div>
               </TabsContent>
             ))}
+
           </Tabs>
         </div>
       </DialogContent>
