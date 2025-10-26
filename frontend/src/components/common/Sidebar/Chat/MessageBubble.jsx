@@ -76,32 +76,63 @@ function formatFileSize(bytes) {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`
 }
 
-// --- NEW: render text with @mentions highlighted (không thay đổi layout) ---
-function renderWithMentions(text) {
-  if (!text) return ""
-  const nodes = []
-  const regex = /(^|\s)@([^\s]+)/g // giống pattern trong input overlay
-  let lastIndex = 0
-  let match
-  while ((match = regex.exec(text)) !== null) {
-    const [full, leading] = match
-    const start = match.index
-    const before = text.slice(lastIndex, start)
-    if (before) nodes.push(before)
-    // leading space (nếu có)
-    if (leading) nodes.push(leading)
-    const token = full.trim() // ví dụ "@All" hoặc "@duyanlon"
-    nodes.push(
-      <span key={`m-${start}`} className="text-blue-600 font-medium">
-        {token}
+function renderMessageWithMentions(text = "", mentions = []) {
+  if (!mentions?.length) return [text]
+
+  const parts = []
+  let i = 0
+
+  for (const mt of mentions) {
+    // phần trước '@'
+    const before = text.slice(i, mt.start)
+    if (before) parts.push(before)
+
+    // render TÊN (ẩn '@'), KHÔNG underline để tránh vệt gạch kéo dài
+    parts.push(
+      <span key={`${mt.start}-${mt.end}`} className="text-primary font-medium">
+        {mt.name}
       </span>
     )
-    lastIndex = start + full.length
+
+    i = mt.end
   }
-  const tail = text.slice(lastIndex)
-  if (tail) nodes.push(tail)
-  return nodes
+
+  // phần sau mention: nếu chỉ toàn khoảng trắng thì bỏ, tránh kéo đuôi
+  const tail = text.slice(i)
+  if (tail.trim().length) parts.push(tail)
+
+  return parts
 }
+
+function escapeRe(s) {
+  return s.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")
+}
+
+function findMentionsFromMembers(text = "", conversation) {
+  if (conversation?.type !== "group") return []
+  const names = (conversation?.group?.members || [])
+    .map(m => (m.fullName || m.username || m.name || "").trim())
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length) // ưu tiên tên dài trước để match “Duy 36” thay vì “Duy”
+    .map(escapeRe)
+
+  if (!names.length) return []
+
+  const re = new RegExp(`@(?:${names.join("|")})(?=\\b)`, "g")
+  const out = []
+  let m
+  while ((m = re.exec(text)) !== null) {
+    const raw = m[0] // "@Duy 36"
+    out.push({
+      raw,
+      name: raw.slice(1), // "Duy 36"
+      start: m.index,
+      end: m.index + raw.length
+    })
+  }
+  return out
+}
+
 
 export function MessageBubble({ message, showAvatar, contact, showMeta = true, conversation, setReplyingTo }) {
   const [hovered, setHovered] = useState(false)
@@ -182,6 +213,13 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
     }
   }, [message?.media])
 
+
+  const text = message?.body?.text || message?.text || ""
+  let mentions = message?.body?.mentions || message?.mentions || []
+  if ((!mentions || mentions.length === 0) && conversation?.type === "group") {
+    mentions = findMentionsFromMembers(text, conversation)
+  }
+
   return (
     <div
       className={`flex gap-2 ${message.reactions.length > 0 ? 'mb-4' : 'mb-2'} ${
@@ -235,7 +273,7 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
         <div className="relative">
           {isSystemMessage ? (
             <div className="px-3 py-1 rounded-full bg-muted text-muted-foreground text-xs text-center whitespace-pre-wrap">
-              {renderWithMentions(message.text ?? message.body?.text ?? "")}
+              {renderMessageWithMentions(text, mentions)}
             </div>
           ) : (
             <>
@@ -253,10 +291,10 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                           {images.length > 0 && (
                             <div className={`
             ${images.length === 1 ? 'flex justify-center' :
-                                images.length === 2 ? 'grid grid-cols-2 gap-2' :
-                                  images.length <= 4 ? 'grid grid-cols-2 gap-2 max-w-md' :
-                                    'grid grid-cols-3 gap-2 max-w-lg'
-                          }
+                              images.length === 2 ? 'grid grid-cols-2 gap-2' :
+                                images.length <= 4 ? 'grid grid-cols-2 gap-2 max-w-md' :
+                                  'grid grid-cols-3 gap-2 max-w-lg'
+                            }
           `}>
                               {images.map((media, index) => (
                                 <div key={`image-${index}`} className="relative">
@@ -269,10 +307,10 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                                     className={`
                     rounded-lg shadow-md object-cover
                     ${images.length === 1 ? 'max-w-sm max-h-96 w-full' :
-                                images.length === 2 ? 'w-full h-32 sm:h-40' :
-                                  images.length <= 4 ? 'w-full h-24 sm:h-32' :
-                                    'w-full h-20 sm:h-24'
-                              }
+                                  images.length === 2 ? 'w-full h-32 sm:h-40' :
+                                    images.length <= 4 ? 'w-full h-24 sm:h-32' :
+                                      'w-full h-20 sm:h-24'
+                                }
                     hover:shadow-lg transition-shadow duration-200 cursor-pointer
                   `}
                                     onClick={() => {
@@ -331,7 +369,7 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                                   key={`audio-${index}`}
                                   className={`flex items-center gap-2 p-2 max-w-xs rounded-sm
           ${message.isOwn ? 'ml-auto bg-primary/10 border border-primary rounded-l-lg rounded-tr-lg'
-                                : 'mr-auto bg-gray-100 text-black rounded-r-lg rounded-tl-lg'} 
+                                  : 'mr-auto bg-gray-100 text-black rounded-r-lg rounded-tl-lg'} 
           shadow-sm`}
                                 >
                                   <audio controls className="flex-1 min-w-0">
@@ -355,15 +393,16 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                   className={`
                     relative p-3 rounded-sm
                     ${isOwn
-                    ? 'bg-primary/10 border border-primary rounded-br-sm'
-                    : 'bg-secondary text-secondary-foreground rounded-bl-sm'
-                    }
+                  ? 'bg-primary/10 border border-primary rounded-br-sm'
+                  : 'bg-secondary text-secondary-foreground rounded-bl-sm'
+                }
                   `}
                 >
                   {message.isPinned && <Pin className="absolute top-1 right-1 w-3 h-3 text-yellow-500" />}
                   <p className="text-sm whitespace-pre-wrap break-words">
-                    {renderWithMentions(message.text ?? message.body?.text ?? "")}
+                    {renderMessageWithMentions(text, mentions)}
                   </p>
+
                 </div>
               )}
 

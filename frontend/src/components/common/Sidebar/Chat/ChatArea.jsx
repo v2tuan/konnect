@@ -33,13 +33,61 @@ import {
   Video,
   X
 } from 'lucide-react'
-import { use, useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react'
+import { use, useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useSelector } from 'react-redux'
 import CallModal from '../../Modal/CallModal'
 import { MessageBubble } from './MessageBubble'
 import { io } from 'socket.io-client'
 import ChatSidebarRight from './ChatSidebarRight'
 import { set } from 'date-fns'
+
+// ===== mention helpers (local, không đụng file khác) =====
+const reEscape = (s) => s.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")
+
+function buildMentionRegex(candidates = []) {
+  const names = candidates
+    .map(c => (c.fullName || c.username || c.name || "").trim())
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length) // ưu tiên tên dài hơn
+    .map(reEscape)
+  if (!names.length) return null
+  // Tìm "@Tên Có Khoảng Trắng" nguyên vẹn, không ăn chữ sau cùng (word-boundary)
+  return new RegExp(`@(?:${names.join("|")})(?=\\b)`, "g")
+}
+
+function findMentions(text = "", mentionRe) {
+  if (!mentionRe) return []
+  const out = []
+  let m
+  while ((m = mentionRe.exec(text)) !== null) {
+    const raw = m[0] // "@Duy 36"
+    out.push({
+      raw,
+      name: raw.slice(1), // "Duy 36"
+      start: m.index,
+      end: m.index + raw.length
+    })
+  }
+  return out
+}
+
+// Render HTML highlight cho lớp overlay input:
+// - vẫn hiển thị '@'
+// - tô xanh toàn bộ phần TÊN (không chỉ chữ sát '@')
+function highlightInputHTML(text = "", mentions = []) {
+  if (!mentions.length) return text.replace(/\n/g, "<br/>")
+  let html = ""
+  let i = 0
+  for (const mt of mentions) {
+    html += text.slice(i, mt.start)
+    const at = text[mt.start] // '@'
+    const name = text.slice(mt.start + 1, mt.end)
+    html += `${at}<span class="text-primary font-medium underline decoration-transparent">${name}</span>`
+    i = mt.end
+  }
+  html += text.slice(i)
+  return html.replace(/\n/g, "<br/>")
+}
 
 export function ChatArea({
   mode = 'direct',
@@ -260,12 +308,33 @@ export function ChatArea({
   const handleSendMessage = () => {
     const value = messageText.trim()
     if (!value || sending) return
-    onSendMessage?.({ type: 'text', content: value, repliedMessage: replyingTo?.messageId || null })
+
+    // map tên → id (nếu BE cần)
+    const mapNameToId = new Map(
+      mentionCandidates.map(u => [
+        (u.fullName || u.username || u.name || "").trim(),
+        (u.id || u._id)
+      ])
+    )
+    const payloadMentions = mentions.map(m => ({
+      userId: mapNameToId.get(m.name) || null,
+      name: m.name,
+      start: m.start,
+      end: m.end
+    }))
+
+    onSendMessage?.({
+      type: 'text',
+      content: value,
+      repliedMessage: replyingTo?.messageId || null,
+      mentions: payloadMentions
+    })
+
     setMessageText('')
     setShowEmojiPicker(false)
     setReplyingTo(null)
-    console.log({ type: 'text', content: value, repliedMessage: replyingTo?.messageId || null })
   }
+
 
   const handleSendAudioMessage = () => {
     if (!audioUrl || sending) return
@@ -458,7 +527,7 @@ export function ChatArea({
     const onMessageNew = (payload) => {
       if (!payload || payload.conversationId !== conversation?._id) return
       const t = payload.message?.type
-      if (['image','video','audio','file'].includes(t)) {
+      if (['image', 'video', 'audio', 'file'].includes(t)) {
         window.dispatchEvent(new CustomEvent('conversation-media:refresh', { detail: { conversationId: conversation._id, type: t } }))
       }
     }
@@ -474,6 +543,36 @@ export function ChatArea({
     mediaRecorderRef.current?.stream.getTracks().forEach(track => track.stop())
     setIsRecording(false)
   }
+
+  // ----- mention state -----
+  const [mentions, setMentions] = useState([])
+  const highlighterRef = useRef(null)
+
+  // Ứng viên mention (chỉ với group)
+  const mentionCandidates = (
+    isGroup ? (conversation?.group?.members || []) : []
+  ).filter(m => (m?.id || m?._id) && (m?.fullName || m?.username || m?.name))
+
+  const mentionRe = useMemo(
+    () => buildMentionRegex(mentionCandidates),
+    [conversation?._id] // đủ để re-build khi đổi group
+  )
+
+  const recomputeMentions = useCallback((text) => {
+    const found = findMentions(text, mentionRe)
+    setMentions(found)
+    if (highlighterRef.current) {
+      highlighterRef.current.innerHTML = highlightInputHTML(text, found)
+    }
+  }, [mentionRe])
+
+  useEffect(() => {
+    setMentions([])
+    if (highlighterRef.current) highlighterRef.current.innerHTML = ""
+  }, [conversation?._id])
+
+  useEffect(() => { recomputeMentions(messageText) }, [messageText, recomputeMentions])
+
 
   return (
     <div className="flex flex-col h-full bg-background">
@@ -796,13 +895,10 @@ export function ChatArea({
               <div
                 className="absolute inset-0 pointer-events-none px-3 py-2 text-sm leading-[1.25rem] whitespace-pre-wrap overflow-hidden"
                 dangerouslySetInnerHTML={{
-                  __html: messageText.replace(
-                    /(^|\s)@([^\s]+)/g,
-                    (m) =>
-                      `${m[0] === " " ? " " : ""}<span class='text-blue-600 font-medium'>${m.trim()}</span>`
-                  ),
+                  __html: highlightInputHTML(messageText, mentions)
                 }}
               />
+
               {/* ----------------------------- input gốc ----------------------------- */}
               <Input
                 ref={inputRef}
@@ -836,7 +932,7 @@ export function ChatArea({
                 onKeyDown={(e) => {
                   if (mentionOpen) {
                     if (e.key === 'ArrowDown') { e.preventDefault(); setMentionIndex(i => Math.min(i + 1, mentionList.length - 1)); return }
-                    if (e.key === 'ArrowUp')   { e.preventDefault(); setMentionIndex(i => Math.max(i - 1, 0)); return }
+                    if (e.key === 'ArrowUp') { e.preventDefault(); setMentionIndex(i => Math.max(i - 1, 0)); return }
                     if (e.key === 'Enter') {
                       e.preventDefault()
                       const pick = mentionList[mentionIndex] || mentionList[0]
