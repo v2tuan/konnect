@@ -1,4 +1,3 @@
-// src/components/chat/MessageBubble.jsx
 import { useEffect, useMemo, useState } from "react"
 import {
   Pin, Reply, MoreHorizontal, Clock, Check, CheckCheck,
@@ -34,7 +33,7 @@ function pickSender(conversation, message, contact) {
     const s = message.sender
     return {
       id: s.id || s._id || message.senderId || null,
-      fullName: s.fullName || s.username || contact?.name,
+      fullName: s.fullName || s.username || contact?.name || "User",
       username: s.username || null,
       avatarUrl: s.avatarUrl || null
     }
@@ -46,7 +45,7 @@ function pickSender(conversation, message, contact) {
     if (m) {
       return {
         id: m.id || m._id,
-        fullName: m.fullName || m.username || contact?.name,
+        fullName: m.fullName || m.username || contact?.name || "User",
         username: m.username || null,
         avatarUrl: m.avatarUrl || null
       }
@@ -56,14 +55,14 @@ function pickSender(conversation, message, contact) {
   if (other && String(other.id || other._id) === String(sid)) {
     return {
       id: other.id || other._id,
-      fullName: other.fullName || other.username || contact?.name,
+      fullName: other.fullName || other.username || contact?.name || "User",
       username: other.username || null,
       avatarUrl: other.avatarUrl || null
     }
   }
   return {
     id: sid || null,
-    fullName: contact?.name,
+    fullName: contact?.name || "User",
     username: contact?.username || null,
     avatarUrl: contact?.avatarUrl || null
   }
@@ -203,7 +202,7 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
       images: list.filter((m) => (m?.type || "").toLowerCase() === "image"),
       videos: list.filter((m) => (m?.type || "").toLowerCase() === "video"),
       audios: list.filter((m) => (m?.type || "").toLowerCase() === "audio"),
-      files: list.filter((m) => (m?.type || "").toLowerCase() === "file")
+      files : list.filter((m) => (m?.type || "").toLowerCase() === "file")
     }
   }, [message?.media])
 
@@ -217,8 +216,9 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
 
   return (
     <div
-      className={`flex gap-2 ${message.reactions.length > 0 ? 'mb-4' : 'mb-2'} ${isSystemMessage ? 'justify-center' : (isOwn ? 'justify-end' : 'justify-start')
-        }`}
+      className={`flex gap-2 ${message.reactions.length > 0 ? 'mb-4' : 'mb-2'} ${
+        isSystemMessage ? 'justify-center' : (isOwn ? 'justify-end' : 'justify-start')
+      }`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -236,16 +236,16 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
 
         {!isSystemMessage && (
           <div
-            className={`pointer-events-auto absolute top-1/2 -translate-y-1/2 ${isOwn ? "-left-22" : "-right-22"} opacity-0 transition-opacity duration-150 ${hovered ? "opacity-100" : "opacity-0"
-              } flex items-center gap-1`}
+            className={`pointer-events-auto absolute top-1/2 -translate-y-1/2 ${isOwn ? "-left-22" : "-right-22"} opacity-0 transition-opacity duration-150 ${
+              hovered ? "opacity-100" : "opacity-0"
+            } flex items-center gap-1`}
           >
             <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => {
               const images = message.media.filter(m => m.type === 'image')
               const files = message.media.filter(m => m.type === 'file')
               const audios = message.media.filter(m => m.type === 'audio')
-              console.log('Reply to message', message)
               setReplyingTo({
-                sender: sender?.fullName || sender?.username || 'You',
+                sender: sender?.fullName || sender?.username || 'User',
                 content: (files.length > 0
                   ? files[0]?.metadata?.filename
                   : (images.length > 0 ? '[Image]' : (audios.length > 0 ? '[Audio]' : '')))
@@ -285,10 +285,10 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                           {images.length > 0 && (
                             <div className={`
             ${images.length === 1 ? 'flex justify-center' :
-                                images.length === 2 ? 'grid grid-cols-2 gap-2' :
-                                  images.length <= 4 ? 'grid grid-cols-2 gap-2 max-w-md' :
-                                    'grid grid-cols-3 gap-2 max-w-lg'
-                              }
+                              images.length === 2 ? 'grid grid-cols-2 gap-2' :
+                                images.length <= 4 ? 'grid grid-cols-2 gap-2 max-w-md' :
+                                  'grid grid-cols-3 gap-2 max-w-lg'
+                            }
           `}>
                               {images.map((media, index) => (
                                 <div key={`image-${index}`} className="relative">
@@ -301,10 +301,10 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                                     className={`
                     rounded-lg shadow-md object-cover
                     ${images.length === 1 ? 'max-w-sm max-h-96 w-full' :
-                                        images.length === 2 ? 'w-full h-32 sm:h-40' :
-                                          images.length <= 4 ? 'w-full h-24 sm:h-32' :
-                                            'w-full h-20 sm:h-24'
-                                      }
+                                  images.length === 2 ? 'w-full h-32 sm:h-40' :
+                                    images.length <= 4 ? 'w-full h-24 sm:h-32' :
+                                      'w-full h-20 sm:h-24'
+                                }
                     hover:shadow-lg transition-shadow duration-200 cursor-pointer
                   `}
                                     onClick={() => {
@@ -363,7 +363,7 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                                   key={`audio-${index}`}
                                   className={`flex items-center gap-2 p-2 max-w-xs rounded-sm
           ${message.isOwn ? 'ml-auto bg-primary/10 border border-primary rounded-l-lg rounded-tr-lg'
-                                      : 'mr-auto bg-gray-100 text-black rounded-r-lg rounded-tl-lg'} 
+                                  : 'mr-auto bg-gray-100 text-black rounded-r-lg rounded-tl-lg'} 
           shadow-sm`}
                                 >
                                   <audio controls className="flex-1 min-w-0">
@@ -387,9 +387,9 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                   className={`
                     relative p-3 rounded-sm
                     ${isOwn
-                      ? 'bg-primary/10 border border-primary rounded-br-sm'
-                      : 'bg-secondary text-secondary-foreground rounded-bl-sm'
-                    }
+                  ? 'bg-primary/10 border border-primary rounded-br-sm'
+                  : 'bg-secondary text-secondary-foreground rounded-bl-sm'
+                }
                   `}
                 >
                   {message.isPinned && <Pin className="absolute top-1 right-1 w-3 h-3 text-yellow-500" />}
