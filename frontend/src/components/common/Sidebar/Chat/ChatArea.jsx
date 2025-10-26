@@ -67,6 +67,13 @@ export function ChatArea({
   const { theme, systemTheme } = useTheme()
   const currentTheme = theme === "system" ? systemTheme : theme
 
+  // ---------- @mention: state & refs (chỉ thêm) ----------
+  const [mentionOpen, setMentionOpen] = useState(false)
+  const [mentionIndex, setMentionIndex] = useState(-1)
+  const [mentionList, setMentionList] = useState([])
+  const mentionListRef = useRef(null)
+  // ------------------------------------------------------
+
   const [replyingTo, setReplyingTo] = useState({
     sender: 'Dang Duy',
     content: 'Nộp Project cuối kỳ lần 2Bài tập Opened: Thứ Bảy, 19 tháng 7 2025, 2:04 PM Due: Thứ Bảy, 4 tháng 10 2025, 12:45 PM Nộp các nội dung sau: 1. Danh sác...'
@@ -657,17 +664,87 @@ export function ChatArea({
             </Button>
 
             <div className="flex-1 relative">
+              {/* -------- overlay highlight cho @mention (không ảnh hưởng layout) -------- */}
+              <div
+                className="absolute inset-0 pointer-events-none px-3 py-2 text-sm leading-[1.25rem] whitespace-pre-wrap overflow-hidden"
+                dangerouslySetInnerHTML={{
+                  __html: messageText.replace(
+                    /(^|\s)@([^\s]+)/g,
+                    (m) =>
+                      `${m[0] === " " ? " " : ""}<span class='text-blue-600 font-medium'>${m.trim()}</span>`
+                  ),
+                }}
+              />
+              {/* ----------------------------- input gốc ----------------------------- */}
               <Input
                 ref={inputRef}
                 value={messageText}
-                onChange={(e) => setMessageText(e.target.value)}
-                onKeyDown={handleKeyDown}
+                onChange={(e) => {
+                  const v = e.target.value
+                  setMessageText(v)
+
+                  // mở gợi ý khi là nhóm và đang gõ token bắt đầu bằng '@'
+                  if (conversation?.type !== 'group') { setMentionOpen(false); return }
+                  const caret = e.target.selectionStart || v.length
+                  let i = caret - 1
+                  while (i >= 0 && v[i] !== ' ' && v[i] !== '\n') i--
+                  const start = i + 1
+                  if (v[start] !== '@') { setMentionOpen(false); return }
+
+                  const q = v.slice(start + 1, caret).trim().toLowerCase()
+                  const rawMembers = (conversation?.members || conversation?.group?.members || [])
+                  const list = [
+                    { id: '__ALL__', name: '@All' },
+                    ...rawMembers.map(m => ({
+                      id: String(m._id || m.id),
+                      name: m.fullName || m.name || m.username || ''
+                    }))
+                  ].filter(m => !q ? true : (m.name || '').toLowerCase().includes(q))
+
+                  setMentionList(list.slice(0, 8))
+                  setMentionIndex(list.length ? 0 : -1)
+                  setMentionOpen(list.length > 0)
+                }}
+                onKeyDown={(e) => {
+                  if (mentionOpen) {
+                    if (e.key === 'ArrowDown') { e.preventDefault(); setMentionIndex(i => Math.min(i + 1, mentionList.length - 1)); return }
+                    if (e.key === 'ArrowUp')   { e.preventDefault(); setMentionIndex(i => Math.max(i - 1, 0)); return }
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      const pick = mentionList[mentionIndex] || mentionList[0]
+                      if (pick) {
+                        const el = inputRef.current
+                        const pos = el.selectionStart
+                        let i = pos - 1
+                        while (i >= 0 && messageText[i] !== ' ' && messageText[i] !== '\n') i--
+                        const start = i + 1
+                        const label = pick.id === '__ALL__' ? '@All' : `@${pick.name}`
+                        const next = messageText.slice(0, start) + label + ' ' + messageText.slice(pos)
+                        setMessageText(next)
+                        setMentionOpen(false)
+                        requestAnimationFrame(() => {
+                          el.focus()
+                          const newPos = start + label.length + 1
+                          el.setSelectionRange(newPos, newPos)
+                        })
+                      }
+                      return
+                    }
+                    if (e.key === 'Escape') { setMentionOpen(false); return }
+                  }
+                  // hành vi enter gửi tin giữ nguyên
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    handleSendMessage()
+                  }
+                }}
                 onFocus={() => onStartTyping?.()}
                 onBlur={() => onStopTyping?.()}
                 placeholder={isCloud ? "Viết ghi chú..." : "Nhập tin nhắn..."}
-                className="pr-12"
+                className="pr-12 text-transparent caret-foreground bg-transparent relative"
               />
 
+              {/* nút emoji giữ nguyên */}
               <Button
                 variant="ghost"
                 size="sm"
@@ -681,6 +758,51 @@ export function ChatArea({
               {showEmojiPicker && (
                 <div ref={pickerRef} className="absolute bottom-12 right-0 z-50">
                   <EmojiPicker theme={currentTheme === "dark" ? "dark" : "light"} onEmojiClick={handleEmojiClick} />
+                </div>
+              )}
+
+              {/* popup gợi ý mention (chỉ thêm) */}
+              {mentionOpen && (
+                <div
+                  ref={mentionListRef}
+                  className="absolute z-50 left-0 bottom-12 w-[280px] max-h-60 overflow-y-auto rounded-lg border bg-popover shadow-lg"
+                >
+                  {mentionList.map((u, idx) => (
+                    <button
+                      key={u.id || idx}
+                      className={`w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-muted ${idx === mentionIndex ? 'bg-muted' : ''}`}
+                      onMouseDown={(e) => {
+                        e.preventDefault()
+                        const el = inputRef.current
+                        const pos = el.selectionStart
+                        let i = pos - 1
+                        while (i >= 0 && messageText[i] !== ' ' && messageText[i] !== '\n') i--
+                        const start = i + 1
+                        const label = u.id === '__ALL__' ? '@All' : `@${u.name}`
+                        const next = messageText.slice(0, start) + label + ' ' + messageText.slice(pos)
+                        setMessageText(next)
+                        setMentionOpen(false)
+                        requestAnimationFrame(() => {
+                          el.focus()
+                          const newPos = start + label.length + 1
+                          el.setSelectionRange(newPos, newPos)
+                        })
+                      }}
+                    >
+                      {u.id === '__ALL__' ? (
+                        <div className="w-8 h-8 grid place-items-center rounded-full bg-primary/10">＠</div>
+                      ) : (
+                        <Avatar className="w-8 h-8">
+                          <AvatarImage src={u.avatarUrl} />
+                          <AvatarFallback>{u.name?.[0]}</AvatarFallback>
+                        </Avatar>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium truncate">{u.id === '__ALL__' ? 'Gửi tất cả' : u.name}</div>
+                        <div className="text-xs text-muted-foreground truncate">@{u.id === '__ALL__' ? 'All' : u.name}</div>
+                      </div>
+                    </button>
+                  ))}
                 </div>
               )}
             </div>

@@ -1,4 +1,3 @@
-// src/components/chat/MessageBubble.jsx
 import { useEffect, useMemo, useState } from "react"
 import {
   Pin, Reply, MoreHorizontal, Clock, Check, CheckCheck,
@@ -75,6 +74,33 @@ function formatFileSize(bytes) {
   const sizes = ["B", "KB", "MB", "GB"]
   const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), sizes.length - 1)
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`
+}
+
+// --- NEW: render text with @mentions highlighted (không thay đổi layout) ---
+function renderWithMentions(text) {
+  if (!text) return ""
+  const nodes = []
+  const regex = /(^|\s)@([^\s]+)/g // giống pattern trong input overlay
+  let lastIndex = 0
+  let match
+  while ((match = regex.exec(text)) !== null) {
+    const [full, leading] = match
+    const start = match.index
+    const before = text.slice(lastIndex, start)
+    if (before) nodes.push(before)
+    // leading space (nếu có)
+    if (leading) nodes.push(leading)
+    const token = full.trim() // ví dụ "@All" hoặc "@duyanlon"
+    nodes.push(
+      <span key={`m-${start}`} className="text-blue-600 font-medium">
+        {token}
+      </span>
+    )
+    lastIndex = start + full.length
+  }
+  const tail = text.slice(lastIndex)
+  if (tail) nodes.push(tail)
+  return nodes
 }
 
 export function MessageBubble({ message, showAvatar, contact, showMeta = true, conversation, setReplyingTo }) {
@@ -186,7 +212,6 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
               const images = message.media.filter(m => m.type === 'image')
               const files = message.media.filter(m => m.type === 'file')
               const audios = message.media.filter(m => m.type === 'audio')
-              console.log('Reply to message', message)
               setReplyingTo({
                 sender: sender?.fullName || sender?.username || 'User',
                 content: (files.length > 0
@@ -210,7 +235,7 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
         <div className="relative">
           {isSystemMessage ? (
             <div className="px-3 py-1 rounded-full bg-muted text-muted-foreground text-xs text-center whitespace-pre-wrap">
-              {message.text ?? message.body?.text ?? ""}
+              {renderWithMentions(message.text ?? message.body?.text ?? "")}
             </div>
           ) : (
             <>
@@ -251,8 +276,7 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                     hover:shadow-lg transition-shadow duration-200 cursor-pointer
                   `}
                                     onClick={() => {
-                                      // Có thể thêm function để mở ảnh full size
-                                      // openImageModal(media.url ?? message.body?.media?.url);
+                                      // open image viewer if needed
                                     }}
                                   />
                                 </div>
@@ -260,44 +284,44 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                             </div>
                           )}
 
-                  {/* Files */}
-                  {files.length > 0 && (
-                    <div className="space-y-1">
-                      {files.map((m, i) => {
-                        const mimetype = m?.metadata?.mimetype || ""
-                        const filename = m?.metadata?.filename || "Unknown file"
-                        const sizeText = formatFileSize(m?.metadata?.size)
-                        const url = mediaUrl(m, message)
-                        const Icon =
-                          mimetype.includes("pdf")
-                            ? FileText
-                            : mimetype.includes("word") || mimetype.includes("document")
-                              ? FileText
-                              : mimetype.includes("sheet") || mimetype.includes("excel")
-                                ? FileSpreadsheet
-                                : mimetype.includes("zip") || mimetype.includes("rar") || mimetype.includes("archive")
-                                  ? Archive
-                                  : mimetype.includes("video")
-                                    ? VideoIcon
-                                    : mimetype.includes("audio")
-                                      ? Music
-                                      : File
-                        return (
-                          <div key={`file-${i}`} className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg border border-gray-200 transition-colors duration-200">
-                            <Icon className="w-8 h-8 text-gray-600" />
-                            <div className="flex-1 min-w-0">
-                              <div className="text-sm font-medium text-gray-900 truncate">{filename}</div>
-                              <div className="text-xs text-gray-500">{sizeText}</div>
+                          {/* Files */}
+                          {files.length > 0 && (
+                            <div className="space-y-1">
+                              {files.map((m, i) => {
+                                const mimetype = m?.metadata?.mimetype || ""
+                                const filename = m?.metadata?.filename || "Unknown file"
+                                const sizeText = formatFileSize(m?.metadata?.size)
+                                const url = mediaUrl(m, message)
+                                const Icon =
+                                  mimetype.includes("pdf")
+                                    ? FileText
+                                    : mimetype.includes("word") || mimetype.includes("document")
+                                      ? FileText
+                                      : mimetype.includes("sheet") || mimetype.includes("excel")
+                                        ? FileSpreadsheet
+                                        : mimetype.includes("zip") || mimetype.includes("rar") || mimetype.includes("archive")
+                                          ? Archive
+                                          : mimetype.includes("video")
+                                            ? VideoIcon
+                                            : mimetype.includes("audio")
+                                              ? Music
+                                              : File
+                                return (
+                                  <div key={`file-${i}`} className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg border border-gray-200 transition-colors duration-200">
+                                    <Icon className="w-8 h-8 text-gray-600" />
+                                    <div className="flex-1 min-w-0">
+                                      <div className="text-sm font-medium text-gray-900 truncate">{filename}</div>
+                                      <div className="text-xs text-gray-500">{sizeText}</div>
+                                    </div>
+                                    <button onClick={() => handleDownload(url, filename)}>
+                                      <Download className="w-4 h-4 text-gray-400 cursor-pointer" />
+                                    </button>
+                                    {message.isPinned && <Pin className="w-3 h-3 text-yellow-500" />}
+                                  </div>
+                                )
+                              })}
                             </div>
-                            <button onClick={() => handleDownload(url, filename)}>
-                              <Download className="w-4 h-4 text-gray-400 cursor-pointer" />
-                            </button>
-                            {message.isPinned && <Pin className="w-3 h-3 text-yellow-500" />}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
+                          )}
 
                           {/* Hiển thị audio */}
                           {audios.length > 0 && (
@@ -310,13 +334,10 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                                 : 'mr-auto bg-gray-100 text-black rounded-r-lg rounded-tl-lg'} 
           shadow-sm`}
                                 >
-                                  {/* Audio player mở rộng đúng flex */}
                                   <audio controls className="flex-1 min-w-0">
                                     <source src={media.url} type={media.metadata?.mimetype || 'audio/webm'} />
                                     Your browser does not support the audio element.
                                   </audio>
-
-                                  {/* Icon Pin nếu có */}
                                   {message.isPinned && (
                                     <Pin className="w-4 h-4 text-yellow-500 shrink-0" />
                                   )}
@@ -324,7 +345,6 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                               ))}
                             </div>
                           )}
-
                         </>
                       )
                     })()}
@@ -341,7 +361,9 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                   `}
                 >
                   {message.isPinned && <Pin className="absolute top-1 right-1 w-3 h-3 text-yellow-500" />}
-                  <p className="text-sm whitespace-pre-wrap break-words">{message.text ?? message.body?.text ?? ""}</p>
+                  <p className="text-sm whitespace-pre-wrap break-words">
+                    {renderWithMentions(message.text ?? message.body?.text ?? "")}
+                  </p>
                 </div>
               )}
 
