@@ -76,6 +76,7 @@ function formatFileSize(bytes) {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`
 }
 
+/* === Mentions helpers (được port từ code cũ) === */
 function renderMessageWithMentions(text = "", mentions = []) {
   if (!mentions?.length) return [text]
 
@@ -83,24 +84,17 @@ function renderMessageWithMentions(text = "", mentions = []) {
   let i = 0
 
   for (const mt of mentions) {
-    // phần trước '@'
     const before = text.slice(i, mt.start)
     if (before) parts.push(before)
-
-    // render TÊN (ẩn '@'), KHÔNG underline để tránh vệt gạch kéo dài
     parts.push(
       <span key={`${mt.start}-${mt.end}`} className="text-primary font-medium">
         {mt.name}
       </span>
     )
-
     i = mt.end
   }
-
-  // phần sau mention: nếu chỉ toàn khoảng trắng thì bỏ, tránh kéo đuôi
   const tail = text.slice(i)
   if (tail.trim().length) parts.push(tail)
-
   return parts
 }
 
@@ -113,26 +107,25 @@ function findMentionsFromMembers(text = "", conversation) {
   const names = (conversation?.group?.members || [])
     .map(m => (m.fullName || m.username || m.name || "").trim())
     .filter(Boolean)
-    .sort((a, b) => b.length - a.length) // ưu tiên tên dài trước để match “Duy 36” thay vì “Duy”
+    .sort((a, b) => b.length - a.length)
     .map(escapeRe)
 
   if (!names.length) return []
-
   const re = new RegExp(`@(?:${names.join("|")})(?=\\b)`, "g")
   const out = []
   let m
   while ((m = re.exec(text)) !== null) {
-    const raw = m[0] // "@Duy 36"
+    const raw = m[0]
     out.push({
       raw,
-      name: raw.slice(1), // "Duy 36"
+      name: raw.slice(1),
       start: m.index,
       end: m.index + raw.length
     })
   }
   return out
 }
-
+/* === End mentions helpers === */
 
 export function MessageBubble({ message, showAvatar, contact, showMeta = true, conversation, setReplyingTo }) {
   const [hovered, setHovered] = useState(false)
@@ -213,12 +206,13 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
     }
   }, [message?.media])
 
-
+  // === Mentions wiring (không ảnh hưởng phần khác) ===
   const text = message?.body?.text || message?.text || ""
   let mentions = message?.body?.mentions || message?.mentions || []
-  if ((!mentions || mentions.length === 0) && conversation?.type === "group") {
+  if ((!mentions || mentions.length === 0) && isGroup) {
     mentions = findMentionsFromMembers(text, conversation)
   }
+  // ================================================
 
   return (
     <div
@@ -287,7 +281,7 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                       const audios = message.media.filter(m => m.type === 'audio')
                       return (
                         <>
-                          {/* Hiển thị images với grid layout */}
+                          {/* Images grid */}
                           {images.length > 0 && (
                             <div className={`
             ${images.length === 1 ? 'flex justify-center' :
@@ -314,7 +308,7 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                     hover:shadow-lg transition-shadow duration-200 cursor-pointer
                   `}
                                     onClick={() => {
-                                      // open image viewer if needed
+                                      // Có thể thêm function mở ảnh full size
                                     }}
                                   />
                                 </div>
@@ -361,7 +355,7 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                             </div>
                           )}
 
-                          {/* Hiển thị audio */}
+                          {/* Audio */}
                           {audios.length > 0 && (
                             <div className="space-y-2">
                               {audios.map((media, index) => (
@@ -399,10 +393,33 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                   `}
                 >
                   {message.isPinned && <Pin className="absolute top-1 right-1 w-3 h-3 text-yellow-500" />}
+                  {message.repliedMessage && (
+                    <div
+                      className={`flex-col items-center gap-2 p-2 mb-2 border-l-4 ${isOwn ? 'border-primary bg-primary/10' : 'border-secondary bg-secondary/10'} rounded-sm cursor-pointer`}
+                      onClick={() => {
+                        // scroll to replied message if needed
+                      }}
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="flex text-sm font-semibold items-center gap-1">
+                            {message.repliedMessage.senderId
+                              ? (message.repliedMessage.senderId.fullName || message.repliedMessage.senderId.username || "User")
+                              : "User"}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="text-sm text-gray-600 truncate">
+                        {message.repliedMessage.type === 'text' && (message.repliedMessage.body?.text || message.repliedMessage.text)}
+                        {message.repliedMessage.type === 'image' && '[Image]'}
+                        {message.repliedMessage.type === 'file' && '[File]'}
+                        {message.repliedMessage.type === 'audio' && '[Audio]'}
+                      </div>
+                    </div>
+                  )}
                   <p className="text-sm whitespace-pre-wrap break-words">
                     {renderMessageWithMentions(text, mentions)}
                   </p>
-
                 </div>
               )}
 
@@ -430,7 +447,7 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
           </DialogContent>
         </Dialog>
 
-        {/* Reactions Dialog (giữ nguyên UI) */}
+        {/* Reactions Dialog */}
         {!isSystemMessage && (
           <ReactionsDialog
             open={open}
