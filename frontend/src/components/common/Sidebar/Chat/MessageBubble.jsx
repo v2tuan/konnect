@@ -77,6 +77,57 @@ function formatFileSize(bytes) {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`
 }
 
+/* === Mentions helpers (được port từ code cũ) === */
+function renderMessageWithMentions(text = "", mentions = []) {
+  if (!mentions?.length) return [text]
+
+  const parts = []
+  let i = 0
+
+  for (const mt of mentions) {
+    const before = text.slice(i, mt.start)
+    if (before) parts.push(before)
+    parts.push(
+      <span key={`${mt.start}-${mt.end}`} className="text-primary font-medium">
+        {mt.name}
+      </span>
+    )
+    i = mt.end
+  }
+  const tail = text.slice(i)
+  if (tail.trim().length) parts.push(tail)
+  return parts
+}
+
+function escapeRe(s) {
+  return s.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")
+}
+
+function findMentionsFromMembers(text = "", conversation) {
+  if (conversation?.type !== "group") return []
+  const names = (conversation?.group?.members || [])
+    .map(m => (m.fullName || m.username || m.name || "").trim())
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length)
+    .map(escapeRe)
+
+  if (!names.length) return []
+  const re = new RegExp(`@(?:${names.join("|")})(?=\\b)`, "g")
+  const out = []
+  let m
+  while ((m = re.exec(text)) !== null) {
+    const raw = m[0]
+    out.push({
+      raw,
+      name: raw.slice(1),
+      start: m.index,
+      end: m.index + raw.length
+    })
+  }
+  return out
+}
+/* === End mentions helpers === */
+
 export function MessageBubble({ message, showAvatar, contact, showMeta = true, conversation, setReplyingTo }) {
   const [hovered, setHovered] = useState(false)
   const [open, setOpen] = useState(false)
@@ -86,8 +137,6 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
 
   // Lightbox
   const [preview, setPreview] = useState({ open: false, url: "", type: "image" })
-
-  // console.log('Rendering MessageBubble for message:', message)
 
   // System
   const SYSTEM_ID_FALLBACK = "000000000000000000000000"
@@ -105,7 +154,7 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
       try {
         const users = await getDisplayUsers(ids)
         const m = {}
-          ; (users || []).forEach((u) => (m[u.id || u._id] = u))
+        ;(users || []).forEach((u) => (m[u.id || u._id] = u))
         setUsersData(m)
       } catch (e) {
         console.error("Failed to fetch users for reactions", e)
@@ -157,6 +206,14 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
       files: list.filter((m) => (m?.type || "").toLowerCase() === "file")
     }
   }, [message?.media])
+
+  // === Mentions wiring (không ảnh hưởng phần khác) ===
+  const text = message?.body?.text || message?.text || ""
+  let mentions = message?.body?.mentions || message?.mentions || []
+  if ((!mentions || mentions.length === 0) && isGroup) {
+    mentions = findMentionsFromMembers(text, conversation)
+  }
+  // ================================================
 
   return (
     <div
@@ -210,7 +267,7 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
         <div className="relative">
           {isSystemMessage ? (
             <div className="px-3 py-1 rounded-full bg-muted text-muted-foreground text-xs text-center whitespace-pre-wrap">
-              {message.text ?? message.body?.text ?? ""}
+              {renderMessageWithMentions(text, mentions)}
             </div>
           ) : (
             <>
@@ -224,7 +281,7 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                       const audios = message.media.filter(m => m.type === 'audio')
                       return (
                         <>
-                          {/* Hiển thị images với grid layout */}
+                          {/* Images grid */}
                           {images.length > 0 && (
                             <div className={`
             ${images.length === 1 ? 'flex justify-center' :
@@ -251,8 +308,7 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                     hover:shadow-lg transition-shadow duration-200 cursor-pointer
                   `}
                                     onClick={() => {
-                                      // Có thể thêm function để mở ảnh full size
-                                      // openImageModal(media.url ?? message.body?.media?.url);
+                                      // Có thể thêm function mở ảnh full size
                                     }}
                                   />
                                 </div>
@@ -299,7 +355,7 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                             </div>
                           )}
 
-                          {/* Hiển thị audio */}
+                          {/* Audio */}
                           {audios.length > 0 && (
                             <div className="space-y-2">
                               {audios.map((media, index) => (
@@ -310,13 +366,10 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                                       : 'mr-auto bg-gray-100 text-black rounded-r-lg rounded-tl-lg'} 
           shadow-sm`}
                                 >
-                                  {/* Audio player mở rộng đúng flex */}
                                   <audio controls className="flex-1 min-w-0">
                                     <source src={media.url} type={media.metadata?.mimetype || 'audio/webm'} />
                                     Your browser does not support the audio element.
                                   </audio>
-
-                                  {/* Icon Pin nếu có */}
                                   {message.isPinned && (
                                     <Pin className="w-4 h-4 text-yellow-500 shrink-0" />
                                   )}
@@ -324,7 +377,6 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                               ))}
                             </div>
                           )}
-
                         </>
                       )
                     })()}
@@ -345,7 +397,7 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                     <div
                       className={`flex-col items-center gap-2 p-2 mb-2 border-l-4 ${isOwn ? 'border-primary bg-primary/10' : 'border-secondary bg-secondary/10'} rounded-sm cursor-pointer`}
                       onClick={() => {
-                        // Cuộn đến tin nhắn được trả lời (nếu có thể)
+                        // scroll to replied message if needed
                       }}
                     >
                       <div className="min-w-0">
@@ -356,7 +408,6 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                               : "User"}
                           </span>
                         </div>
-
                       </div>
                       <div className="text-sm text-gray-600 truncate">
                         {message.repliedMessage.type === 'text' && (message.repliedMessage.body?.text || message.repliedMessage.text)}
@@ -366,7 +417,9 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                       </div>
                     </div>
                   )}
-                  <p className="text-sm whitespace-pre-wrap break-words">{message.text ?? message.body?.text ?? ""}</p>
+                  <p className="text-sm whitespace-pre-wrap break-words">
+                    {renderMessageWithMentions(text, mentions)}
+                  </p>
                 </div>
               )}
 
@@ -394,7 +447,7 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
           </DialogContent>
         </Dialog>
 
-        {/* Reactions Dialog (giữ nguyên UI) */}
+        {/* Reactions Dialog */}
         {!isSystemMessage && (
           <ReactionsDialog
             open={open}
