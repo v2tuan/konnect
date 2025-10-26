@@ -1,4 +1,3 @@
-// src/components/chat/MessageBubble.jsx
 import { useEffect, useMemo, useState } from "react"
 import {
   Pin, Reply, MoreHorizontal, Clock, Check, CheckCheck,
@@ -76,6 +75,64 @@ function formatFileSize(bytes) {
   const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), sizes.length - 1)
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`
 }
+
+function renderMessageWithMentions(text = "", mentions = []) {
+  if (!mentions?.length) return [text]
+
+  const parts = []
+  let i = 0
+
+  for (const mt of mentions) {
+    // phần trước '@'
+    const before = text.slice(i, mt.start)
+    if (before) parts.push(before)
+
+    // render TÊN (ẩn '@'), KHÔNG underline để tránh vệt gạch kéo dài
+    parts.push(
+      <span key={`${mt.start}-${mt.end}`} className="text-primary font-medium">
+        {mt.name}
+      </span>
+    )
+
+    i = mt.end
+  }
+
+  // phần sau mention: nếu chỉ toàn khoảng trắng thì bỏ, tránh kéo đuôi
+  const tail = text.slice(i)
+  if (tail.trim().length) parts.push(tail)
+
+  return parts
+}
+
+function escapeRe(s) {
+  return s.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")
+}
+
+function findMentionsFromMembers(text = "", conversation) {
+  if (conversation?.type !== "group") return []
+  const names = (conversation?.group?.members || [])
+    .map(m => (m.fullName || m.username || m.name || "").trim())
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length) // ưu tiên tên dài trước để match “Duy 36” thay vì “Duy”
+    .map(escapeRe)
+
+  if (!names.length) return []
+
+  const re = new RegExp(`@(?:${names.join("|")})(?=\\b)`, "g")
+  const out = []
+  let m
+  while ((m = re.exec(text)) !== null) {
+    const raw = m[0] // "@Duy 36"
+    out.push({
+      raw,
+      name: raw.slice(1), // "Duy 36"
+      start: m.index,
+      end: m.index + raw.length
+    })
+  }
+  return out
+}
+
 
 export function MessageBubble({ message, showAvatar, contact, showMeta = true, conversation, setReplyingTo }) {
   const [hovered, setHovered] = useState(false)
@@ -158,6 +215,13 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
     }
   }, [message?.media])
 
+
+  const text = message?.body?.text || message?.text || ""
+  let mentions = message?.body?.mentions || message?.mentions || []
+  if ((!mentions || mentions.length === 0) && conversation?.type === "group") {
+    mentions = findMentionsFromMembers(text, conversation)
+  }
+
   return (
     <div
       className={`flex gap-2 ${message.reactions.length > 0 ? 'mb-4' : 'mb-2'} ${isSystemMessage ? 'justify-center' : (isOwn ? 'justify-end' : 'justify-start')
@@ -186,7 +250,6 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
               const images = message.media.filter(m => m.type === 'image')
               const files = message.media.filter(m => m.type === 'file')
               const audios = message.media.filter(m => m.type === 'audio')
-              console.log('Reply to message', message)
               setReplyingTo({
                 sender: sender?.fullName || sender?.username || 'You',
                 content: (files.length > 0
@@ -210,7 +273,7 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
         <div className="relative">
           {isSystemMessage ? (
             <div className="px-3 py-1 rounded-full bg-muted text-muted-foreground text-xs text-center whitespace-pre-wrap">
-              {message.text ?? message.body?.text ?? ""}
+              {renderMessageWithMentions(text, mentions)}
             </div>
           ) : (
             <>
@@ -251,8 +314,7 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                     hover:shadow-lg transition-shadow duration-200 cursor-pointer
                   `}
                                     onClick={() => {
-                                      // Có thể thêm function để mở ảnh full size
-                                      // openImageModal(media.url ?? message.body?.media?.url);
+                                      // open image viewer if needed
                                     }}
                                   />
                                 </div>
@@ -310,13 +372,10 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                                       : 'mr-auto bg-gray-100 text-black rounded-r-lg rounded-tl-lg'} 
           shadow-sm`}
                                 >
-                                  {/* Audio player mở rộng đúng flex */}
                                   <audio controls className="flex-1 min-w-0">
                                     <source src={media.url} type={media.metadata?.mimetype || 'audio/webm'} />
                                     Your browser does not support the audio element.
                                   </audio>
-
-                                  {/* Icon Pin nếu có */}
                                   {message.isPinned && (
                                     <Pin className="w-4 h-4 text-yellow-500 shrink-0" />
                                   )}
@@ -324,7 +383,6 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                               ))}
                             </div>
                           )}
-
                         </>
                       )
                     })()}
