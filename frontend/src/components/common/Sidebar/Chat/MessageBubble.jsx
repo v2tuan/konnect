@@ -245,7 +245,8 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
               const files = message.media.filter(m => m.type === 'file')
               const audios = message.media.filter(m => m.type === 'audio')
               setReplyingTo({
-                sender: sender?.fullName || sender?.username || 'User',
+                sender: message?.isOwn ? 'You' : (sender?.fullName || sender?.username || 'User'),
+
                 content: (files.length > 0
                   ? files[0]?.metadata?.filename
                   : (images.length > 0 ? '[Image]' : (audios.length > 0 ? '[Audio]' : '')))
