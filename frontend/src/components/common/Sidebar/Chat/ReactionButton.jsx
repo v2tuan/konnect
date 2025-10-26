@@ -1,13 +1,19 @@
 import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Smile, X } from "lucide-react"
-import { setReaction } from "@/apis"
+import { removeReaction, setReaction } from "@/apis"
 
 const defaultReactions = ["👍", "❤️", "😂", "😮", "😢", "😡"]
 
 export default function ReactionButton({ messageId }) {
   const popupRef = useRef(null)
   const containerRef = useRef(null)
+
+  const handleRemoveReaction = async () => {
+    // console.log(`Remove reaction for message ${messageId}`)
+    // Gọi API để xóa reaction
+    await removeReaction(messageId)
+  }
 
   const handleReactionClick = async (emoji) => {
     console.log(`Clicked: ${emoji} for message ${messageId}`)
@@ -89,6 +95,7 @@ export default function ReactionButton({ messageId }) {
             ))}
             <button
               className="hover:scale-135 transition-transform"
+              onClick={handleRemoveReaction}
             >
               <X className="w-4 h-4 text-foreground" />
             </button>

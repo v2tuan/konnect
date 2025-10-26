@@ -292,9 +292,8 @@ async function setReaction({ userId, messageId, emoji, io }) {
   return { ok: true, messageId, reactions: message.reactions }
 }
 
-async function removeReaction({ userId, messageId, emoji, io }) {
+async function removeReaction({ userId, messageId, io }) {
   if (!mongoose.isValidObjectId(messageId)) throw new Error("Invalid messageId");
-  if (typeof emoji !== "string" || !emoji) throw new Error("Invalid emoji");
 
   // Tìm message và populate
   const message = await Message.findById(messageId)
@@ -314,7 +313,7 @@ async function removeReaction({ userId, messageId, emoji, io }) {
   // Xóa reaction tương ứng
   const beforeCount = message.reactions.length;
   message.reactions = message.reactions.filter(
-    r => !(r.userId.toString() === userId.toString() && r.emoji === emoji)
+    r => !(r.userId.toString() === userId.toString())
   );
 
   // Nếu không có thay đổi (người dùng chưa từng reaction emoji đó)
@@ -331,7 +330,7 @@ async function removeReaction({ userId, messageId, emoji, io }) {
     message: toPublicMessage(message)
   };
 
-  if (io) io.to(`conversation:${convoId}`).emit("message:update", payload);
+  if (io) io.to(`conversation:${convoId}`).emit('message:new', payload)
 
   return { ok: true, messageId, reactions: message.reactions };
 }

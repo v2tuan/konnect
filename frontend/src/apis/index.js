@@ -185,6 +185,16 @@ export const setReaction = async (messageId, emoji) => {
   return response.data
 }
 
+/**
+ * remove reaction cho message
+ */
+export const removeReaction = async (messageId) => {
+  const response = await authorizeAxiosInstance.delete(`${API_ROOT}/api/messages/reaction`, {
+    data: { messageId }
+  })
+  return response.data
+}
+
 export const fetchConversationDetail = async (conversationId, params = {}) => {
   console.log('🌐 API call: fetchConversationDetail', conversationId, params) // Debug log
   const response = await authorizeAxiosInstance.get(`${API_ROOT}/api/conversation/chats/${conversationId}`, { params })
