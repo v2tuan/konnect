@@ -15,4 +15,7 @@ Router.route('/')
 Router.route('/reaction')
   .post(authMiddleware, messageController.setReaction)
 
+Router.route('/reaction')
+  .delete(authMiddleware, messageController.removeReaction)
+
 export const messageRoutes = Router
