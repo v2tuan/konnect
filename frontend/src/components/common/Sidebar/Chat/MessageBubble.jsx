@@ -1,4 +1,3 @@
-// src/components/chat/MessageBubble.jsx
 import { useEffect, useMemo, useState } from "react"
 import {
   Pin, Reply, MoreHorizontal, Clock, Check, CheckCheck,
@@ -34,7 +33,7 @@ function pickSender(conversation, message, contact) {
     const s = message.sender
     return {
       id: s.id || s._id || message.senderId || null,
-      fullName: s.fullName || s.username || contact?.name,
+      fullName: s.fullName || s.username || contact?.name || "User",
       username: s.username || null,
       avatarUrl: s.avatarUrl || null
     }
@@ -46,7 +45,7 @@ function pickSender(conversation, message, contact) {
     if (m) {
       return {
         id: m.id || m._id,
-        fullName: m.fullName || m.username || contact?.name,
+        fullName: m.fullName || m.username || contact?.name || "User",
         username: m.username || null,
         avatarUrl: m.avatarUrl || null
       }
@@ -56,14 +55,14 @@ function pickSender(conversation, message, contact) {
   if (other && String(other.id || other._id) === String(sid)) {
     return {
       id: other.id || other._id,
-      fullName: other.fullName || other.username || contact?.name,
+      fullName: other.fullName || other.username || contact?.name || "User",
       username: other.username || null,
       avatarUrl: other.avatarUrl || null
     }
   }
   return {
     id: sid || null,
-    fullName: contact?.name,
+    fullName: contact?.name || "User",
     username: contact?.username || null,
     avatarUrl: contact?.avatarUrl || null
   }
@@ -77,6 +76,57 @@ function formatFileSize(bytes) {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`
 }
 
+/* === Mentions helpers (được port từ code cũ) === */
+function renderMessageWithMentions(text = "", mentions = []) {
+  if (!mentions?.length) return [text]
+
+  const parts = []
+  let i = 0
+
+  for (const mt of mentions) {
+    const before = text.slice(i, mt.start)
+    if (before) parts.push(before)
+    parts.push(
+      <span key={`${mt.start}-${mt.end}`} className="text-primary font-medium">
+        {mt.name}
+      </span>
+    )
+    i = mt.end
+  }
+  const tail = text.slice(i)
+  if (tail.trim().length) parts.push(tail)
+  return parts
+}
+
+function escapeRe(s) {
+  return s.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")
+}
+
+function findMentionsFromMembers(text = "", conversation) {
+  if (conversation?.type !== "group") return []
+  const names = (conversation?.group?.members || [])
+    .map(m => (m.fullName || m.username || m.name || "").trim())
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length)
+    .map(escapeRe)
+
+  if (!names.length) return []
+  const re = new RegExp(`@(?:${names.join("|")})(?=\\b)`, "g")
+  const out = []
+  let m
+  while ((m = re.exec(text)) !== null) {
+    const raw = m[0]
+    out.push({
+      raw,
+      name: raw.slice(1),
+      start: m.index,
+      end: m.index + raw.length
+    })
+  }
+  return out
+}
+/* === End mentions helpers === */
+
 export function MessageBubble({ message,onOpenViewer, showAvatar, contact, showMeta = true, conversation, setReplyingTo }) {
   const [hovered, setHovered] = useState(false)
   const [open, setOpen] = useState(false)
@@ -86,8 +136,6 @@ export function MessageBubble({ message,onOpenViewer, showAvatar, contact, showM
 
   // Lightbox
   const [preview, setPreview] = useState({ open: false, url: "", type: "image" })
-
-  // console.log('Rendering MessageBubble for message:', message)
 
   // System
   const SYSTEM_ID_FALLBACK = "000000000000000000000000"
@@ -105,7 +153,7 @@ export function MessageBubble({ message,onOpenViewer, showAvatar, contact, showM
       try {
         const users = await getDisplayUsers(ids)
         const m = {}
-          ; (users || []).forEach((u) => (m[u.id || u._id] = u))
+        ;(users || []).forEach((u) => (m[u.id || u._id] = u))
         setUsersData(m)
       } catch (e) {
         console.error("Failed to fetch users for reactions", e)
@@ -154,14 +202,23 @@ export function MessageBubble({ message,onOpenViewer, showAvatar, contact, showM
       images: list.filter((m) => (m?.type || "").toLowerCase() === "image"),
       videos: list.filter((m) => (m?.type || "").toLowerCase() === "video"),
       audios: list.filter((m) => (m?.type || "").toLowerCase() === "audio"),
-      files: list.filter((m) => (m?.type || "").toLowerCase() === "file")
+      files : list.filter((m) => (m?.type || "").toLowerCase() === "file")
     }
   }, [message?.media])
 
+  // === Mentions wiring (không ảnh hưởng phần khác) ===
+  const text = message?.body?.text || message?.text || ""
+  let mentions = message?.body?.mentions || message?.mentions || []
+  if ((!mentions || mentions.length === 0) && isGroup) {
+    mentions = findMentionsFromMembers(text, conversation)
+  }
+  // ================================================
+
   return (
     <div
-      className={`flex gap-2 ${message.reactions.length > 0 ? 'mb-4' : 'mb-2'} ${isSystemMessage ? 'justify-center' : (isOwn ? 'justify-end' : 'justify-start')
-        }`}
+      className={`flex gap-2 ${message.reactions.length > 0 ? 'mb-4' : 'mb-2'} ${
+        isSystemMessage ? 'justify-center' : (isOwn ? 'justify-end' : 'justify-start')
+      }`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -179,16 +236,17 @@ export function MessageBubble({ message,onOpenViewer, showAvatar, contact, showM
 
         {!isSystemMessage && (
           <div
-            className={`pointer-events-auto absolute top-1/2 -translate-y-1/2 ${isOwn ? "-left-22" : "-right-22"} opacity-0 transition-opacity duration-150 ${hovered ? "opacity-100" : "opacity-0"
-              } flex items-center gap-1`}
+            className={`pointer-events-auto absolute top-1/2 -translate-y-1/2 ${isOwn ? "-left-22" : "-right-22"} opacity-0 transition-opacity duration-150 ${
+              hovered ? "opacity-100" : "opacity-0"
+            } flex items-center gap-1`}
           >
             <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => {
               const images = message.media.filter(m => m.type === 'image')
               const files = message.media.filter(m => m.type === 'file')
               const audios = message.media.filter(m => m.type === 'audio')
-              console.log('Reply to message', message)
               setReplyingTo({
-                sender: sender?.fullName || sender?.username || 'You',
+                sender: message?.isOwn ? 'You' : (sender?.fullName || sender?.username || 'User'),
+
                 content: (files.length > 0
                   ? files[0]?.metadata?.filename
                   : (images.length > 0 ? '[Image]' : (audios.length > 0 ? '[Audio]' : '')))
@@ -210,7 +268,7 @@ export function MessageBubble({ message,onOpenViewer, showAvatar, contact, showM
         <div className="relative">
           {isSystemMessage ? (
             <div className="px-3 py-1 rounded-full bg-muted text-muted-foreground text-xs text-center whitespace-pre-wrap">
-              {message.text ?? message.body?.text ?? ""}
+              {renderMessageWithMentions(text, mentions)}
             </div>
           ) : (
             <>
@@ -218,6 +276,46 @@ export function MessageBubble({ message,onOpenViewer, showAvatar, contact, showM
               {message.media && message.media.length > 0 ? (
                 <>
                   <div className="space-y-2">
+                    {(() => {
+                      const images = message.media.filter(m => m.type === 'image')
+                      const files = message.media.filter(m => m.type === 'file')
+                      const audios = message.media.filter(m => m.type === 'audio')
+                      return (
+                        <>
+                          {/* Images grid */}
+                          {images.length > 0 && (
+                            <div className={`
+            ${images.length === 1 ? 'flex justify-center' :
+                              images.length === 2 ? 'grid grid-cols-2 gap-2' :
+                                images.length <= 4 ? 'grid grid-cols-2 gap-2 max-w-md' :
+                                  'grid grid-cols-3 gap-2 max-w-lg'
+                            }
+          `}>
+                              {images.map((media, index) => (
+                                <div key={`image-${index}`} className="relative">
+                                  {message.isPinned && (
+                                    <Pin className="absolute top-1 right-1 w-3 h-3 text-yellow-500 z-10" />
+                                  )}
+                                  <img
+                                    src={media.url ?? message.body?.media?.url}
+                                    alt={media.metadata?.filename || "message attachment"}
+                                    className={`
+                    rounded-lg shadow-md object-cover
+                    ${images.length === 1 ? 'max-w-sm max-h-96 w-full' :
+                                  images.length === 2 ? 'w-full h-32 sm:h-40' :
+                                    images.length <= 4 ? 'w-full h-24 sm:h-32' :
+                                      'w-full h-20 sm:h-24'
+                                }
+                    hover:shadow-lg transition-shadow duration-200 cursor-pointer
+                  `}
+                                    onClick={() => {
+                                      // Có thể thêm function mở ảnh full size
+                                    }}
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                          )}
 
                     {/* Hiển thị images và videos với grid layout */}
                     {(images.length > 0 || videos.length > 0) && (
@@ -329,9 +427,9 @@ export function MessageBubble({ message,onOpenViewer, showAvatar, contact, showM
                   className={`
                     relative p-3 rounded-sm
                     ${isOwn
-                    ? 'bg-primary/10 border border-primary rounded-br-sm'
-                    : 'bg-secondary text-secondary-foreground rounded-bl-sm'
-                  }
+                  ? 'bg-primary/10 border border-primary rounded-br-sm'
+                  : 'bg-secondary text-secondary-foreground rounded-bl-sm'
+                }
                   `}
                 >
                   {message.isPinned && <Pin className="absolute top-1 right-1 w-3 h-3 text-yellow-500" />}
@@ -339,7 +437,7 @@ export function MessageBubble({ message,onOpenViewer, showAvatar, contact, showM
                     <div
                       className={`flex-col items-center gap-2 p-2 mb-2 border-l-4 ${isOwn ? 'border-primary bg-primary/10' : 'border-secondary bg-secondary/10'} rounded-sm cursor-pointer`}
                       onClick={() => {
-                        // Cuộn đến tin nhắn được trả lời (nếu có thể)
+                        // scroll to replied message if needed
                       }}
                     >
                       <div className="min-w-0">
@@ -350,7 +448,6 @@ export function MessageBubble({ message,onOpenViewer, showAvatar, contact, showM
                               : "User"}
                           </span>
                         </div>
-
                       </div>
                       <div className="text-sm text-gray-600 truncate">
                         {message.repliedMessage.type === 'text' && (message.repliedMessage.body?.text || message.repliedMessage.text)}
@@ -360,7 +457,9 @@ export function MessageBubble({ message,onOpenViewer, showAvatar, contact, showM
                       </div>
                     </div>
                   )}
-                  <p className="text-sm whitespace-pre-wrap break-words">{message.text ?? message.body?.text ?? ""}</p>
+                  <p className="text-sm whitespace-pre-wrap break-words">
+                    {renderMessageWithMentions(text, mentions)}
+                  </p>
                 </div>
               )}
 
@@ -388,7 +487,7 @@ export function MessageBubble({ message,onOpenViewer, showAvatar, contact, showM
           </DialogContent>
         </Dialog>
 
-        {/* Reactions Dialog (giữ nguyên UI) */}
+        {/* Reactions Dialog */}
         {!isSystemMessage && (
           <ReactionsDialog
             open={open}
