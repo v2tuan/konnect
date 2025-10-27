@@ -11,6 +11,7 @@ import { selectCurrentUser } from '@/redux/user/userSlice'
 import { useMuteStore } from "@/store/useMuteStore"
 import { formatChip, groupByDay, pickPeerStatus } from '@/utils/helper'
 import EmojiPicker from 'emoji-picker-react'
+import MediaWindowViewer from './MediaWindowViewer' // <-- THÊM IMPORT NÀY
 import {
   Archive,
   AudioLines,
@@ -33,7 +34,7 @@ import {
   Video,
   X
 } from 'lucide-react'
-import { use, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import {use, useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react'
 import { useSelector } from 'react-redux'
 import CallModal from '../../Modal/CallModal'
 import { MessageBubble } from './MessageBubble'
@@ -71,7 +72,49 @@ export function ChatArea({
     sender: '',
     content: ''
   })
+// BƯỚC 1.1: THÊM STATE CHO VIEWER
+  const [viewerOpen, setViewerOpen] = useState(false)
+  const [viewerIndex, setViewerIndex] = useState(0)
+  const flatVisualItems = useMemo(() => {
+    const allMedia = []
+    if (!Array.isArray(messages)) return []
 
+    for (const msg of messages) {
+      if (Array.isArray(msg.media)) {
+        for (const m of msg.media) {
+          if (m && (m.type === 'image' || m.type === 'video')) {
+            // Thêm các thông tin cần thiết cho viewer
+            allMedia.push({
+              _id: m._id,
+              url: m.url,
+              type: m.type,
+              metadata: {
+                ...m.metadata,
+                originalName: m.metadata?.originalName || 'media',
+                senderName: msg.sender?.fullName || msg.sender?.username || '...',
+                createdAt: msg.createdAt || msg.timestamp
+              }
+            })
+          }
+        }
+      }
+    }
+    return allMedia
+  }, [messages])
+  // BƯỚC 1.3: TẠO HÀM ĐỂ MỞ VIEWER
+  // Hàm này sẽ được truyền xuống MessageBubble
+  const handleOpenViewer = (clickedMediaItem) => {
+    if (!clickedMediaItem) return
+
+    // Tìm vị trí của media được click trong mảng phẳng
+    const uniqueId = clickedMediaItem._id || clickedMediaItem.url
+    const idx = flatVisualItems.findIndex(item => (item._id || item.url) === uniqueId)
+
+    if (idx > -1) {
+      setViewerIndex(idx)
+      setViewerOpen(true)
+    }
+  }
   const handleCloseReply = () => {
     setReplyingTo(null)
   }
@@ -523,6 +566,7 @@ export function ChatArea({
                         showMeta={showMeta}
                         conversation={conversation}
                         setReplyingTo={setReplyingTo}
+                        onOpenViewer={handleOpenViewer} // <-- THÊM PROP NÀY
                       />
                     ) : (
                       <div
@@ -750,6 +794,15 @@ export function ChatArea({
           initialMode={call.mode}
           callStartedAt={call.acceptedAt}
           callId={call.callId}
+        />
+      )}
+      {viewerOpen && (
+        <MediaWindowViewer
+          open={viewerOpen}
+          startIndex={viewerIndex}
+          items={flatVisualItems}
+          onClose={() => setViewerOpen(false)}
+          title="Ảnh và video trong trò chuyện"
         />
       )}
     </div>
