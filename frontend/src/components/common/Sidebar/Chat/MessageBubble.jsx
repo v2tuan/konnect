@@ -127,7 +127,7 @@ function findMentionsFromMembers(text = "", conversation) {
 }
 /* === End mentions helpers === */
 
-export function MessageBubble({ message, showAvatar, contact, showMeta = true, conversation, setReplyingTo }) {
+export function MessageBubble({ message,onOpenViewer, showAvatar, contact, showMeta = true, conversation, setReplyingTo }) {
   const [hovered, setHovered] = useState(false)
   const [open, setOpen] = useState(false)
   const isOwn = !!message?.isOwn
@@ -317,70 +317,109 @@ export function MessageBubble({ message, showAvatar, contact, showMeta = true, c
                             </div>
                           )}
 
-                          {/* Files */}
-                          {files.length > 0 && (
-                            <div className="space-y-1">
-                              {files.map((m, i) => {
-                                const mimetype = m?.metadata?.mimetype || ""
-                                const filename = m?.metadata?.filename || "Unknown file"
-                                const sizeText = formatFileSize(m?.metadata?.size)
-                                const url = mediaUrl(m, message)
-                                const Icon =
-                                  mimetype.includes("pdf")
-                                    ? FileText
-                                    : mimetype.includes("word") || mimetype.includes("document")
-                                      ? FileText
-                                      : mimetype.includes("sheet") || mimetype.includes("excel")
-                                        ? FileSpreadsheet
-                                        : mimetype.includes("zip") || mimetype.includes("rar") || mimetype.includes("archive")
-                                          ? Archive
-                                          : mimetype.includes("video")
-                                            ? VideoIcon
-                                            : mimetype.includes("audio")
-                                              ? Music
-                                              : File
-                                return (
-                                  <div key={`file-${i}`} className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg border border-gray-200 transition-colors duration-200">
-                                    <Icon className="w-8 h-8 text-gray-600" />
-                                    <div className="flex-1 min-w-0">
-                                      <div className="text-sm font-medium text-gray-900 truncate">{filename}</div>
-                                      <div className="text-xs text-gray-500">{sizeText}</div>
-                                    </div>
-                                    <button onClick={() => handleDownload(url, filename)}>
-                                      <Download className="w-4 h-4 text-gray-400 cursor-pointer" />
-                                    </button>
-                                    {message.isPinned && <Pin className="w-3 h-3 text-yellow-500" />}
-                                  </div>
-                                )
-                              })}
-                            </div>
-                          )}
+                    {/* Hiển thị images và videos với grid layout */}
+                    {(images.length > 0 || videos.length > 0) && (
+                      <div className={`
+                        ${(images.length + videos.length) === 1 ? 'flex justify-center' :
+                        (images.length + videos.length) === 2 ? 'grid grid-cols-2 gap-2' :
+                          (images.length + videos.length) <= 4 ? 'grid grid-cols-2 gap-2 max-w-md' :
+                            'grid grid-cols-3 gap-2 max-w-lg'
+                      }
+                      `}>
+                        {/* Gộp cả mảng images và videos để render chung */}
+                        {[...images, ...videos].map((media, index) => (
+                          <button // Dùng <button> để có thể click
+                            type="button"
+                            key={media._id || media.url || `media-${index}`}
+                            className="relative aspect-square overflow-hidden rounded-lg cursor-pointer group"
+                            onClick={() => onOpenViewer?.(media)} // <-- GỌI onOpenViewer
+                          >
+                            {message.isPinned && (
+                              <Pin className="absolute top-1 right-1 w-3 h-3 text-yellow-500 z-10" />
+                            )}
 
-                          {/* Audio */}
-                          {audios.length > 0 && (
-                            <div className="space-y-2">
-                              {audios.map((media, index) => (
-                                <div
-                                  key={`audio-${index}`}
-                                  className={`flex items-center gap-2 p-2 max-w-xs rounded-sm
-          ${message.isOwn ? 'ml-auto bg-primary/10 border border-primary rounded-l-lg rounded-tr-lg'
-                                  : 'mr-auto bg-gray-100 text-black rounded-r-lg rounded-tl-lg'} 
-          shadow-sm`}
-                                >
-                                  <audio controls className="flex-1 min-w-0">
-                                    <source src={media.url} type={media.metadata?.mimetype || 'audio/webm'} />
-                                    Your browser does not support the audio element.
-                                  </audio>
-                                  {message.isPinned && (
-                                    <Pin className="w-4 h-4 text-yellow-500 shrink-0" />
-                                  )}
-                                </div>
-                              ))}
+                            {media.type === 'image' ? (
+                              <img
+                                src={media.url}
+                                alt={media.metadata?.filename || "message attachment"}
+                                className="w-full h-full object-cover group-hover:brightness-75 transition-all"
+                              />
+                            ) : (
+                              // SỬA LỖI 2: Thêm logic render video
+                              <video
+                                src={media.url}
+                                className="w-full h-full object-cover group-hover:brightness-75 transition-all"
+                                muted
+                                // không thêm 'controls' ở đây để giữ giao diện grid
+                              />
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Files (Giữ nguyên logic render file) */}
+                    {files.length > 0 && (
+                      <div className="space-y-1">
+                        {files.map((m, i) => {
+                          const mimetype = m?.metadata?.mimetype || ""
+                          const filename = m?.metadata?.filename || "Unknown file"
+                          const sizeText = formatFileSize(m?.metadata?.size)
+                          const url = mediaUrl(m, message)
+                          const Icon =
+                            mimetype.includes("pdf")
+                              ? FileText
+                              : mimetype.includes("word") || mimetype.includes("document")
+                                ? FileText
+                                : mimetype.includes("sheet") || mimetype.includes("excel")
+                                  ? FileSpreadsheet
+                                  : mimetype.includes("zip") || mimetype.includes("rar") || mimetype.includes("archive")
+                                    ? Archive
+                                    : mimetype.includes("video")
+                                      ? VideoIcon
+                                      : mimetype.includes("audio")
+                                        ? Music
+                                        : File
+                          return (
+                            <div key={`file-${i}`} className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg border border-gray-200 transition-colors duration-200">
+                              <Icon className="w-8 h-8 text-gray-600" />
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm font-medium text-gray-900 truncate">{filename}</div>
+                                <div className="text-xs text-gray-500">{sizeText}</div>
+                              </div>
+                              <button onClick={() => handleDownload(url, filename)}>
+                                <Download className="w-4 h-4 text-gray-400 cursor-pointer" />
+                              </button>
+                              {message.isPinned && <Pin className="w-3 h-3 text-yellow-500" />}
                             </div>
-                          )}
-                        </>
-                      )
-                    })()}
+                          )
+                        })}
+                      </div>
+                    )}
+
+                    {/* Hiển thị audio (Giữ nguyên logic render audio) */}
+                    {audios.length > 0 && (
+                      <div className="space-y-2">
+                        {audios.map((media, index) => (
+                          <div
+                            key={`audio-${index}`}
+                            className={`flex items-center gap-2 p-2 max-w-xs rounded-sm
+                                ${message.isOwn ? 'ml-auto bg-primary/10 border border-primary rounded-l-lg rounded-tr-lg'
+                              : 'mr-auto bg-gray-100 text-black rounded-r-lg rounded-tl-lg'} 
+                                shadow-sm`}
+                          >
+                            <audio controls className="flex-1 min-w-0">
+                              <source src={media.url} type={media.metadata?.mimetype || 'audio/webm'} />
+                              Your browser does not support the audio element.
+                            </audio>
+                            {message.isPinned && (
+                              <Pin className="w-4 h-4 text-yellow-500 shrink-0" />
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
                   </div>
                 </>
               ) : (
