@@ -594,7 +594,7 @@ export default function ConversationGallery({
       {viewerOpen && tab === "media" && (
         <MediaWindowViewer
           open={viewerOpen}
-          index={viewerIndex}
+          startIndex={viewerIndex}
           items={flatVisual}
           onClose={() => setViewerOpen(false)}
         />
