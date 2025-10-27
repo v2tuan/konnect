@@ -272,7 +272,6 @@ export function MessageBubble({ message,onOpenViewer, showAvatar, contact, showM
             </div>
           ) : (
             <>
-              {/* Bubble thường (media hoặc text) */}
               {message.media && message.media.length > 0 ? (
                 <>
                   <div className="space-y-2">
@@ -287,34 +286,53 @@ export function MessageBubble({ message,onOpenViewer, showAvatar, contact, showM
                       }
                       `}>
                         {/* Gộp cả mảng images và videos để render chung */}
-                        {[...images, ...videos].map((media, index) => (
-                          <button // Dùng <button> để có thể click
-                            type="button"
-                            key={media._id || media.url || `media-${index}`}
-                            className="relative aspect-square overflow-hidden rounded-lg cursor-pointer group"
-                            onClick={() => onOpenViewer?.(media)} // <-- GỌI onOpenViewer
-                          >
-                            {message.isPinned && (
-                              <Pin className="absolute top-1 right-1 w-3 h-3 text-yellow-500 z-10" />
-                            )}
+                        {[...images, ...videos].map((media, index) => {
 
-                            {media.type === 'image' ? (
-                              <img
-                                src={media.url}
-                                alt={media.metadata?.filename || "message attachment"}
-                                className="w-full h-full object-cover group-hover:brightness-75 transition-all"
-                              />
-                            ) : (
-                              // SỬA LỖI 2: Thêm logic render video
-                              <video
-                                src={media.url}
-                                className="w-full h-full object-cover group-hover:brightness-75 transition-all"
-                                muted
-                                // không thêm 'controls' ở đây để giữ giao diện grid
-                              />
-                            )}
-                          </button>
-                        ))}
+                          // Tính tổng số media để quyết định style
+                          const totalMedia = images.length + videos.length;
+
+                          return (
+                            <button
+                              type="button"
+                              key={media._id || media.url || `media-${index}`}
+                              className={`relative overflow-hidden rounded-lg cursor-pointer group 
+                                ${totalMedia > 1 ? 'aspect-square' : ''}  /* ✅ CHỈ ÉP VUÔNG KHI CÓ NHIỀU MEDIA */
+                              `}
+                              onClick={() => onOpenViewer?.(media)}
+                            >
+                              {message.isPinned && (
+                                <Pin className="absolute top-1 right-1 w-3 h-3 text-yellow-500 z-10" />
+                              )}
+
+                              {media.type === 'image' ? (
+                                <img
+                                  src={media.url}
+                                  alt={media.metadata?.filename || "message attachment"}
+                                  className={`
+                                    ${totalMedia > 1
+                                    ? 'w-full h-full object-cover' // Style cho grid (nhiều media)
+                                    : 'max-w-xs md:max-w-sm max-h-96 object-contain' // ✅ Style cho 1 media (giới hạn kích thước)
+                                  }
+                                    group-hover:brightness-75 transition-all rounded-lg
+                                  `}
+                                />
+                              ) : (
+                                // SỬA LỖI 2: Thêm logic render video
+                                <video
+                                  src={media.url}
+                                  className={`
+                                    ${totalMedia > 1
+                                    ? 'w-full h-full object-cover' // Style cho grid (nhiều media)
+                                    : 'max-w-xs md:max-w-sm max-h-96 object-contain' // ✅ Style cho 1 media (giới hạn kích thước)
+                                  }
+                                    group-hover:brightness-75 transition-all rounded-lg
+                                  `}
+                                  muted
+                                />
+                              )}
+                            </button>
+                          )
+                        })}
                       </div>
                     )}
 
