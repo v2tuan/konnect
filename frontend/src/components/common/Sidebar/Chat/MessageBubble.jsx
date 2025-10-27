@@ -1,4 +1,3 @@
-// src/components/chat/MessageBubble.jsx
 import { useEffect, useMemo, useState } from "react"
 import {
   Pin, Reply, MoreHorizontal, Clock, Check, CheckCheck,
@@ -34,7 +33,7 @@ function pickSender(conversation, message, contact) {
     const s = message.sender
     return {
       id: s.id || s._id || message.senderId || null,
-      fullName: s.fullName || s.username || contact?.name,
+      fullName: s.fullName || s.username || contact?.name || "User",
       username: s.username || null,
       avatarUrl: s.avatarUrl || null
     }
@@ -46,7 +45,7 @@ function pickSender(conversation, message, contact) {
     if (m) {
       return {
         id: m.id || m._id,
-        fullName: m.fullName || m.username || contact?.name,
+        fullName: m.fullName || m.username || contact?.name || "User",
         username: m.username || null,
         avatarUrl: m.avatarUrl || null
       }
@@ -56,14 +55,14 @@ function pickSender(conversation, message, contact) {
   if (other && String(other.id || other._id) === String(sid)) {
     return {
       id: other.id || other._id,
-      fullName: other.fullName || other.username || contact?.name,
+      fullName: other.fullName || other.username || contact?.name || "User",
       username: other.username || null,
       avatarUrl: other.avatarUrl || null
     }
   }
   return {
     id: sid || null,
-    fullName: contact?.name,
+    fullName: contact?.name || "User",
     username: contact?.username || null,
     avatarUrl: contact?.avatarUrl || null
   }
@@ -77,7 +76,58 @@ function formatFileSize(bytes) {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`
 }
 
-export function MessageBubble({ message,onOpenViewer, showAvatar, contact, showMeta = true, conversation, setReplyingTo }) {
+/* === Mentions helpers (được port từ code cũ) === */
+function renderMessageWithMentions(text = "", mentions = []) {
+  if (!mentions?.length) return [text]
+
+  const parts = []
+  let i = 0
+
+  for (const mt of mentions) {
+    const before = text.slice(i, mt.start)
+    if (before) parts.push(before)
+    parts.push(
+      <span key={`${mt.start}-${mt.end}`} className="text-primary font-medium">
+        {mt.name}
+      </span>
+    )
+    i = mt.end
+  }
+  const tail = text.slice(i)
+  if (tail.trim().length) parts.push(tail)
+  return parts
+}
+
+function escapeRe(s) {
+  return s.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")
+}
+
+function findMentionsFromMembers(text = "", conversation) {
+  if (conversation?.type !== "group") return []
+  const names = (conversation?.group?.members || [])
+    .map(m => (m.fullName || m.username || m.name || "").trim())
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length)
+    .map(escapeRe)
+
+  if (!names.length) return []
+  const re = new RegExp(`@(?:${names.join("|")})(?=\\b)`, "g")
+  const out = []
+  let m
+  while ((m = re.exec(text)) !== null) {
+    const raw = m[0]
+    out.push({
+      raw,
+      name: raw.slice(1),
+      start: m.index,
+      end: m.index + raw.length
+    })
+  }
+  return out
+}
+/* === End mentions helpers === */
+
+export function MessageBubble({ message, onOpenViewer, showAvatar, contact, showMeta = true, conversation, setReplyingTo }) {
   const [hovered, setHovered] = useState(false)
   const [open, setOpen] = useState(false)
   const isOwn = !!message?.isOwn
@@ -86,8 +136,6 @@ export function MessageBubble({ message,onOpenViewer, showAvatar, contact, showM
 
   // Lightbox
   const [preview, setPreview] = useState({ open: false, url: "", type: "image" })
-
-  // console.log('Rendering MessageBubble for message:', message)
 
   // System
   const SYSTEM_ID_FALLBACK = "000000000000000000000000"
@@ -105,7 +153,7 @@ export function MessageBubble({ message,onOpenViewer, showAvatar, contact, showM
       try {
         const users = await getDisplayUsers(ids)
         const m = {}
-          ; (users || []).forEach((u) => (m[u.id || u._id] = u))
+        ;(users || []).forEach((u) => (m[u.id || u._id] = u))
         setUsersData(m)
       } catch (e) {
         console.error("Failed to fetch users for reactions", e)
@@ -154,14 +202,23 @@ export function MessageBubble({ message,onOpenViewer, showAvatar, contact, showM
       images: list.filter((m) => (m?.type || "").toLowerCase() === "image"),
       videos: list.filter((m) => (m?.type || "").toLowerCase() === "video"),
       audios: list.filter((m) => (m?.type || "").toLowerCase() === "audio"),
-      files: list.filter((m) => (m?.type || "").toLowerCase() === "file")
+      files : list.filter((m) => (m?.type || "").toLowerCase() === "file")
     }
   }, [message?.media])
 
+  // === Mentions wiring (không ảnh hưởng phần khác) ===
+  const text = message?.body?.text || message?.text || ""
+  let mentions = message?.body?.mentions || message?.mentions || []
+  if ((!mentions || mentions.length === 0) && isGroup) {
+    mentions = findMentionsFromMembers(text, conversation)
+  }
+  // ================================================
+
   return (
     <div
-      className={`flex gap-2 ${message.reactions.length > 0 ? 'mb-4' : 'mb-2'} ${isSystemMessage ? 'justify-center' : (isOwn ? 'justify-end' : 'justify-start')
-        }`}
+      className={`flex gap-2 ${message.reactions.length > 0 ? 'mb-4' : 'mb-2'} ${
+        isSystemMessage ? 'justify-center' : (isOwn ? 'justify-end' : 'justify-start')
+      }`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -179,16 +236,17 @@ export function MessageBubble({ message,onOpenViewer, showAvatar, contact, showM
 
         {!isSystemMessage && (
           <div
-            className={`pointer-events-auto absolute top-1/2 -translate-y-1/2 ${isOwn ? "-left-22" : "-right-22"} opacity-0 transition-opacity duration-150 ${hovered ? "opacity-100" : "opacity-0"
-              } flex items-center gap-1`}
+            className={`pointer-events-auto absolute top-1/2 -translate-y-1/2 ${isOwn ? "-left-22" : "-right-22"} opacity-0 transition-opacity duration-150 ${
+              hovered ? "opacity-100" : "opacity-0"
+            } flex items-center gap-1`}
           >
             <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => {
               const images = message.media.filter(m => m.type === 'image')
               const files = message.media.filter(m => m.type === 'file')
               const audios = message.media.filter(m => m.type === 'audio')
-              console.log('Reply to message', message)
               setReplyingTo({
-                sender: sender?.fullName || sender?.username || 'You',
+                sender: message?.isOwn ? 'You' : (sender?.fullName || sender?.username || 'User'),
+
                 content: (files.length > 0
                   ? files[0]?.metadata?.filename
                   : (images.length > 0 ? '[Image]' : (audios.length > 0 ? '[Audio]' : '')))
@@ -210,147 +268,146 @@ export function MessageBubble({ message,onOpenViewer, showAvatar, contact, showM
         <div className="relative">
           {isSystemMessage ? (
             <div className="px-3 py-1 rounded-full bg-muted text-muted-foreground text-xs text-center whitespace-pre-wrap">
-              {message.text ?? message.body?.text ?? ""}
+              {renderMessageWithMentions(text, mentions)}
             </div>
           ) : (
             <>
               {/* Bubble thường (media hoặc text) */}
-              {message.media && message.media.length > 0 ? (
-                <>
-                  <div className="space-y-2">
+              {(message.media?.length ?? 0) > 0 ? (
+                <div className="space-y-2">
+                  {(() => {
+                    const list = Array.isArray(message.media) ? message.media : []
 
-                    {/* Hiển thị images và videos với grid layout */}
-                    {(images.length > 0 || videos.length > 0) && (
-                      <div className={`
-                        ${(images.length + videos.length) === 1 ? 'flex justify-center' :
-                        (images.length + videos.length) === 2 ? 'grid grid-cols-2 gap-2' :
-                          (images.length + videos.length) <= 4 ? 'grid grid-cols-2 gap-2 max-w-md' :
-                            'grid grid-cols-3 gap-2 max-w-lg'
-                      }
-                      `}>
-                        {/* Gộp cả mảng images và videos để render chung */}
-                        {[...images, ...videos].map((media, index) => (
-                          <button // Dùng <button> để có thể click
-                            type="button"
-                            key={media._id || media.url || `media-${index}`}
-                            className="relative aspect-square overflow-hidden rounded-lg cursor-pointer group"
-                            onClick={() => onOpenViewer?.(media)} // <-- GỌI onOpenViewer
-                          >
-                            {message.isPinned && (
-                              <Pin className="absolute top-1 right-1 w-3 h-3 text-yellow-500 z-10" />
-                            )}
+                    const images = list.filter(m => (m?.type || '').toLowerCase() === 'image')
+                    const videos = list.filter(m => (m?.type || '').toLowerCase() === 'video')
+                    const audios = list.filter(m => (m?.type || '').toLowerCase() === 'audio')
+                    const files = list.filter(m => (m?.type || '').toLowerCase() === 'file')
 
-                            {media.type === 'image' ? (
-                              <img
-                                src={media.url}
-                                alt={media.metadata?.filename || "message attachment"}
-                                className="w-full h-full object-cover group-hover:brightness-75 transition-all"
-                              />
-                            ) : (
-                              // SỬA LỖI 2: Thêm logic render video
-                              <video
-                                src={media.url}
-                                className="w-full h-full object-cover group-hover:brightness-75 transition-all"
-                                muted
-                                // không thêm 'controls' ở đây để giữ giao diện grid
-                              />
-                            )}
-                          </button>
-                        ))}
-                      </div>
-                    )}
+                    const grid = [...images, ...videos]
+                    const gridClass =
+        grid.length === 1
+          ? 'flex justify-center'
+          : grid.length === 2
+            ? 'grid grid-cols-2 gap-2'
+            : grid.length <= 4
+              ? 'grid grid-cols-2 gap-2 max-w-md'
+              : 'grid grid-cols-3 gap-2 max-w-lg'
 
-                    {/* Files (Giữ nguyên logic render file) */}
-                    {files.length > 0 && (
-                      <div className="space-y-1">
-                        {files.map((m, i) => {
-                          const mimetype = m?.metadata?.mimetype || ""
-                          const filename = m?.metadata?.filename || "Unknown file"
-                          const sizeText = formatFileSize(m?.metadata?.size)
-                          const url = mediaUrl(m, message)
-                          const Icon =
-                            mimetype.includes("pdf")
-                              ? FileText
-                              : mimetype.includes("word") || mimetype.includes("document")
-                                ? FileText
-                                : mimetype.includes("sheet") || mimetype.includes("excel")
-                                  ? FileSpreadsheet
-                                  : mimetype.includes("zip") || mimetype.includes("rar") || mimetype.includes("archive")
-                                    ? Archive
-                                    : mimetype.includes("video")
-                                      ? VideoIcon
-                                      : mimetype.includes("audio")
-                                        ? Music
-                                        : File
-                          return (
-                            <div key={`file-${i}`} className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg border border-gray-200 transition-colors duration-200">
-                              <Icon className="w-8 h-8 text-gray-600" />
-                              <div className="flex-1 min-w-0">
-                                <div className="text-sm font-medium text-gray-900 truncate">{filename}</div>
-                                <div className="text-xs text-gray-500">{sizeText}</div>
-                              </div>
-                              <button onClick={() => handleDownload(url, filename)}>
-                                <Download className="w-4 h-4 text-gray-400 cursor-pointer" />
+                    return (
+                      <>
+                        {/* Grid ảnh & video */}
+                        {grid.length > 0 && (
+                          <div className={gridClass}>
+                            {grid.map((media, index) => (
+                              <button
+                                type="button"
+                                key={media._id || media.url || `media-${index}`}
+                                className="relative aspect-square overflow-hidden rounded-lg cursor-pointer group"
+                                onClick={() => onOpenViewer?.(media)}
+                              >
+                                {message.isPinned && (
+                                  <Pin className="absolute top-1 right-1 w-3 h-3 text-yellow-500 z-10" />
+                                )}
+
+                                {((media.type || '').toLowerCase() === 'image') ? (
+                                  <img
+                                    src={media.url ?? message.body?.media?.url}
+                                    alt={media.metadata?.filename || 'message attachment'}
+                                    className="w-full h-full object-cover group-hover:brightness-75 transition-all"
+                                  />
+                                ) : (
+                                  <video
+                                    src={media.url}
+                                    className="w-full h-full object-cover group-hover:brightness-75 transition-all"
+                                    muted
+                                  />
+                                )}
                               </button>
-                              {message.isPinned && <Pin className="w-3 h-3 text-yellow-500" />}
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )}
-
-                    {/* Hiển thị audio (Giữ nguyên logic render audio) */}
-                    {audios.length > 0 && (
-                      <div className="space-y-2">
-                        {audios.map((media, index) => (
-                          <div
-                            key={`audio-${index}`}
-                            className={`flex items-center gap-2 p-2 max-w-xs rounded-sm
-                                ${message.isOwn ? 'ml-auto bg-primary/10 border border-primary rounded-l-lg rounded-tr-lg'
-                              : 'mr-auto bg-gray-100 text-black rounded-r-lg rounded-tl-lg'} 
-                                shadow-sm`}
-                          >
-                            <audio controls className="flex-1 min-w-0">
-                              <source src={media.url} type={media.metadata?.mimetype || 'audio/webm'} />
-                              Your browser does not support the audio element.
-                            </audio>
-                            {message.isPinned && (
-                              <Pin className="w-4 h-4 text-yellow-500 shrink-0" />
-                            )}
+                            ))}
                           </div>
-                        ))}
-                      </div>
-                    )}
+                        )}
 
-                  </div>
-                </>
+                        {/* Files */}
+                        {files.length > 0 && (
+                          <div className="space-y-1">
+                            {files.map((m, i) => {
+                              const mimetype = m?.metadata?.mimetype || ''
+                              const filename = m?.metadata?.filename || 'Unknown file'
+                              const sizeText = formatFileSize(m?.metadata?.size)
+                              const url = mediaUrl(m, message)
+                              const Icon =
+                  mimetype.includes('pdf') ? FileText
+                    : (mimetype.includes('word') || mimetype.includes('document')) ? FileText
+                      : (mimetype.includes('sheet') || mimetype.includes('excel')) ? FileSpreadsheet
+                        : (mimetype.includes('zip') || mimetype.includes('rar') || mimetype.includes('archive')) ? Archive
+                          : mimetype.includes('video') ? VideoIcon
+                            : mimetype.includes('audio') ? Music
+                              : File
+
+                              return (
+                                <div key={`file-${i}`} className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg border border-gray-200 transition-colors duration-200">
+                                  <Icon className="w-8 h-8 text-gray-600" />
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-sm font-medium text-gray-900 truncate">{filename}</div>
+                                    <div className="text-xs text-gray-500">{sizeText}</div>
+                                  </div>
+                                  <button onClick={() => handleDownload(url, filename)}>
+                                    <Download className="w-4 h-4 text-gray-400 cursor-pointer" />
+                                  </button>
+                                  {message.isPinned && <Pin className="w-3 h-3 text-yellow-500" />}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+
+                        {/* Audio */}
+                        {audios.length > 0 && (
+                          <div className="space-y-2">
+                            {audios.map((media, index) => (
+                              <div
+                                key={`audio-${index}`}
+                                className={`flex items-center gap-2 p-2 max-w-xs rounded-sm
+                    ${message.isOwn ? 'ml-auto bg-primary/10 border border-primary rounded-l-lg rounded-tr-lg'
+                                : 'mr-auto bg-gray-100 text-black rounded-r-lg rounded-tl-lg'}
+                    shadow-sm`}
+                              >
+                                <audio controls className="flex-1 min-w-0">
+                                  <source src={media.url} type={media.metadata?.mimetype || 'audio/webm'} />
+                    Your browser does not support the audio element.
+                                </audio>
+                                {message.isPinned && <Pin className="w-4 h-4 text-yellow-500 shrink-0" />}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    )
+                  })()}
+                </div>
               ) : (
+              /* Bubble text thường */
                 <div
                   className={`
-                    relative p-3 rounded-sm
-                    ${isOwn
-                    ? 'bg-primary/10 border border-primary rounded-br-sm'
-                    : 'bg-secondary text-secondary-foreground rounded-bl-sm'
-                  }
-                  `}
+      relative p-3 rounded-sm
+      ${isOwn ? 'bg-primary/10 border border-primary rounded-br-sm'
+                  : 'bg-secondary text-secondary-foreground rounded-bl-sm'}
+    `}
                 >
                   {message.isPinned && <Pin className="absolute top-1 right-1 w-3 h-3 text-yellow-500" />}
+
                   {message.repliedMessage && (
                     <div
                       className={`flex-col items-center gap-2 p-2 mb-2 border-l-4 ${isOwn ? 'border-primary bg-primary/10' : 'border-secondary bg-secondary/10'} rounded-sm cursor-pointer`}
-                      onClick={() => {
-                        // Cuộn đến tin nhắn được trả lời (nếu có thể)
-                      }}
                     >
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 mb-1">
                           <span className="flex text-sm font-semibold items-center gap-1">
                             {message.repliedMessage.senderId
-                              ? (message.repliedMessage.senderId.fullName || message.repliedMessage.senderId.username || "User")
-                              : "User"}
+                              ? (message.repliedMessage.senderId.fullName || message.repliedMessage.senderId.username || 'User')
+                              : 'User'}
                           </span>
                         </div>
-
                       </div>
                       <div className="text-sm text-gray-600 truncate">
                         {message.repliedMessage.type === 'text' && (message.repliedMessage.body?.text || message.repliedMessage.text)}
@@ -360,9 +417,13 @@ export function MessageBubble({ message,onOpenViewer, showAvatar, contact, showM
                       </div>
                     </div>
                   )}
-                  <p className="text-sm whitespace-pre-wrap break-words">{message.text ?? message.body?.text ?? ""}</p>
+
+                  <p className="text-sm whitespace-pre-wrap break-words">
+                    {renderMessageWithMentions(text, mentions)}
+                  </p>
                 </div>
               )}
+
 
               {Array.isArray(message?.reactions) && message.reactions.length > 0 && (
                 <div className="absolute -bottom-2 right-2 cursor-pointer shadow-sm rounded-full border" onClick={() => setOpen(true)}>
@@ -388,7 +449,7 @@ export function MessageBubble({ message,onOpenViewer, showAvatar, contact, showM
           </DialogContent>
         </Dialog>
 
-        {/* Reactions Dialog (giữ nguyên UI) */}
+        {/* Reactions Dialog */}
         {!isSystemMessage && (
           <ReactionsDialog
             open={open}

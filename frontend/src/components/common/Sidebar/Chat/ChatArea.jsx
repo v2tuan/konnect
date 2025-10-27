@@ -1,4 +1,3 @@
-// src/components/chat/ChatArea.jsx
 import { submitFriendRequestAPI, updateFriendRequestStatusAPI } from '@/apis'
 import { muteConversation, unmuteConversation } from "@/apis/index.js"
 import { useTheme } from '@/components/theme-provider'
@@ -20,7 +19,7 @@ import {
   FileText,
   Image,
   LoaderCircle,
-  MessageSquareQuote,
+  Check,
   Mic,
   MoreHorizontal,
   Music,
@@ -34,7 +33,7 @@ import {
   Video,
   X
 } from 'lucide-react'
-import {use, useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react'
+import { use, useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useSelector } from 'react-redux'
 import CallModal from '../../Modal/CallModal'
 import { MessageBubble } from './MessageBubble'
@@ -42,16 +41,66 @@ import { io } from 'socket.io-client'
 import ChatSidebarRight from './ChatSidebarRight'
 import { set } from 'date-fns'
 
+// ===== mention helpers (local, không đụng file khác) =====
+const reEscape = (s) => s.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")
+
+function buildMentionRegex(candidates = []) {
+  const names = candidates
+    .map(c => (c.fullName || c.username || c.name || "").trim())
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length) // ưu tiên tên dài hơn
+    .map(reEscape)
+  if (!names.length) return null
+  // Tìm "@Tên Có Khoảng Trắng" nguyên vẹn, không ăn chữ sau cùng (word-boundary)
+  return new RegExp(`@(?:${names.join("|")})(?=\\b)`, "g")
+}
+
+function findMentions(text = "", mentionRe) {
+  if (!mentionRe) return []
+  const out = []
+  let m
+  while ((m = mentionRe.exec(text)) !== null) {
+    const raw = m[0] // "@Duy 36"
+    out.push({
+      raw,
+      name: raw.slice(1), // "Duy 36"
+      start: m.index,
+      end: m.index + raw.length
+    })
+  }
+  return out
+}
+
+// Render HTML highlight cho lớp overlay input:
+// - vẫn hiển thị '@'
+// - tô xanh toàn bộ phần TÊN (không chỉ chữ sát '@')
+function highlightInputHTML(text = "", mentions = []) {
+  if (!mentions.length) return text.replace(/\n/g, "<br/>")
+  let html = ""
+  let i = 0
+  for (const mt of mentions) {
+    html += text.slice(i, mt.start)
+    const at = text[mt.start] // '@'
+    const name = text.slice(mt.start + 1, mt.end)
+    html += `${at}<span class="text-primary font-medium underline decoration-transparent">${name}</span>`
+    i = mt.end
+  }
+  html += text.slice(i)
+  return html.replace(/\n/g, "<br/>")
+}
+
 export function ChatArea({
-                           mode = 'direct',
-                           conversation = {},
-                           messages = [],
-                           onSendMessage,
-                           sending,
-                           onStartTyping,
-                           onStopTyping,
-                           othersTyping = false
-                         }) {
+  mode = 'direct',
+  conversation = {},
+  messages = [],
+  onSendMessage,
+  sending,
+  onStartTyping,
+  onStopTyping,
+  othersTyping = false,
+  onLoadOlder,
+  hasMore = false
+}) {
   const [messageText, setMessageText] = useState('')
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
@@ -67,6 +116,13 @@ export function ChatArea({
 
   const { theme, systemTheme } = useTheme()
   const currentTheme = theme === "system" ? systemTheme : theme
+
+  // ---------- @mention: state & refs (chỉ thêm) ----------
+  const [mentionOpen, setMentionOpen] = useState(false)
+  const [mentionIndex, setMentionIndex] = useState(-1)
+  const [mentionList, setMentionList] = useState([])
+  const mentionListRef = useRef(null)
+  // ------------------------------------------------------
 
   const [replyingTo, setReplyingTo] = useState({
     sender: '',
@@ -282,24 +338,38 @@ export function ChatArea({
     })
   }
 
-  // link mẫu (giữ tạm nếu bạn chưa có API link)
-  const links = [
-    { title: 'Property Details 01 || Homelenggo - Real...', url: 'homelenggonetjs.vercel.app', date: '29/08' },
-    { title: 'Home || Homelenggo - Real Estate React...', url: 'homelenggonetjs.vercel.app', date: '26/08' },
-    { title: 'Zillow: Real Estate, Apartments, Mortg...', url: 'www.zillow.com', date: '26/08' }
-  ]
-
   const togglePanel = () => setIsOpen(!isOpen)
 
   const handleSendMessage = () => {
     const value = messageText.trim()
     if (!value || sending) return
-    onSendMessage?.({ type: 'text', content: value, repliedMessage: replyingTo?.messageId || null })
+
+    // map tên → id (nếu BE cần)
+    const mapNameToId = new Map(
+      mentionCandidates.map(u => [
+        (u.fullName || u.username || u.name || "").trim(),
+        (u.id || u._id)
+      ])
+    )
+    const payloadMentions = mentions.map(m => ({
+      userId: mapNameToId.get(m.name) || null,
+      name: m.name,
+      start: m.start,
+      end: m.end
+    }))
+
+    onSendMessage?.({
+      type: 'text',
+      content: value,
+      repliedMessage: replyingTo?.messageId || null,
+      mentions: payloadMentions
+    })
+
     setMessageText('')
     setShowEmojiPicker(false)
     setReplyingTo(null)
-    console.log({ type: 'text', content: value, repliedMessage: replyingTo?.messageId || null })
   }
+
 
   const handleSendAudioMessage = () => {
     if (!audioUrl || sending) return
@@ -361,11 +431,88 @@ export function ChatArea({
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [])
 
+  const [loadingOlder, setLoadingOlder] = useState(false)
+  const messagesContainerRef = useRef(null)
+  const isLoadingOlderRef = useRef(false)
+  const shouldScrollToBottomRef = useRef(true)
+
+  // ✅ Lazy load older messages khi scroll lên top
+  const handleScroll = useCallback(async () => {
+    const container = messagesContainerRef.current
+    if (!container || !onLoadOlder || isLoadingOlderRef.current) return
+
+    // Khi scroll gần top (< 100px) và còn tin nhắn cũ
+    if (container.scrollTop < 100 && hasMore) {
+      isLoadingOlderRef.current = true
+      setLoadingOlder(true)
+      shouldScrollToBottomRef.current = false
+
+      // Lưu vị trí scroll trước khi load
+      const scrollTopBefore = container.scrollTop
+      const scrollHeightBefore = container.scrollHeight
+
+      try {
+        const result = await onLoadOlder()
+
+        // Đợi DOM update
+        await new Promise(resolve => setTimeout(resolve, 50))
+
+        // Giữ nguyên vị trí scroll
+        if (container && result?.loadedCount > 0) {
+          const scrollHeightAfter = container.scrollHeight
+          const heightDiff = scrollHeightAfter - scrollHeightBefore
+          container.scrollTop = scrollTopBefore + heightDiff
+        }
+      } catch (error) {
+        console.error('Failed to load older messages:', error)
+      } finally {
+        setLoadingOlder(false)
+        isLoadingOlderRef.current = false
+      }
+    }
+  }, [hasMore, onLoadOlder])
+
+  useEffect(() => {
+    const container = messagesContainerRef.current
+    if (!container) return
+
+    container.addEventListener('scroll', handleScroll)
+    return () => container.removeEventListener('scroll', handleScroll)
+  }, [handleScroll])
+
+  // ✅ Detect user scroll position
+  const handleUserScroll = useCallback(() => {
+    const container = messagesContainerRef.current
+    if (!container) return
+
+    const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 50
+    shouldScrollToBottomRef.current = isAtBottom
+  }, [])
+
+  useEffect(() => {
+    const container = messagesContainerRef.current
+    if (!container) return
+
+    container.addEventListener('scroll', handleUserScroll)
+    return () => container.removeEventListener('scroll', handleUserScroll)
+  }, [handleUserScroll])
+
+  // ✅ Auto scroll to bottom only if user is at bottom
   useLayoutEffect(() => {
-    setTimeout(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-    }, 0)
+    if (shouldScrollToBottomRef.current && messagesEndRef.current) {
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+      }, 0)
+    }
   }, [messages])
+
+  // ✅ Force scroll to bottom when conversation changes
+  useEffect(() => {
+    shouldScrollToBottomRef.current = true
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'auto' })
+    }
+  }, [conversation?._id])
 
   const handleFileClick = () => fileRef.current?.click()
   const handleImageClick = () => imageRef.current?.click()
@@ -415,7 +562,7 @@ export function ChatArea({
     const onMessageNew = (payload) => {
       if (!payload || payload.conversationId !== conversation?._id) return
       const t = payload.message?.type
-      if (['image','video','audio','file'].includes(t)) {
+      if (['image', 'video', 'audio', 'file'].includes(t)) {
         window.dispatchEvent(new CustomEvent('conversation-media:refresh', { detail: { conversationId: conversation._id, type: t } }))
       }
     }
@@ -431,6 +578,58 @@ export function ChatArea({
     mediaRecorderRef.current?.stream.getTracks().forEach(track => track.stop())
     setIsRecording(false)
   }
+
+  // ----- mention state -----
+  const [mentions, setMentions] = useState([])
+  const highlighterRef = useRef(null)
+
+  // Ứng viên mention (chỉ với group)
+  const mentionCandidates = (
+    isGroup ? (conversation?.group?.members || []) : []
+  ).filter(m => (m?.id || m?._id) && (m?.fullName || m?.username || m?.name))
+
+  const mentionRe = useMemo(
+    () => buildMentionRegex(mentionCandidates),
+    [conversation?._id] // đủ để re-build khi đổi group
+  )
+
+  const recomputeMentions = useCallback((text) => {
+    const found = findMentions(text, mentionRe)
+    setMentions(found)
+    if (highlighterRef.current) {
+      highlighterRef.current.innerHTML = highlightInputHTML(text, found)
+    }
+  }, [mentionRe])
+
+  useEffect(() => {
+    setMentions([])
+    if (highlighterRef.current) highlighterRef.current.innerHTML = ""
+  }, [conversation?._id])
+
+  useEffect(() => { recomputeMentions(messageText) }, [messageText, recomputeMentions])
+
+  const typingTimerRef = useRef(null)
+  // thời gian không gõ nữa thì gửi stop (ms)
+  const TYPING_STOP_DELAY = 10000
+
+  const emitTypingStart = useCallback(() => {
+  // báo bắt đầu gõ
+    onStartTyping?.()
+
+    // reset timer; nếu trong vòng 2s không gõ nữa thì stop
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current)
+    typingTimerRef.current = setTimeout(() => {
+      onStopTyping?.()
+      typingTimerRef.current = null
+    }, TYPING_STOP_DELAY)
+  }, [onStartTyping, onStopTyping])
+
+
+  useEffect(() => {
+    return () => {
+      if (typingTimerRef.current) clearTimeout(typingTimerRef.current)
+    }
+  }, [])
 
   return (
     <div className="flex flex-col h-full bg-background">
@@ -478,62 +677,111 @@ export function ChatArea({
           </div>
         </div>
 
-        {/* Messages Area */}
-        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden relative py-4">
-          {shouldShowFriendBanner && (
-            <div className="sticky top-0 z-20 border-b">
-              <div className="pointer-events-none absolute -bottom-6 left-0 right-0 h-6 from-card to-transparent" />
-              <div className="flex items-center justify-between w-full p-3 bg-card">
-                <div className="flex items-center text-sm">
-                  <UserPlus className="w-4 h-4 mr-2" />
-                  {isIncoming ? (
-                    <span><b>{otherName}</b> đã gửi lời mời kết bạn cho bạn</span>
-                  ) : outgoingSent ? (
-                    <span>Bạn đã gửi yêu cầu kết bạn đến người này</span>
-                  ) : (
-                    <span>Gửi yêu cầu kết bạn tới người này</span>
-                  )}
+        {/* ✅ FRIEND REQUEST BANNER */}
+        {shouldShowFriendBanner && (
+          <div className="px-4 py-3 bg-primary/5 border-b border-primary/20">
+            {/* Case 1: Chưa gửi lời mời */}
+            {uiFriendship.status === 'none' && (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <UserPlus className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-sm">
+                    Gửi lời mời kết bạn đến người này
+                  </span>
                 </div>
-
-                {isIncoming ? (
-                  <div className="flex items-center gap-2">
-                    <Button
-                      size="sm"
-                      className="px-3 py-1 text-sm font-medium cursor-pointer"
-                      disabled={friendReq.loading}
-                      onClick={handleAcceptIncomingRequest}
-                    >
-                      Accept
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="px-3 py-1 text-sm font-medium cursor-pointer"
-                      disabled={friendReq.loading}
-                      onClick={handleDeclineIncomingRequest}
-                    >
-                      Decline
-                    </Button>
-                  </div>
-                ) : outgoingSent ? (
-                  <Button
-                    variant="outline"
-                    className="px-3 py-1 text-sm font-medium cursor-pointer"
-                    disabled={friendReq.loading}
-                    onClick={handleCancelFriendRequest}
-                  >
-                    Huỷ
-                  </Button>
-                ) : (
-                  <Button
-                    className="px-3 py-1 text-sm font-medium cursor-pointer"
-                    disabled={friendReq.loading}
-                    onClick={handleSendFriendRequest}
-                  >
-                    Gửi kết bạn
-                  </Button>
-                )}
+                <Button
+                  size="sm"
+                  onClick={handleSendFriendRequest}
+                  disabled={friendReq.loading}
+                  className="h-8"
+                >
+                  {friendReq.loading ? (
+                    <>
+                      <LoaderCircle className="w-3 h-3 mr-1 animate-spin" />
+                      Đang gửi...
+                    </>
+                  ) : (
+                    <>
+                      <UserPlus className="w-3 h-3 mr-1" />
+                      Thêm bạn bè
+                    </>
+                  )}
+                </Button>
               </div>
+            )}
+
+            {/* Case 2: Đã gửi lời mời (outgoing) */}
+            {outgoingSent && (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <LoaderCircle className="w-4 h-4 text-amber-500 animate-spin" />
+                  <span className="text-sm">
+                    Đã gửi lời mời kết bạn đến <strong>{otherName}</strong>
+                  </span>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleCancelFriendRequest}
+                  disabled={friendReq.loading}
+                  className="h-8"
+                >
+                  {friendReq.loading ? 'Đang hủy...' : 'Hủy lời mời'}
+                </Button>
+              </div>
+            )}
+
+            {/* Case 3: Nhận lời mời (incoming) */}
+            {isIncoming && (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <UserPlus className="w-4 h-4 text-blue-500" />
+                  <span className="text-sm">
+                    <strong>{otherName}</strong> đã gửi lời mời kết bạn
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    onClick={handleAcceptIncomingRequest}
+                    disabled={friendReq.loading}
+                    className="h-8"
+                  >
+                    <Check />
+                    {friendReq.loading ? 'Đang xử lý...' : 'Accept'}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleDeclineIncomingRequest}
+                    disabled={friendReq.loading}
+                    className="h-8"
+                  >
+                    <X/>
+                    Decline
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Messages Area */}
+        <div
+          ref={messagesContainerRef}
+          className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden relative py-4"
+        >
+          {/* Loading indicator */}
+          {loadingOlder && (
+            <div className="flex justify-center py-2 sticky top-0 bg-background/80 backdrop-blur-sm z-10">
+              <LoaderCircle className="w-5 h-5 animate-spin text-muted-foreground" />
+            </div>
+          )}
+
+          {/* No more messages */}
+          {!hasMore && messages.length > 0 && (
+            <div className="text-center text-xs text-muted-foreground py-2">
+              Không còn tin nhắn cũ hơn
             </div>
           )}
 
@@ -615,7 +863,7 @@ export function ChatArea({
           </div>
         </div>
 
-        {/* Input */}
+        {/* Input Area */}
         <div className="p-4 bg-sidebar backdrop-blur-sm border-t border-border shrink-0">
           {/* Reply Preview Bar */}
           {replyingTo && (
@@ -701,17 +949,113 @@ export function ChatArea({
             </Button>
 
             <div className="flex-1 relative">
+              {/* -------- overlay highlight cho @mention (không ảnh hưởng layout) -------- */}
+              <div
+                className="absolute inset-0 pointer-events-none px-3 py-2 text-sm leading-[1.25rem] whitespace-pre-wrap overflow-hidden"
+                dangerouslySetInnerHTML={{
+                  __html: highlightInputHTML(messageText, mentions)
+                }}
+              />
+
               <Input
                 ref={inputRef}
                 value={messageText}
-                onChange={(e) => setMessageText(e.target.value)}
-                onKeyDown={handleKeyDown}
-                onFocus={() => onStartTyping?.()}
-                onBlur={() => onStopTyping?.()}
+                onChange={(e) => {
+                  const v = e.target.value
+                  setMessageText(v)
+
+                  // báo đang gõ (debounce qua emitTypingStart đã khai báo bên ngoài)
+                  emitTypingStart()
+
+                  // gợi ý @mention chỉ khi là nhóm
+                  if (conversation?.type !== 'group') { setMentionOpen(false); return }
+                  const caret = e.target.selectionStart || v.length
+
+                  // tìm token hiện tại (từ cuối lên đầu tới khi gặp space/newline)
+                  let i = caret - 1
+                  while (i >= 0 && v[i] !== ' ' && v[i] !== '\n') i--
+                  const start = i + 1
+
+                  if (v[start] !== '@') { setMentionOpen(false); return }
+
+                  const q = v.slice(start + 1, caret).trim().toLowerCase()
+                  const rawMembers = (conversation?.members || conversation?.group?.members || [])
+                  const list = [
+                    { id: '__ALL__', name: '@All' },
+                    ...rawMembers.map(m => ({
+                      id: String(m._id || m.id),
+                      name: m.fullName || m.name || m.username || ''
+                    }))
+                  ].filter(m => !q ? true : (m.name || '').toLowerCase().includes(q))
+
+                  setMentionList(list.slice(0, 8))
+                  setMentionIndex(list.length ? 0 : -1)
+                  setMentionOpen(list.length > 0)
+                }}
+                onKeyDown={(e) => {
+                  // phím thường -> đang gõ
+                  if (e.key !== 'Enter') {
+                    emitTypingStart()
+                  }
+
+                  if (mentionOpen) {
+                    if (e.key === 'ArrowDown') {
+                      e.preventDefault()
+                      setMentionIndex(i => Math.min(i + 1, mentionList.length - 1))
+                      return
+                    }
+                    if (e.key === 'ArrowUp') {
+                      e.preventDefault()
+                      setMentionIndex(i => Math.max(i - 1, 0))
+                      return
+                    }
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      const pick = mentionList[mentionIndex] || mentionList[0]
+                      if (pick) {
+                        const el = inputRef.current
+                        const pos = el.selectionStart
+                        let i = pos - 1
+                        while (i >= 0 && messageText[i] !== ' ' && messageText[i] !== '\n') i--
+                        const start = i + 1
+                        const label = pick.id === '__ALL__' ? '@All' : `@${pick.name}`
+                        const next = messageText.slice(0, start) + label + ' ' + messageText.slice(pos)
+                        setMessageText(next)
+                        setMentionOpen(false)
+                        requestAnimationFrame(() => {
+                          el.focus()
+                          const newPos = start + label.length + 1
+                          el.setSelectionRange(newPos, newPos)
+                        })
+                      }
+                      return
+                    }
+                    if (e.key === 'Escape') {
+                      setMentionOpen(false)
+                      return
+                    }
+                  }
+
+                  // Enter để gửi (không Shift)
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    handleSendMessage()
+                  }
+                }}
+                onFocus={() => {
+                  emitTypingStart()
+                }}
+                onBlur={() => {
+                  if (typingTimerRef.current) clearTimeout(typingTimerRef.current)
+                  typingTimerRef.current = null
+                  onStopTyping?.()
+                }}
                 placeholder={isCloud ? "Viết ghi chú..." : "Nhập tin nhắn..."}
-                className="pr-12"
+                className="pr-12 text-transparent caret-foreground bg-transparent relative"
               />
 
+
+              {/* nút emoji giữ nguyên */}
               <Button
                 variant="ghost"
                 size="sm"
@@ -725,6 +1069,51 @@ export function ChatArea({
               {showEmojiPicker && (
                 <div ref={pickerRef} className="absolute bottom-12 right-0 z-50">
                   <EmojiPicker theme={currentTheme === "dark" ? "dark" : "light"} onEmojiClick={handleEmojiClick} />
+                </div>
+              )}
+
+              {/* popup gợi ý mention (chỉ thêm) */}
+              {mentionOpen && (
+                <div
+                  ref={mentionListRef}
+                  className="absolute z-50 left-0 bottom-12 w-[280px] max-h-60 overflow-y-auto rounded-lg border bg-popover shadow-lg"
+                >
+                  {mentionList.map((u, idx) => (
+                    <button
+                      key={u.id || idx}
+                      className={`w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-muted ${idx === mentionIndex ? 'bg-muted' : ''}`}
+                      onMouseDown={(e) => {
+                        e.preventDefault()
+                        const el = inputRef.current
+                        const pos = el.selectionStart
+                        let i = pos - 1
+                        while (i >= 0 && messageText[i] !== ' ' && messageText[i] !== '\n') i--
+                        const start = i + 1
+                        const label = u.id === '__ALL__' ? '@All' : `@${u.name}`
+                        const next = messageText.slice(0, start) + label + ' ' + messageText.slice(pos)
+                        setMessageText(next)
+                        setMentionOpen(false)
+                        requestAnimationFrame(() => {
+                          el.focus()
+                          const newPos = start + label.length + 1
+                          el.setSelectionRange(newPos, newPos)
+                        })
+                      }}
+                    >
+                      {u.id === '__ALL__' ? (
+                        <div className="w-8 h-8 grid place-items-center rounded-full bg-primary/10">＠</div>
+                      ) : (
+                        <Avatar className="w-8 h-8">
+                          <AvatarImage src={u.avatarUrl} />
+                          <AvatarFallback>{u.name?.[0]}</AvatarFallback>
+                        </Avatar>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium truncate">{u.id === '__ALL__' ? 'Gửi tất cả' : u.name}</div>
+                        <div className="text-xs text-muted-foreground truncate">@{u.id === '__ALL__' ? 'All' : u.name}</div>
+                      </div>
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
@@ -767,9 +1156,10 @@ export function ChatArea({
         </div>
       </div>
 
-      {/* Slide Panel */}
+      {/* Right Sidebar */}
       <ChatSidebarRight conversation={conversation} isOpen={isOpen} />
 
+      {/* Call Ringing Banner */}
       {ringing && (
         <div className="fixed left-1/2 -translate-x-1/2 bottom-4 z-50 bg-card border rounded-xl shadow-lg px-4 py-3 flex items-center gap-3">
           <img src={ringing.peer?.avatarUrl} alt="" className="w-10 h-10 rounded-full object-cover" />
@@ -785,6 +1175,7 @@ export function ChatArea({
         </div>
       )}
 
+      {/* Call Modal */}
       {call && (
         <CallModal
           open={!!call}
