@@ -11,7 +11,6 @@ import { selectCurrentUser } from '@/redux/user/userSlice'
 import { useMuteStore } from "@/store/useMuteStore"
 import { formatChip, groupByDay, pickPeerStatus } from '@/utils/helper'
 import EmojiPicker from 'emoji-picker-react'
-import MediaWindowViewer from './MediaWindowViewer' // <-- THÊM IMPORT NÀY
 import {
   Archive,
   AudioLines,
@@ -34,13 +33,14 @@ import {
   Video,
   X
 } from 'lucide-react'
-import {use, useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react'
+import { use, useEffect, useLayoutEffect,useMemo, useRef, useState } from 'react'
 import { useSelector } from 'react-redux'
 import CallModal from '../../Modal/CallModal'
 import { MessageBubble } from './MessageBubble'
 import { io } from 'socket.io-client'
 import ChatSidebarRight from './ChatSidebarRight'
 import { set } from 'date-fns'
+import MediaWindowViewer from "@/components/common/Sidebar/Chat/MediaWindowViewer.jsx";
 
 export function ChatArea({
                            mode = 'direct',
@@ -75,6 +75,9 @@ export function ChatArea({
 // BƯỚC 1.1: THÊM STATE CHO VIEWER
   const [viewerOpen, setViewerOpen] = useState(false)
   const [viewerIndex, setViewerIndex] = useState(0)
+
+  // BƯỚC 1.2: TẠO MẢNG PHẲNG CHỨA ẢNH/VIDEO
+  // Mảng này sẽ chứa TẤT CẢ các media có thể xem được trong cuộc trò chuyện
   const flatVisualItems = useMemo(() => {
     const allMedia = []
     if (!Array.isArray(messages)) return []
@@ -99,8 +102,10 @@ export function ChatArea({
         }
       }
     }
+    // Trả về mảng theo thứ tự tin nhắn (từ cũ đến mới)
     return allMedia
   }, [messages])
+
   // BƯỚC 1.3: TẠO HÀM ĐỂ MỞ VIEWER
   // Hàm này sẽ được truyền xuống MessageBubble
   const handleOpenViewer = (clickedMediaItem) => {
@@ -566,7 +571,7 @@ export function ChatArea({
                         showMeta={showMeta}
                         conversation={conversation}
                         setReplyingTo={setReplyingTo}
-                        onOpenViewer={handleOpenViewer} // <-- THÊM PROP NÀY
+                        onOpenViewer={handleOpenViewer}
                       />
                     ) : (
                       <div
