@@ -127,7 +127,7 @@ function findMentionsFromMembers(text = "", conversation) {
 }
 /* === End mentions helpers === */
 
-export function MessageBubble({ message, onOpenViewer, showAvatar, contact, showMeta = true, conversation, setReplyingTo }) {
+export function MessageBubble({ message, onOpenViewer, showAvatar, contact, showMeta = true, conversation, setReplyingTo, currentUser, onAvatarClick }) {
   const [hovered, setHovered] = useState(false)
   const [open, setOpen] = useState(false)
   const isOwn = !!message?.isOwn
@@ -142,8 +142,6 @@ export function MessageBubble({ message, onOpenViewer, showAvatar, contact, show
   const sysSid = (message?.sender?._id || message?.senderId || "").toString()
   const sysName = (message?.sender?.fullName || message?.sender?.username || "").trim().toLowerCase()
   const isSystemMessage = sysName === "system" || sysSid === SYSTEM_ID_FALLBACK
-
-  const sender = useMemo(() => pickSender(conversation, message, contact), [conversation, message, contact])
 
   const [usersData, setUsersData] = useState({})
   useEffect(() => {
@@ -160,6 +158,69 @@ export function MessageBubble({ message, onOpenViewer, showAvatar, contact, show
       }
     })()
   }, [userEmojiMap])
+
+  function getMemberById(conversation, id) {
+    const mems = conversation?.group?.members || []
+    return mems.find(u => String(u.id || u._id) === String(id)) || null
+  }
+
+  const resolveSender = () => {
+    const type = conversation?.type
+
+    // GROUP: ưu tiên message.sender (nếu BE đã enrich),
+    // nếu chưa có thì fallback tra trong conversation.group.members theo senderId
+    if (type === "group") {
+      if (message?.sender) {
+        const s = message.sender
+        return {
+          _id: s._id || s.id || message.senderId || null,
+          fullName: s.fullName || s.username || "User",
+          username: s.username || null,
+          avatarUrl: s.avatarUrl || null,
+          status: s.status || null
+        }
+      }
+      const sid = message?.senderId
+      if (!sid) return null
+      const m = getMemberById(conversation, sid)
+      if (m) {
+        return {
+          _id: m._id || m.id,
+          fullName: m.fullName || m.username || "User",
+          username: m.username || null,
+          avatarUrl: m.avatarUrl || null,
+          status: m.status || null
+        }
+      }
+      // cuối cùng: tối thiểu hóa từ senderId
+      return {
+        _id: sid,
+        fullName: "User",
+        username: null,
+        avatarUrl: null,
+        status: null
+      }
+    }
+
+    // DIRECT: so sánh với currentUser để biết mình/đối phương
+    if (type === "direct") {
+      const meId = String(currentUser?._id || "")
+      const senderIsMe = String(message?.senderId || "") === meId
+      return senderIsMe ? currentUser : conversation?.direct?.otherUser || null
+    }
+
+    // CLOUD: luôn là chính mình
+    if (type === "cloud") {
+      return currentUser || null
+    }
+
+    return null
+  }
+
+
+  const sender = resolveSender()
+  const senderName = sender?.fullName || sender?.username || "User"
+
 
   const formatTime = (ts) => {
     if (!ts) return ""
@@ -216,18 +277,30 @@ export function MessageBubble({ message, onOpenViewer, showAvatar, contact, show
 
   return (
     <div
-      className={`flex gap-2 ${message.reactions.length > 0 ? 'mb-4' : 'mb-2'} ${
+      className={`flex gap-2 ${(Array.isArray(message?.reactions) && message.reactions.length > 0) ? 'mb-4' : 'mb-2'} ${
         isSystemMessage ? 'justify-center' : (isOwn ? 'justify-end' : 'justify-start')
       }`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {!isOwn && showAvatar && !isSystemMessage && (
-        <Avatar className="w-8 h-8">
-          <AvatarImage src={isGroup ? sender?.avatarUrl : conversation?.direct?.otherUser?.avatarUrl} />
-          <AvatarFallback>{(isGroup ? sender?.fullName : contact?.name)?.charAt?.(0)?.toUpperCase?.() ?? "U"}</AvatarFallback>
-        </Avatar>
+
+      {!isSystemMessage && !isOwn && showAvatar && (
+        <button
+          type="button"
+          onClick={() => {
+            console.log("Clicked avatar of", sender)
+            sender && onAvatarClick?.(sender)
+          }}
+          className="rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
+          aria-label={`Open profile of ${senderName}`}
+        >
+          <Avatar className="w-8 h-8">
+            <AvatarImage src={sender?.avatarUrl} />
+            <AvatarFallback>{senderName.charAt(0).toUpperCase()}</AvatarFallback>
+          </Avatar>
+        </button>
       )}
+
 
       <div className={`relative ${isSystemMessage ? "max-w-[80%]" : "max-w-[70%]"} ${isOwn ? "order-first" : ""}`}>
         {isGroup && !isOwn && !isSystemMessage && (
