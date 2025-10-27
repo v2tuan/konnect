@@ -159,26 +159,68 @@ export function MessageBubble({ message, onOpenViewer, showAvatar, contact, show
     })()
   }, [userEmojiMap])
 
+  function getMemberById(conversation, id) {
+    const mems = conversation?.group?.members || []
+    return mems.find(u => String(u.id || u._id) === String(id)) || null
+  }
+
   const resolveSender = () => {
     const type = conversation?.type
+
+    // GROUP: ưu tiên message.sender (nếu BE đã enrich),
+    // nếu chưa có thì fallback tra trong conversation.group.members theo senderId
     if (type === "group") {
-    // backend đã enrich sẵn message.sender
-      return message?.sender || null
+      if (message?.sender) {
+        const s = message.sender
+        return {
+          _id: s._id || s.id || message.senderId || null,
+          fullName: s.fullName || s.username || "User",
+          username: s.username || null,
+          avatarUrl: s.avatarUrl || null,
+          status: s.status || null
+        }
+      }
+      const sid = message?.senderId
+      if (!sid) return null
+      const m = getMemberById(conversation, sid)
+      if (m) {
+        return {
+          _id: m._id || m.id,
+          fullName: m.fullName || m.username || "User",
+          username: m.username || null,
+          avatarUrl: m.avatarUrl || null,
+          status: m.status || null
+        }
+      }
+      // cuối cùng: tối thiểu hóa từ senderId
+      return {
+        _id: sid,
+        fullName: "User",
+        username: null,
+        avatarUrl: null,
+        status: null
+      }
     }
+
+    // DIRECT: so sánh với currentUser để biết mình/đối phương
     if (type === "direct") {
       const meId = String(currentUser?._id || "")
       const senderIsMe = String(message?.senderId || "") === meId
       return senderIsMe ? currentUser : conversation?.direct?.otherUser || null
     }
+
+    // CLOUD: luôn là chính mình
     if (type === "cloud") {
-    // cloud: hội thoại riêng với bản thân
       return currentUser || null
     }
+
     return null
   }
 
+
   const sender = resolveSender()
   const senderName = sender?.fullName || sender?.username || "User"
+
 
   const formatTime = (ts) => {
     if (!ts) return ""
