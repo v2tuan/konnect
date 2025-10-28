@@ -42,7 +42,6 @@ import { MessageBubble } from './MessageBubble'
 import { io } from 'socket.io-client'
 import ChatSidebarRight from './ChatSidebarRight'
 import { set } from 'date-fns'
-import MediaWindowViewer from "@/components/common/Sidebar/Chat/MediaWindowViewer.jsx";
 
 
 export function ChatArea({

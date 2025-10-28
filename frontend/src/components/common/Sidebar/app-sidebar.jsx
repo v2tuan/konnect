@@ -245,7 +245,7 @@ export function AppSidebar(props) {
       await updateFriendRequestStatusAPI({ requestId, action })
       // cập nhật item đang bấm
       markOneReadLocal(notif.id)
-      try { await markNotificationsRead([notif.id]) } catch {}
+      try { await markNotificationsRead([notif.id]) } catch { /* empty */ }
 
       // ⭐ Quan trọng: đồng bộ các item khác cùng friendshipId + badge
       markRequestNotifsAsRead(requestId)

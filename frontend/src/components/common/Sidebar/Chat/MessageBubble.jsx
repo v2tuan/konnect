@@ -11,8 +11,8 @@ import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { getDisplayUsers } from "@/apis"
 
+// ===== Helpers =====
 const mediaUrl = (m, message) => m?.secure_url || m?.url || message?.body?.media?.url || ""
-import { set } from 'date-fns'
 
 function processReactions(reactions = []) {
   const emojiCountMap = {}
@@ -24,48 +24,11 @@ function processReactions(reactions = []) {
     if (!userEmojiMap[userId].emoji.includes(emoji)) userEmojiMap[userId].emoji.push(emoji)
     userEmojiMap[userId].count += 1
   })
-  const topEmojis = Object.entries(emojiCountMap).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([emoji, count]) => ({ emoji, count }))
+  const topEmojis = Object.entries(emojiCountMap)
+  .sort((a, b) => b[1] - a[1])
+  .slice(0, 3)
+  .map(([emoji, count]) => ({ emoji, count }))
   return { topEmojis, userEmojiMap, emojiCountMap }
-}
-
-function pickSender(conversation, message, contact) {
-  if (message?.sender) {
-    const s = message.sender
-    return {
-      id: s.id || s._id || message.senderId || null,
-      fullName: s.fullName || s.username || contact?.name || "User",
-      username: s.username || null,
-      avatarUrl: s.avatarUrl || null
-    }
-  }
-  const sid = message?.senderId
-  const mems = conversation?.group?.members
-  if (sid && Array.isArray(mems) && mems.length) {
-    const m = mems.find((u) => String(u.id || u._id) === String(sid))
-    if (m) {
-      return {
-        id: m.id || m._id,
-        fullName: m.fullName || m.username || contact?.name || "User",
-        username: m.username || null,
-        avatarUrl: m.avatarUrl || null
-      }
-    }
-  }
-  const other = conversation?.direct?.otherUser
-  if (other && String(other.id || other._id) === String(sid)) {
-    return {
-      id: other.id || other._id,
-      fullName: other.fullName || other.username || contact?.name || "User",
-      username: other.username || null,
-      avatarUrl: other.avatarUrl || null
-    }
-  }
-  return {
-    id: sid || null,
-    fullName: contact?.name || "User",
-    username: contact?.username || null,
-    avatarUrl: contact?.avatarUrl || null
-  }
 }
 
 function formatFileSize(bytes) {
@@ -76,13 +39,11 @@ function formatFileSize(bytes) {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`
 }
 
-/* === Mentions helpers (được port từ code cũ) === */
+/* === Mentions helpers === */
 function renderMessageWithMentions(text = "", mentions = []) {
   if (!mentions?.length) return [text]
-
   const parts = []
   let i = 0
-
   for (const mt of mentions) {
     const before = text.slice(i, mt.start)
     if (before) parts.push(before)
@@ -97,44 +58,47 @@ function renderMessageWithMentions(text = "", mentions = []) {
   if (tail.trim().length) parts.push(tail)
   return parts
 }
-
-function escapeRe(s) {
-  return s.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")
-}
-
+function escapeRe(s) { return s.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&") }
 function findMentionsFromMembers(text = "", conversation) {
   if (conversation?.type !== "group") return []
   const names = (conversation?.group?.members || [])
-    .map(m => (m.fullName || m.username || m.name || "").trim())
-    .filter(Boolean)
-    .sort((a, b) => b.length - a.length)
-    .map(escapeRe)
-
+  .map(m => (m.fullName || m.username || m.name || "").trim())
+  .filter(Boolean)
+  .sort((a, b) => b.length - a.length)
+  .map(escapeRe)
   if (!names.length) return []
   const re = new RegExp(`@(?:${names.join("|")})(?=\\b)`, "g")
   const out = []
   let m
   while ((m = re.exec(text)) !== null) {
     const raw = m[0]
-    out.push({
-      raw,
-      name: raw.slice(1),
-      start: m.index,
-      end: m.index + raw.length
-    })
+    out.push({ raw, name: raw.slice(1), start: m.index, end: m.index + raw.length })
   }
   return out
 }
 /* === End mentions helpers === */
 
-export function MessageBubble({ message, onOpenViewer, showAvatar, contact, showMeta = true, conversation, setReplyingTo, currentUser, onAvatarClick }) {
+export function MessageBubble({
+                                message,
+                                onOpenViewer,
+                                showAvatar,
+                                contact,
+                                showMeta = true,
+                                conversation,
+                                setReplyingTo,
+                                currentUser,
+                                onAvatarClick
+                              }) {
   const [hovered, setHovered] = useState(false)
   const [open, setOpen] = useState(false)
   const isOwn = !!message?.isOwn
   const isGroup = conversation?.type === "group"
-  const { topEmojis, userEmojiMap, emojiCountMap } = useMemo(() => processReactions(message?.reactions || []), [message?.reactions])
+  const { topEmojis, userEmojiMap, emojiCountMap } = useMemo(
+    () => processReactions(message?.reactions || []),
+    [message?.reactions]
+  )
 
-  // Lightbox
+  // Lightbox (giữ nếu cần modal riêng)
   const [preview, setPreview] = useState({ open: false, url: "", type: "image" })
 
   // System
@@ -143,6 +107,7 @@ export function MessageBubble({ message, onOpenViewer, showAvatar, contact, show
   const sysName = (message?.sender?.fullName || message?.sender?.username || "").trim().toLowerCase()
   const isSystemMessage = sysName === "system" || sysSid === SYSTEM_ID_FALLBACK
 
+  // Fetch display users for reactions
   const [usersData, setUsersData] = useState({})
   useEffect(() => {
     const ids = Object.keys(userEmojiMap || {})
@@ -166,9 +131,6 @@ export function MessageBubble({ message, onOpenViewer, showAvatar, contact, show
 
   const resolveSender = () => {
     const type = conversation?.type
-
-    // GROUP: ưu tiên message.sender (nếu BE đã enrich),
-    // nếu chưa có thì fallback tra trong conversation.group.members theo senderId
     if (type === "group") {
       if (message?.sender) {
         const s = message.sender
@@ -192,44 +154,26 @@ export function MessageBubble({ message, onOpenViewer, showAvatar, contact, show
           status: m.status || null
         }
       }
-      // cuối cùng: tối thiểu hóa từ senderId
-      return {
-        _id: sid,
-        fullName: "User",
-        username: null,
-        avatarUrl: null,
-        status: null
-      }
+      return { _id: sid, fullName: "User", username: null, avatarUrl: null, status: null }
     }
-
-    // DIRECT: so sánh với currentUser để biết mình/đối phương
     if (type === "direct") {
       const meId = String(currentUser?._id || "")
       const senderIsMe = String(message?.senderId || "") === meId
       return senderIsMe ? currentUser : conversation?.direct?.otherUser || null
     }
-
-    // CLOUD: luôn là chính mình
-    if (type === "cloud") {
-      return currentUser || null
-    }
-
+    if (type === "cloud") return currentUser || null
     return null
   }
 
-
   const sender = resolveSender()
   const senderName = sender?.fullName || sender?.username || "User"
-
 
   const formatTime = (ts) => {
     if (!ts) return ""
     try {
       const d = typeof ts === "string" || typeof ts === "number" ? new Date(ts) : ts
       return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-    } catch {
-      return ""
-    }
+    } catch { return "" }
   }
 
   const StatusIcon = () => {
@@ -247,7 +191,7 @@ export function MessageBubble({ message, onOpenViewer, showAvatar, contact, show
       const blobUrl = URL.createObjectURL(blob)
       const a = document.createElement("a")
       a.href = blobUrl
-      a.download = filename
+      a.download = filename || "download"
       document.body.appendChild(a)
       a.click()
       a.remove()
@@ -260,20 +204,29 @@ export function MessageBubble({ message, onOpenViewer, showAvatar, contact, show
   const { images, videos, files, audios } = useMemo(() => {
     const list = Array.isArray(message?.media) ? message.media : []
     return {
-      images: list.filter((m) => (m?.type || "").toLowerCase() === "image"),
-      videos: list.filter((m) => (m?.type || "").toLowerCase() === "video"),
-      audios: list.filter((m) => (m?.type || "").toLowerCase() === "audio"),
-      files : list.filter((m) => (m?.type || "").toLowerCase() === "file")
+      images: list.filter(m => (m?.type || "").toLowerCase() === "image"),
+      videos: list.filter(m => (m?.type || "").toLowerCase() === "video"),
+      audios: list.filter(m => (m?.type || "").toLowerCase() === "audio"),
+      files : list.filter(m => (m?.type || "").toLowerCase() === "file")
     }
   }, [message?.media])
 
-  // === Mentions wiring (không ảnh hưởng phần khác) ===
   const text = message?.body?.text || message?.text || ""
   let mentions = message?.body?.mentions || message?.mentions || []
   if ((!mentions || mentions.length === 0) && isGroup) {
     mentions = findMentionsFromMembers(text, conversation)
   }
-  // ================================================
+
+  // Tính grid cho ảnh + video
+  const gridMedias = [...images, ...videos]
+  const gridClass =
+    gridMedias.length === 1
+      ? 'flex justify-center'
+      : gridMedias.length === 2
+        ? 'grid grid-cols-2 gap-2'
+        : gridMedias.length <= 4
+          ? 'grid grid-cols-2 gap-2 max-w-md'
+          : 'grid grid-cols-3 gap-2 max-w-lg'
 
   return (
     <div
@@ -283,14 +236,10 @@ export function MessageBubble({ message, onOpenViewer, showAvatar, contact, show
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-
       {!isSystemMessage && !isOwn && showAvatar && (
         <button
           type="button"
-          onClick={() => {
-            console.log("Clicked avatar of", sender)
-            sender && onAvatarClick?.(sender)
-          }}
+          onClick={() => sender && onAvatarClick?.(sender)}
           className="rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
           aria-label={`Open profile of ${senderName}`}
         >
@@ -301,10 +250,11 @@ export function MessageBubble({ message, onOpenViewer, showAvatar, contact, show
         </button>
       )}
 
-
-      <div className={`relative ${isSystemMessage ? "max-w-[80%]" : "max-w-[70%]"} ${isOwn ? "order-first" : ""}`}>
+      <div className={`relative ${isSystemMessage ? "max-w-[80%]" : "max-w-[78%]"} ${isOwn ? "order-first" : ""}`}>
         {isGroup && !isOwn && !isSystemMessage && (
-          <div className="mb-1 ml-1 text-[11px] font-medium text-gray-500">{sender?.fullName || sender?.username || "User"}</div>
+          <div className="mb-1 ml-1 text-[11px] font-medium text-gray-500">
+            {sender?.fullName || sender?.username || "User"}
+          </div>
         )}
 
         {!isSystemMessage && (
@@ -313,22 +263,23 @@ export function MessageBubble({ message, onOpenViewer, showAvatar, contact, show
               hovered ? "opacity-100" : "opacity-0"
             } flex items-center gap-1`}
           >
-            <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => {
-              const images = message.media.filter(m => m.type === 'image')
-              const files = message.media.filter(m => m.type === 'file')
-              const audios = message.media.filter(m => m.type === 'audio')
-              setReplyingTo({
-                sender: message?.isOwn ? 'You' : (sender?.fullName || sender?.username || 'User'),
-
-                content: (files.length > 0
-                  ? files[0]?.metadata?.filename
-                  : (images.length > 0 ? '[Image]' : (audios.length > 0 ? '[Audio]' : '')))
-                  || message.text
-                  || message.body?.text,
-                media: message.media.length > 0 ? message.media : null,
-                messageId: message.id
-              })
-            }}>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 w-6 p-0"
+              onClick={() => {
+                const list = Array.isArray(message?.media) ? message.media : []
+                const ims = list.filter(m => m.type === 'image')
+                const fils = list.filter(m => m.type === 'file')
+                const auds = list.filter(m => m.type === 'audio')
+                setReplyingTo?.({
+                  sender: message?.isOwn ? 'You' : (sender?.fullName || sender?.username || 'User'),
+                  content: (fils[0]?.metadata?.filename) || (ims.length ? '[Image]' : (auds.length ? '[Audio]' : '')) || (message.text || message.body?.text || ''),
+                  media: list.length ? list : null,
+                  messageId: message.id || message._id
+                })
+              }}
+            >
               <Reply className="w-3 h-3" />
             </Button>
             <ReactionButton messageId={message.id || message._id} />
@@ -345,179 +296,112 @@ export function MessageBubble({ message, onOpenViewer, showAvatar, contact, show
             </div>
           ) : (
             <>
-              {(message.media?.length ?? 0) > 0 ? (
-                <div className="space-y-2">
-                  {(() => {
-                    const list = Array.isArray(message.media) ? message.media : []
+              {/* ẢNH + VIDEO */}
+              {gridMedias.length > 0 && (
+                <div className={gridClass}>
+                  {gridMedias.map((m, idx) => {
+                    const key = m._id || m.url || `media-${idx}`
+                    const isImage = (m.type || '').toLowerCase() === 'image'
+                    return (
+                      <button
+                        type="button"
+                        key={key}
+                        className="relative aspect-square overflow-hidden rounded-lg cursor-pointer group"
+                        onClick={() => onOpenViewer?.(m)}
+                      >
+                        {message.isPinned && (
+                          <Pin className="absolute top-1 right-1 w-3 h-3 text-yellow-500 z-10" />
+                        )}
+                        {isImage ? (
+                          <img
+                            src={m.url || mediaUrl(m, message)}
+                            alt={m.metadata?.filename || 'message attachment'}
+                            className="w-full h-full object-cover group-hover:brightness-75 transition-all"
+                          />
+                        ) : (
+                          <video
+                            src={m.url || mediaUrl(m, message)}
+                            className="w-full h-full object-cover group-hover:brightness-75 transition-all"
+                            muted
+                          />
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
 
-                    const images = list.filter(m => (m?.type || '').toLowerCase() === 'image')
-                    const videos = list.filter(m => (m?.type || '').toLowerCase() === 'video')
-                    const audios = list.filter(m => (m?.type || '').toLowerCase() === 'audio')
-                    const files = list.filter(m => (m?.type || '').toLowerCase() === 'file')
-
-                    const grid = [...images, ...videos]
-                    const gridClass =
-        grid.length === 1
-          ? 'flex justify-center'
-          : grid.length === 2
-            ? 'grid grid-cols-2 gap-2'
-            : grid.length <= 4
-              ? 'grid grid-cols-2 gap-2 max-w-md'
-              : 'grid grid-cols-3 gap-2 max-w-lg'
+              {/* FILES */}
+              {files.length > 0 && (
+                <div className="space-y-2 mt-2">
+                  {files.map((m, i) => {
+                    const mimetype = m?.metadata?.mimetype || ''
+                    const filename = m?.metadata?.filename || 'Unknown file'
+                    const sizeText = formatFileSize(m?.metadata?.size)
+                    const url = mediaUrl(m, message)
+                    const Icon =
+                      mimetype.includes('pdf') ? FileText
+                        : (mimetype.includes('word') || mimetype.includes('document')) ? FileText
+                          : (mimetype.includes('sheet') || mimetype.includes('excel')) ? FileSpreadsheet
+                            : (mimetype.includes('zip') || mimetype.includes('rar') || mimetype.includes('archive')) ? Archive
+                              : mimetype.includes('video') ? VideoIcon
+                                : mimetype.includes('audio') ? Music
+                                  : File
 
                     return (
-                      <>
-                        {/* Grid ảnh & video */}
-                        {grid.length > 0 && (
-                          <div className={gridClass}>
-                            {grid.map((media, index) => (
-                              <button
-                                type="button"
-                                key={media._id || media.url || `media-${index}`}
-                                className="relative aspect-square overflow-hidden rounded-lg cursor-pointer group"
-                                onClick={() => onOpenViewer?.(media)}
-                              >
-                                {message.isPinned && (
-                                  <Pin className="absolute top-1 right-1 w-3 h-3 text-yellow-500 z-10" />
-                                )}
-
-                                {((media.type || '').toLowerCase() === 'image') ? (
-                                  <img
-                                    src={media.url ?? message.body?.media?.url}
-                                    alt={media.metadata?.filename || 'message attachment'}
-                                    className="w-full h-full object-cover group-hover:brightness-75 transition-all"
-                                  />
-                                ) : (
-                                  <video
-                                    src={media.url}
-                                    className="w-full h-full object-cover group-hover:brightness-75 transition-all"
-                                    muted
-                                  />
-                                )}
-                              </button>
-                            ))}
+                      <div
+                        key={m._id || m.url || `file-${i}`}
+                        className={`flex items-center justify-between gap-3 rounded-lg border p-2 ${
+                          isOwn ? 'ml-auto bg-primary/5' : 'mr-auto bg-card'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <Icon className="w-5 h-5 opacity-70" />
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-medium">{filename}</div>
+                            <div className="text-xs text-muted-foreground">{mimetype || 'file'} · {sizeText}</div>
                           </div>
-                        )}
-
-                        {/* Files */}
-                        {files.length > 0 && (
-                          <div className="space-y-1">
-                            {files.map((m, i) => {
-                              const mimetype = m?.metadata?.mimetype || ''
-                              const filename = m?.metadata?.filename || 'Unknown file'
-                              const sizeText = formatFileSize(m?.metadata?.size)
-                              const url = mediaUrl(m, message)
-                              const Icon =
-                  mimetype.includes('pdf') ? FileText
-                    : (mimetype.includes('word') || mimetype.includes('document')) ? FileText
-                      : (mimetype.includes('sheet') || mimetype.includes('excel')) ? FileSpreadsheet
-                        : (mimetype.includes('zip') || mimetype.includes('rar') || mimetype.includes('archive')) ? Archive
-                          : mimetype.includes('video') ? VideoIcon
-                            : mimetype.includes('audio') ? Music
-                              : File
-
-                          // Tính tổng số media để quyết định style
-                          const totalMedia = images.length + videos.length;
-
-                          return (
-                            <button
-                              type="button"
-                              key={media._id || media.url || `media-${index}`}
-                              className={`relative overflow-hidden rounded-lg cursor-pointer group 
-                                ${totalMedia > 1 ? 'aspect-square' : ''}  /* ✅ CHỈ ÉP VUÔNG KHI CÓ NHIỀU MEDIA */
-                              `}
-                              onClick={() => onOpenViewer?.(media)}
-                            >
-                              {message.isPinned && (
-                                <Pin className="absolute top-1 right-1 w-3 h-3 text-yellow-500 z-10" />
-                              )}
-
-                              {media.type === 'image' ? (
-                                <img
-                                  src={media.url}
-                                  alt={media.metadata?.filename || "message attachment"}
-                                  className={`
-                                    ${totalMedia > 1
-                                    ? 'w-full h-full object-cover' // Style cho grid (nhiều media)
-                                    : 'max-w-xs md:max-w-sm max-h-96 object-contain' // ✅ Style cho 1 media (giới hạn kích thước)
-                                  }
-                                    group-hover:brightness-75 transition-all rounded-lg
-                                  `}
-                                />
-                              ) : (
-                                // SỬA LỖI 2: Thêm logic render video
-                                <video
-                                  src={media.url}
-                                  className={`
-                                    ${totalMedia > 1
-                                    ? 'w-full h-full object-cover' // Style cho grid (nhiều media)
-                                    : 'max-w-xs md:max-w-sm max-h-96 object-contain' // ✅ Style cho 1 media (giới hạn kích thước)
-                                  }
-                                    group-hover:brightness-75 transition-all rounded-lg
-                                  `}
-                                  muted
-                                />
-                              )}
-                            </button>
-                          )
-                        })}
-                      </div>
-                    )}
-
-                        {/* Audio */}
-                        {audios.length > 0 && (
-                          <div className="space-y-2">
-                            {audios.map((media, index) => (
-                              <div
-                                key={`audio-${index}`}
-                                className={`flex items-center gap-2 p-2 max-w-xs rounded-sm
-                    ${message.isOwn ? 'ml-auto bg-primary/10 border border-primary rounded-l-lg rounded-tr-lg'
-                                : 'mr-auto bg-gray-100 text-black rounded-r-lg rounded-tl-lg'}
-                    shadow-sm`}
-                              >
-                                <audio controls className="flex-1 min-w-0">
-                                  <source src={media.url} type={media.metadata?.mimetype || 'audio/webm'} />
-                    Your browser does not support the audio element.
-                                </audio>
-                                {message.isPinned && <Pin className="w-4 h-4 text-yellow-500 shrink-0" />}
-                              </div>
-                              <button onClick={() => handleDownload(url, filename)}>
-                                <Download className="w-4 h-4 text-gray-400 cursor-pointer" />
-                              </button>
-                              {message.isPinned && <Pin className="w-3 h-3 text-yellow-500" />}
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )}
-
-                    {/* Hiển thị audio (Giữ nguyên logic render audio) */}
-                    {audios.length > 0 && (
-                      <div className="space-y-2">
-                        {audios.map((media, index) => (
-                          <div
-                            key={`audio-${index}`}
-                            className={`flex items-center gap-2 p-2 max-w-xs rounded-sm
-                                ${message.isOwn ? 'ml-auto bg-primary/10 border border-primary rounded-l-lg rounded-tr-lg'
-                              : 'mr-auto bg-gray-100 text-black rounded-r-lg rounded-tl-lg'} 
-                                shadow-sm`}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {message.isPinned && <Pin className="w-3 h-3 text-yellow-500" />}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleDownload(url, filename)}
+                            className="h-8 w-8 p-0"
                           >
-                            <audio controls className="flex-1 min-w-0">
-                              <source src={media.url} type={media.metadata?.mimetype || 'audio/webm'} />
-                              Your browser does not support the audio element.
-                            </audio>
-                            {message.isPinned && (
-                              <Pin className="w-4 h-4 text-yellow-500 shrink-0" />
-                            )}
-                          </div>
-                        ))}
+                            <Download className="w-4 h-4" />
+                          </Button>
+                        </div>
                       </div>
-                    )}
+                    )
+                  })}
+                </div>
+              )}
 
-                  </div>
-                </>
-              ) : (
-              /* Bubble text thường */
+              {/* AUDIO */}
+              {audios.length > 0 && (
+                <div className="space-y-2 mt-2">
+                  {audios.map((m, index) => (
+                    <div
+                      key={m._id || m.url || `audio-${index}`}
+                      className={`flex items-center gap-2 p-2 max-w-xs rounded-sm
+                        ${isOwn ? 'ml-auto bg-primary/10 border border-primary rounded-l-lg rounded-tr-lg'
+                        : 'mr-auto bg-gray-100 text-black rounded-r-lg rounded-tl-lg'}
+                        shadow-sm`}
+                    >
+                      <audio controls className="flex-1 min-w-0">
+                        <source src={m.url || mediaUrl(m, message)} type={m.metadata?.mimetype || 'audio/webm'} />
+                        Your browser does not support the audio element.
+                      </audio>
+                      {message.isPinned && <Pin className="w-4 h-4 text-yellow-500 shrink-0" />}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* TEXT */}
+              {gridMedias.length === 0 && files.length === 0 && audios.length === 0 && (
                 <div
                   className={`
                     relative p-3 rounded-sm
@@ -531,10 +415,9 @@ export function MessageBubble({ message, onOpenViewer, showAvatar, contact, show
 
                   {message.repliedMessage && (
                     <div
-                      className={`flex-col items-center gap-2 p-2 mb-2 border-l-4 ${isOwn ? 'border-primary bg-primary/10' : 'border-secondary bg-secondary/10'} rounded-sm cursor-pointer`}
-                      onClick={() => {
-                        // Cuộn đến tin nhắn được trả lời (nếu có thể)
-                      }}
+                      className={`flex-col items-center gap-2 p-2 mb-2 border-l-4 ${
+                        isOwn ? 'border-primary bg-primary/10' : 'border-secondary bg-secondary/10'
+                      } rounded-sm cursor-pointer`}
                     >
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 mb-1">
@@ -544,7 +427,6 @@ export function MessageBubble({ message, onOpenViewer, showAvatar, contact, show
                               : 'User'}
                           </span>
                         </div>
-
                       </div>
                       <div className="text-sm text-gray-600 truncate">
                         {message.repliedMessage.type === 'text' && (message.repliedMessage.body?.text || message.repliedMessage.text)}
@@ -561,9 +443,12 @@ export function MessageBubble({ message, onOpenViewer, showAvatar, contact, show
                 </div>
               )}
 
-
+              {/* Reactions badge */}
               {Array.isArray(message?.reactions) && message.reactions.length > 0 && (
-                <div className="absolute -bottom-2 right-2 cursor-pointer shadow-sm rounded-full border" onClick={() => setOpen(true)}>
+                <div
+                  className="absolute -bottom-2 right-2 cursor-pointer shadow-sm rounded-full border bg-background"
+                  onClick={() => setOpen(true)}
+                >
                   <Badge variant="secondary" className="text-xs flex gap-1">
                     {topEmojis.map((r) => r.emoji).join(" ")} {message.reactions.length}
                   </Badge>
@@ -573,7 +458,7 @@ export function MessageBubble({ message, onOpenViewer, showAvatar, contact, show
           )}
         </div>
 
-        {/* Lightbox */}
+        {/* Lightbox (nếu dùng modal riêng) */}
         <Dialog open={preview.open} onOpenChange={(o) => setPreview((p) => ({ ...p, open: o }))}>
           <DialogContent className="p-0 sm:max-w-[80vw]">
             <div className="w-full h-full max-h-[80vh] flex items-center justify-center bg-black">
@@ -610,6 +495,18 @@ export function MessageBubble({ message, onOpenViewer, showAvatar, contact, show
 }
 
 function ReactionsDialog({ open, setOpen, emojiCountMap, userEmojiMap, usersData, total }) {
+  // chuyển userEmojiMap -> per-emoji map
+  const perEmoji = useMemo(() => {
+    const acc = {}
+    Object.entries(userEmojiMap || {}).forEach(([uid, { emoji }]) => {
+      emoji.forEach((e) => {
+        if (!acc[e]) acc[e] = {}
+        acc[e][uid] = (acc[e][uid] || 0) + 1
+      })
+    })
+    return acc
+  }, [userEmojiMap])
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="sm:max-w-[400px] max-h-[60vh] overflow-y-auto">
@@ -622,7 +519,7 @@ function ReactionsDialog({ open, setOpen, emojiCountMap, userEmojiMap, usersData
               >
                 All {total || 0}
               </TabsTrigger>
-              {Object.entries(emojiCountMap).map(([key, value]) => (
+              {Object.entries(emojiCountMap || {}).map(([key, value]) => (
                 <TabsTrigger
                   key={key}
                   value={key}
@@ -635,13 +532,17 @@ function ReactionsDialog({ open, setOpen, emojiCountMap, userEmojiMap, usersData
 
             <TabsContent value="all">
               <div className="space-y-4 mt-2">
-                {Object.entries(userEmojiMap).map(([userId, value]) => (
+                {Object.entries(userEmojiMap || {}).map(([userId, value]) => (
                   <div key={userId} className="flex items-center gap-2">
                     <Avatar className="w-8 h-8">
                       <AvatarImage src={usersData[userId]?.avatarUrl} />
-                      <AvatarFallback>{(usersData[userId]?.fullName || usersData[userId]?.username || "U").charAt(0)}</AvatarFallback>
+                      <AvatarFallback>
+                        {(usersData[userId]?.fullName || usersData[userId]?.username || "U").charAt(0)}
+                      </AvatarFallback>
                     </Avatar>
-                    <span className="font-medium flex-1 min-w-0 text-sm">{usersData[userId]?.fullName || usersData[userId]?.username || "User"}</span>
+                    <span className="font-medium flex-1 min-w-0 text-sm">
+                      {usersData[userId]?.fullName || usersData[userId]?.username || "User"}
+                    </span>
                     <span className="text-sm">{value.emoji.join(" ")}</span>
                     <span className="text-sm">{value.count}</span>
                   </div>
@@ -649,24 +550,20 @@ function ReactionsDialog({ open, setOpen, emojiCountMap, userEmojiMap, usersData
               </div>
             </TabsContent>
 
-            {Object.entries(
-              Object.entries(userEmojiMap).reduce((acc, [uid, { emoji }]) => {
-                emoji.forEach((e) => {
-                  if (!acc[e]) acc[e] = {}
-                  acc[e][uid] = (acc[e][uid] || 0) + 1
-                })
-                return acc
-              }, {})
-            ).map(([emoji, users]) => (
+            {Object.entries(perEmoji).map(([emoji, users]) => (
               <TabsContent key={emoji} value={emoji}>
                 <div className="space-y-4 mt-2">
                   {Object.entries(users).map(([userId, count]) => (
                     <div key={userId} className="flex items-center gap-2">
                       <Avatar className="w-8 h-8">
                         <AvatarImage src={usersData[userId]?.avatarUrl} />
-                        <AvatarFallback>{(usersData[userId]?.fullName || usersData[userId]?.username || "U").charAt(0)}</AvatarFallback>
+                        <AvatarFallback>
+                          {(usersData[userId]?.fullName || usersData[userId]?.username || "U").charAt(0)}
+                        </AvatarFallback>
                       </Avatar>
-                      <span className="font-medium flex-1 min-w-0 text-sm">{usersData[userId]?.fullName || usersData[userId]?.username || "User"}</span>
+                      <span className="font-medium flex-1 min-w-0 text-sm">
+                        {usersData[userId]?.fullName || usersData[userId]?.username || "User"}
+                      </span>
                       <span className="text-sm">{emoji}</span>
                       <span className="text-sm">{count}</span>
                     </div>
