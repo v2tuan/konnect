@@ -393,18 +393,32 @@ export function ChatArea({
 
   const handleOpenProfile = (u) => {
     if (!u) return
+    const uid = String(u._id || u.id || "")
+    // tìm bản giàu field trong danh sách members của group
+    const rich =
+    (conversation?.group?.members || []).find(
+      m => String(m._id || m.id) === uid
+    ) || null
+
+    // merge: rich > u
+    const src = { ...(u || {}), ...(rich || {}) }
+
     setProfileUser({
-      _id: u._id || u.id,
-      fullName: u.fullName || u.username || "User",
-      username: u.username,
-      avatarUrl: u.avatarUrl,
-      coverUrl: u.coverUrl,
-      gender: u.gender,
-      birthday: u.birthday || u.dateOfBirth,
-      phone: u.phone,
-      photos: u.photos || [],
-      mutualGroups: u.mutualGroups || 0
+      _id: src._id || src.id,
+      fullName: src.fullName || src.username || "User",
+      username: src.username || "",
+      avatarUrl: src.avatarUrl || "",
+      coverUrl: src.coverUrl || "",
+      // dùng model mới: bio & dateOfBirth
+      bio: src.bio || "",
+      dateOfBirth: src.dateOfBirth || src.birthday || "",
+      phone: src.phone || "",
+      photos: src.photos || [],
+      mutualGroups: typeof src.mutualGroups === "number" ? src.mutualGroups : 0,
+      // mang theo friendship nếu có (để nút Add/Remove render đúng)
+      friendship: src.friendship || u.friendship || { status: "none" }
     })
+
     setProfileOpen(true)
   }
 
