@@ -5,7 +5,7 @@ import * as React from "react"
 import { useEffect, useState } from "react"
 import { NavLink, useLocation, useNavigate } from "react-router-dom"
 import { Bell, BookUser, Brain, Cloud, GalleryVerticalEnd, Inbox, Trash2 } from "lucide-react"
-import { useSelector } from "react-redux" // Đã import
+import { useSelector } from "react-redux"
 
 import { ChatSidebar } from "@/components/common/Sidebar/Chat/ChatSidebar"
 import ContactSidebar from "@/components/common/Sidebar/Contact/ContactSidebar"
@@ -31,7 +31,11 @@ import { useUnreadBoot } from "@/hooks/useUnreadBoot"
 
 import { listNotifications, markNotificationsRead, updateFriendRequestStatusAPI } from "@/apis"
 import NotificationsSidebar from "@/components/common/Notification/NotificationsSidebar.jsx"
-import { connectSocket, getSocket } from "@/lib/socket.js"; // Đã import
+import { connectSocket, getSocket } from "@/lib/socket.js";
+
+// ⭐ Helper so sánh id an toàn (JS thuần, không TS annotation để tránh ESLint error)
+const eqId = (a, b) => String(a ?? "") === String(b ?? "")
+// Nếu là .jsx và ESLint phàn nàn, đổi thành: const eqId = (a, b) => String(a ?? "") === String(b ?? "");
 
 const data = {
   user: { name: "Đặng Đăng Duy", email: "duyproven987@gmail.com", avatar: "/avatars/shadcn.jpg" },
@@ -52,11 +56,10 @@ export function AppSidebar(props) {
     return clone
   })()
 
-  // --- Lấy Hooks và State ---
   const { open, setOpen } = useSidebar()
   const location = useLocation()
   const navigate = useNavigate()
-  const me = useSelector((s) => s.user.currentUser?._id) // Đã lấy User ID
+  const me = useSelector((s) => s.user.currentUser?._id)
   const isMessage = location.pathname.startsWith("/chats")
   const isContact = location.pathname.startsWith("/contacts")
   const isNotification = location.pathname.startsWith("/notifications")
@@ -65,15 +68,60 @@ export function AppSidebar(props) {
   const totalConversations = useUnreadStore((s) => s.totalConversations)
 
   // ========= Notifications state =========
-  const [notifs, setNotifs] = useState([]) // State cho danh sách (list)
+  const [notifs, setNotifs] = useState([])          // danh sách hiển thị trong panel
   const [loadingNotifs, setLoadingNotifs] = useState(false)
-  const [badgeCount, setBadgeCount] = useState(0) // State cho badge (count)
+  const [badgeCount, setBadgeCount] = useState(0)   // số ở nút chuông (khi KHÔNG đứng ở /notifications)
 
-  // ✅ SỬA 1: Đổi tên biến này để rõ ràng
-  // (Số đếm khi panel ĐANG MỞ)
-  const unreadNotiCountInList = (notifs || []).filter((n) => n.status === "unread").length
+  // Số item chưa đọc trong list (khi ĐANG đứng ở /notifications)
+  const unreadNotiCountInList = (Array.isArray(notifs) ? notifs : []).filter((n) => n.status === "unread").length
 
-  // Hàm load danh sách khi MỞ panel
+  // ⭐ Mark read theo friendshipId, đồng bộ cả server + local + badge
+  const markRequestNotifsAsRead = React.useCallback(async (friendshipId) => {
+    if (!friendshipId) return
+
+    // 1) lấy id từ local list
+    const localIds = (Array.isArray(notifs) ? notifs : [])
+    .filter(n =>
+      n?.status === "unread" &&
+      (eqId(n?.friendshipId, friendshipId) || eqId(n?.extra?.friendshipId, friendshipId))
+    )
+    .map(n => n.id || n._id)
+    .filter(Boolean)
+
+    // 2) nếu local không có (ví dụ panel đang đóng), fetch unread page để tìm
+    let targetIds = [...localIds]
+    if (targetIds.length === 0) {
+      try {
+        const res = await listNotifications({ onlyUnread: true, limit: 100, type: "friend_request" })
+        const arr = Array.isArray(res) ? res : (res?.items ?? [])
+        targetIds = arr
+        .filter(n => eqId(n?.friendshipId, friendshipId) || eqId(n?.extra?.friendshipId, friendshipId))
+        .map(n => n.id || n._id)
+        .filter(Boolean)
+      } catch { /* ignore */ }
+    }
+
+    if (targetIds.length === 0) return
+
+    // 3) gọi API mark read
+    try { await markNotificationsRead(targetIds) } catch { /* ignore */ }
+
+    // 4) cập nhật local list (nếu đang mở panel)
+    setNotifs(curr =>
+      (Array.isArray(curr) ? curr : []).map(n =>
+        targetIds.includes(n.id || n._id)
+          ? { ...n, status: "read", readAt: new Date().toISOString() }
+          : n
+      )
+    )
+
+    // 5) cập nhật badge nếu KHÔNG đứng ở /notifications
+    if (!isNotification) {
+      setBadgeCount(c => Math.max(0, c - targetIds.length))
+    }
+  }, [notifs, isNotification])
+
+  // Load danh sách khi mở panel
   const loadNotifications = async () => {
     setLoadingNotifs(true)
     try {
@@ -82,7 +130,8 @@ export function AppSidebar(props) {
         onlyUnread: false,
         type: "friend_request"
       })
-      setNotifs(notificationsArray || [])
+      const items = Array.isArray(notificationsArray) ? notificationsArray : (notificationsArray?.items ?? [])
+      setNotifs(items)
     } catch (e) {
       console.error("load notifications failed:", e)
       setNotifs([])
@@ -91,13 +140,13 @@ export function AppSidebar(props) {
     }
   }
 
-  // useEffect MỚI (Luôn chạy để nghe badge - ĐÃ ĐÚNG)
+  // Badge boot + socket badge listeners (chạy cả khi không mở panel)
   useEffect(() => {
     if (!me) return
     connectSocket(me)
 
     if (!isNotification) {
-      ;(async () => {
+      (async () => {
         try {
           const res = await listNotifications({ onlyUnread: true, limit: 100, type: "friend_request" })
           const arr = Array.isArray(res) ? res : (res?.items ?? [])
@@ -127,37 +176,35 @@ export function AppSidebar(props) {
     }
   }, [me, isNotification, location.pathname])
 
-  // useEffect CŨ (Chỉ chạy khi MỞ panel - ĐÃ ĐÚNG)
+  // Socket listeners khi ĐANG mở panel /notifications
   useEffect(() => {
     if (!isNotification) return
-    setBadgeCount(0) // Xóa badge count khi mở panel
+    setBadgeCount(0) // khi đã vào panel, badge hiển thị từ unread trong list
+
     const s = getSocket()
     if (!s) {
       console.warn("Socket not available in AppSidebar")
       return
     }
 
-    // Logic anti-spam (đã đúng)
     const onNewNotification = (payload) => {
       if (payload?.type === "friend_request") {
         setNotifs((currentNotifs) => {
-          const filteredList = currentNotifs.filter(n => n.id !== payload.id);
-          return [payload, ...filteredList];
-        });
+          const filteredList = (Array.isArray(currentNotifs) ? currentNotifs : []).filter(n => n.id !== payload.id)
+          return [payload, ...filteredList]
+        })
       }
     }
-    // Logic cập nhật list khi tab khác mark all (đã đúng)
     const onMarkAllRead = (payload) => {
       if (!payload?.type || payload.type === "friend_request") {
         setNotifs((currentNotifs) =>
-          currentNotifs.map((n) => ({ ...n, status: "read", readAt: new Date().toISOString() }))
+          (Array.isArray(currentNotifs) ? currentNotifs : []).map((n) => ({ ...n, status: "read", readAt: new Date().toISOString() }))
         )
       }
     }
-    // Logic cập nhật 1 item (đã đúng)
     const onUpdateNotification = (payload) => {
       setNotifs((currentNotifs) =>
-        currentNotifs.map((n) =>
+        (Array.isArray(currentNotifs) ? currentNotifs : []).map((n) =>
           n.id === payload.id ? { ...n, ...payload } : n
         )
       )
@@ -174,11 +221,10 @@ export function AppSidebar(props) {
     }
   }, [isNotification])
 
-
-  // --- Các hàm Actions (ĐÃ ĐÚNG) ---
+  // Actions trong panel
   const markOneReadLocal = (id) => {
     setNotifs((curr) =>
-      curr.map((n) => (n.id === id ? { ...n, status: "read", readAt: new Date().toISOString() } : n))
+      (Array.isArray(curr) ? curr : []).map((n) => (n.id === id ? { ...n, status: "read", readAt: new Date().toISOString() } : n))
     )
   }
   const markOneRead = async (notif) => {
@@ -197,19 +243,19 @@ export function AppSidebar(props) {
       if (!requestId) return
 
       await updateFriendRequestStatusAPI({ requestId, action })
-      markOneReadLocal(notif.id) // Cập nhật UI ngay
-      try {
-        await markNotificationsRead([notif.id]) // Gọi API phụ
-      } catch (readError) {
-        console.warn("Mark read failed, but action was successful:", readError)
-      }
+      // cập nhật item đang bấm
+      markOneReadLocal(notif.id)
+      try { await markNotificationsRead([notif.id]) } catch {}
+
+      // ⭐ Quan trọng: đồng bộ các item khác cùng friendshipId + badge
+      markRequestNotifsAsRead(requestId)
     } catch (e) {
-      console.error("Friend action (step 1) failed:", e)
+      console.error("Friend action failed:", e)
       alert(`Action [${action}] failed. Please try again.`)
     }
   }
 
-  // --- Các useEffects cho Layout (ĐÃ ĐÚNG) ---
+  // Auto open/close middle pane
   useEffect(() => {
     const shouldOpen = isMessage || isContact || isNotification
     if (open !== shouldOpen) setOpen(shouldOpen)
@@ -219,8 +265,41 @@ export function AppSidebar(props) {
     if (isNotification) loadNotifications()
   }, [isNotification])
 
-  // ✅ Biến tổng hợp (ĐÃ SỬA: dùng đúng tên `unreadNotiCountInList`)
-  const displayBadgeCount = isNotification ? unreadNotiCountInList : badgeCount;
+  // ⭐ Lắng nghe sự kiện global từ ChatArea / FriendRequest → đồng bộ list + badge
+  useEffect(() => {
+    const handleAction = (event) => {
+      const { requestId: eventRequestId } = event.detail || {}
+      if (!eventRequestId) return
+
+      // 1) cập nhật list local (nếu có item)
+      let dec = 0
+      setNotifs((currentNotifs) => {
+        const list = Array.isArray(currentNotifs) ? currentNotifs : []
+        const updated = list.map(n => {
+          const fid = n?.friendshipId || n?.extra?.friendshipId
+          if (n.status === "unread" && fid && eqId(fid, eventRequestId)) {
+            dec += 1
+            return { ...n, status: "read", readAt: new Date().toISOString() }
+          }
+          return n
+        })
+        return updated
+      })
+
+      // 2) gọi mark read theo friendshipId (đồng bộ server + giảm badge khi cần)
+      markRequestNotifsAsRead(eventRequestId)
+
+      // 3) nếu KHÔNG đứng ở /notifications, trừ badge ngay lập tức cho mượt (phòng khi API chậm)
+      if (!location.pathname.startsWith("/notifications") && dec > 0) {
+        setBadgeCount(c => Math.max(0, c - dec))
+      }
+    }
+
+    window.addEventListener("friendship:action", handleAction)
+    return () => window.removeEventListener("friendship:action", handleAction)
+  }, [markRequestNotifsAsRead, location.pathname])
+
+  const displayBadgeCount = isNotification ? unreadNotiCountInList : badgeCount
 
   return (
     <>
@@ -282,20 +361,17 @@ export function AppSidebar(props) {
           </SidebarContent>
 
           <SidebarFooter className="flex items-center justify-center gap-3 relative">
-            {/* Chuông ➜ điều hướng panel Notifications */}
+            {/* Chuông → /notifications */}
             <UIButton
               variant="ghost"
               size="icon"
-              onClick={async () => {
+              onClick={() => {
                 navigate("/notifications")
                 setOpen(true)
-                // ✅ SỬA 2: Xóa `await loadNotifications()`
-                // (Vì `useEffect [isNotification]` sẽ tự động gọi nó)
               }}
               className="relative"
             >
               <Bell className="w-5 h-5" />
-              {/* ✅ SỬA 3: Dùng `displayBadgeCount` */}
               {displayBadgeCount > 0 && (
                 <span className="absolute -top-1 -right-1 min-w-4 h-4 rounded-full bg-red-500 text-white text-[10px] leading-4 text-center px-1">
                   {displayBadgeCount > 99 ? "99+" : displayBadgeCount}

@@ -206,13 +206,35 @@ export const submitFriendRequestAPI = async (toUserId) => {
 }
 
 export const updateFriendRequestStatusAPI = async ({ requestId, action }) => {
+  try {
+    // 1. Gọi API gốc
+    const response = await _originalUpdateFriendRequestStatusAPI({ requestId, action });
+
+    // 2. Nếu thành công, phát tín hiệu (event) toàn cục
+    window.dispatchEvent(new CustomEvent('friendship:action', {
+      detail: {
+        requestId: requestId,
+        action: action
+      }
+    }));
+
+    // 3. Trả về kết quả
+    return response;
+
+  } catch (error) {
+    // Nếu API lỗi, ném lỗi ra để component tự .catch()
+    console.error("updateFriendRequestStatusAPI failed, event not dispatched:", error);
+    throw error;
+  }
+}
+// Đổi tên hàm gốc (hoặc không export)
+const _originalUpdateFriendRequestStatusAPI = async ({ requestId, action }) => {
   const response = await authorizeAxiosInstance.put(
     `${API_ROOT}/api/contacts/friends/requests`,
     { requestId, action }
   )
   return response.data
 }
-
 export const getFriendsAPI = async (params = {}) => {
   const response = await authorizeAxiosInstance.get(
     `${API_ROOT}/api/contacts/friends`,
