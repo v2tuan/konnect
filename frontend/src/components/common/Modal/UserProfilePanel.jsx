@@ -2,7 +2,7 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Image, MessageCircle, Phone, Trash, Users, X } from "lucide-react"
+import { Image, MessageCircle, Phone, Trash, UserPlus, Users, X } from "lucide-react"
 import { useEffect } from "react"
 
 export default function UserProfilePanel({
@@ -11,8 +11,9 @@ export default function UserProfilePanel({
   user = {},
   onCall = () => {},
   onChat = () => {},
-  onShareContact = () => {},
-  onBlock = () => {}
+  isFriend = false,
+  onAddFriend = () => {},
+  onUnfriend = () => {}
 }) {
   if (!open) return null
 
@@ -20,8 +21,8 @@ export default function UserProfilePanel({
     fullName = "Người dùng",
     avatarUrl = "",
     coverUrl = "",
-    gender = "Unknown",
-    birthday = "",
+    bio = "",
+    dateOfBirth = "",
     phone = "",
     photos = [],
     mutualGroups = 0
@@ -93,13 +94,13 @@ export default function UserProfilePanel({
             className="flex-1 justify-center"
             onClick={onCall}
           >
-            <Phone size={16} className="mr-2" /> Gọi
+            <Phone size={16} className="mr-2" /> Call
           </Button>
           <Button
             className="flex-1 justify-center bg-blue-50 hover:bg-blue-100 text-blue-600"
             onClick={onChat}
           >
-            <MessageCircle size={16} className="mr-2" /> Nhắn tin
+            <MessageCircle size={16} className="mr-2" /> Chat
           </Button>
         </div>
 
@@ -108,17 +109,21 @@ export default function UserProfilePanel({
         {/* Personal info */}
         <div className="px-6 space-y-3 text-sm">
           <div className="flex justify-between">
-            <span className="text-gray-500">Giới tính</span>
-            <span className="font-medium">{gender}</span>
+            <span className="text-gray-500">DOB</span>
+            <span className="font-medium">
+              {dateOfBirth ? new Date(dateOfBirth).toLocaleDateString() : "—"}
+            </span>
           </div>
           <div className="flex justify-between">
-            <span className="text-gray-500">Ngày sinh</span>
-            <span className="font-medium">{birthday || "—"}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-500">Số điện thoại</span>
+            <span className="text-gray-500">Phone</span>
             <span className="font-medium">
               {phone ? phone.replace(/\d(?=\d{3})/g, "•") : "—"}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-500">Bio</span>
+            <span className="font-medium text-right line-clamp-3 max-w-[220px]">
+              {bio || "—"}
             </span>
           </div>
         </div>
@@ -126,7 +131,7 @@ export default function UserProfilePanel({
         {/* Photos */}
         <div className="px-6 mt-6">
           <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
-            <Image size={16} /> Ảnh gần đây
+            <Image size={16} /> Picture
           </h4>
           {photos && photos.length > 0 ? (
             <div className="grid grid-cols-3 gap-2">
@@ -150,16 +155,25 @@ export default function UserProfilePanel({
         {/* Mutual groups & actions */}
         <div className="px-6 mt-6 mb-6 space-y-2">
           <button className="w-full flex items-center gap-3 p-3 rounded hover:bg-gray-50">
-            <Users size={18} /> <span className="flex-1 text-left">Nhóm chung</span>
+            <Users size={18} /> <span className="flex-1 text-left">Mutual Group</span>
             <Badge variant="secondary">{mutualGroups || 0}</Badge>
           </button>
 
-          <button
-            onClick={onShareContact}
-            className="w-full flex items-center gap-3 p-3 rounded hover:bg-gray-50"
-          >
-            <Trash size={18} /> <span className="flex-1 text-left">Huỷ kết bạn</span>
-          </button>
+          {isFriend ? (
+            <button
+              onClick={onUnfriend}
+              className="w-full flex items-center gap-3 p-3 rounded hover:bg-gray-50 text-red-600"
+            >
+              <Trash size={18} /> <span className="flex-1 text-left">Remove Friend</span>
+            </button>
+          ) : (
+            <button
+              onClick={onAddFriend}
+              className="w-full flex items-center gap-3 p-3 rounded hover:bg-gray-50 text-blue-600"
+            >
+              <UserPlus size={18} /> <span className="flex-1 text-left">Add Friend</span>
+            </button>
+          )}
         </div>
       </div>
     </div>

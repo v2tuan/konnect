@@ -12,6 +12,32 @@ import { contactService } from "./contactService";
 import { messageService } from "./messageService";
 import ApiError from "~/utils/ApiError";
 
+
+async function countMutualGroups(userIdA, userIdB) {
+  const a = new mongoose.Types.ObjectId(userIdA);
+  const b = new mongoose.Types.ObjectId(userIdB);
+
+  const rows = await ConversationMember.aggregate([
+    { $match: { userId: { $in: [a, b] }, deletedAt: null } },
+    {
+      $lookup: {
+        from: "conversations",
+        localField: "conversation",
+        foreignField: "_id",
+        as: "c"
+      }
+    },
+    { $unwind: "$c" },
+    { $match: { "c.type": "group" } },
+    { $group: { _id: "$conversation", members: { $addToSet: "$userId" } } },
+    // Giữ lại các nhóm có đủ 2 người A & B
+    { $match: { members: { $all: [a, b] } } },
+    { $count: "n" }
+  ]);
+
+  return rows.length ? rows[0].n : 0;
+}
+
 async function markFriendshipOnConversation(meId, convObj) {
   try {
     // DIRECT
@@ -316,7 +342,7 @@ const getConversation = async (page = 1, limit = 20, userId) => {
         let: { ids: '$otherMembers.userId' },
         pipeline: [
           { $match: { $expr: { $in: ['$_id', '$$ids'] } } },
-          { $project: { fullName: 1, username: 1, avatarUrl: 1, status: 1 } }
+          { $project: { fullName: 1, username: 1, avatarUrl: 1, status: 1, phone: 1, dateOfBirth: 1, bio: 1 } }
         ],
         as: 'otherUsers'
       }
@@ -394,7 +420,10 @@ const getConversation = async (page = 1, limit = 20, userId) => {
                 fullName: { $arrayElemAt: ['$otherUsers.fullName', 0] },
                 username: { $arrayElemAt: ['$otherUsers.username', 0] },
                 avatarUrl: { $arrayElemAt: ['$otherUsers.avatarUrl', 0] },
-                status: { $arrayElemAt: ['$otherUsers.status', 0] }
+                status: { $arrayElemAt: ['$otherUsers.status', 0] },
+                phone: { $arrayElemAt: ['$otherUsers.phone', 0] },
+                dateOfBirth: { $arrayElemAt: ['$otherUsers.dateOfBirth', 0] },
+                bio: { $arrayElemAt: ['$otherUsers.bio', 0] }
               },
               {}
             ]
@@ -456,18 +485,24 @@ const fetchConversationDetail = async (userId, conversationId, limit = 30, befor
   let conversationAvatarUrl = null
   let enrichedDirect = convo.direct || null
 
-  if (convo.type === 'direct') {
+  if (convo.type === "direct") {
     const [userA, userB] = await Promise.all([
-      User.findById(convo.direct?.userA).lean(),
-      User.findById(convo.direct?.userB).lean()
-    ])
+      User.findById(convo.direct?.userA)
+        .select("fullName username avatarUrl status phone dateOfBirth bio")
+        .lean(),
+      User.findById(convo.direct?.userB)
+        .select("fullName username avatarUrl status phone dateOfBirth bio")
+        .lean()
+    ]);
 
-    const meIsA = String(convo.direct?.userA) === String(userId)
-    const other = meIsA ? userB : userA
+    const meIsA = String(convo.direct?.userA) === String(userId);
+    const other = meIsA ? userB : userA;
 
     if (other) {
-      displayName = other.fullName || other.username || 'User'
-      conversationAvatarUrl = other.avatarUrl || null
+      const mutualCount = await countMutualGroups(userId, other._id);
+
+      displayName = other.fullName || other.username || "User";
+      conversationAvatarUrl = other.avatarUrl || null;
       enrichedDirect = {
         ...convo.direct,
         otherUser: {
@@ -475,13 +510,18 @@ const fetchConversationDetail = async (userId, conversationId, limit = 30, befor
           fullName: other.fullName || null,
           username: other.username || null,
           avatarUrl: other.avatarUrl || null,
-          status: other.status || null
+          status: other.status || null,
+          phone: other.phone || null,
+          dateOfBirth: other.dateOfBirth || null,
+          bio: other.bio || "",
+          mutualGroups: mutualCount
         }
-      }
+      };
     } else {
-      displayName = 'Conversation'
+      displayName = "Conversation";
     }
   }
+
 
   if (convo.type === 'group') {
     displayName = convo.group?.name || 'Group'
@@ -541,25 +581,50 @@ const fetchConversationDetail = async (userId, conversationId, limit = 30, befor
   }
 
   if (convo.type === 'group') {
-    groupMembers = memberIds.map(uid => {
-      const u = usersById.get(String(uid))
-      return u
-        ? {
+    // Lấy toàn bộ profile giàu field cho các member trong group
+    const users = await User.find(
+      { _id: { $in: memberIds.map(id => new mongoose.Types.ObjectId(id)) } },
+      { fullName: 1, username: 1, avatarUrl: 1, status: 1, phone: 1, dateOfBirth: 1, bio: 1 }
+    ).lean();
+
+    const richById = new Map(users.map(u => [String(u._id), u]));
+
+    // Tính mutualGroups cho từng thành viên (so với userId hiện tại)
+    const enriched = await Promise.all(
+      memberIds.map(async (uid) => {
+        const k = String(uid);
+        const u = richById.get(k);
+        if (!u) {
+          return {
+            id: uid,
+            fullName: null,
+            username: null,
+            avatarUrl: null,
+            status: null,
+            phone: null,
+            dateOfBirth: null,
+            bio: "",
+            mutualGroups: 0
+          };
+        }
+        const mg = String(uid) === String(userId) ? 0 : await countMutualGroups(userId, u._id);
+        return {
           id: u._id,
           fullName: u.fullName || null,
           username: u.username || null,
           avatarUrl: u.avatarUrl || null,
-          status: u.status || null
-        }
-        : {
-          id: uid,
-          fullName: null,
-          username: null,
-          avatarUrl: null,
-          status: null
-        }
-    })
+          status: u.status || null,
+          phone: u.phone || null,
+          dateOfBirth: u.dateOfBirth || null,
+          bio: u.bio || "",
+          mutualGroups: mg
+        };
+      })
+    );
+
+    groupMembers = enriched;
   }
+
 
   // Enrich messages.sender cho group
   const messagesWithSender =

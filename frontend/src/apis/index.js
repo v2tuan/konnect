@@ -299,3 +299,10 @@ export async function unreadCount() {
   const res = await authorizeAxiosInstance.get(`${API_ROOT}/api/notification/unread-count`)
   return Number(res.data?.count || 0)
 }
+
+export const removeFriendAPI = async (friendUserId) => {
+  const { data } = await authorizeAxiosInstance.delete(
+    `${API_ROOT}/api/contacts/friends/${friendUserId}`
+  )
+  return data
+}

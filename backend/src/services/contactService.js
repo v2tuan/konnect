@@ -387,11 +387,46 @@ const getFriendRelation = async (meId, otherId) => {
   }
 }
 
+const removeFriend = async ({ userId, friendUserId }) => {
+  try {
+    if (!mongoose.isValidObjectId(userId) || !mongoose.isValidObjectId(friendUserId)) {
+      throw new Error("Invalid user id")
+    }
+    const uid = toOid(userId)
+    const fid = toOid(friendUserId)
+
+    // Chỉ cần 1 trong 2 người gọi là đủ, xoá quan hệ 'accepted'
+    const removed = await FriendShip.findOneAndDelete({
+      status: "accepted",
+      $or: [
+        { profileRequest: uid, profileReceive: fid },
+        { profileRequest: fid, profileReceive: uid }
+      ]
+    }).lean()
+
+    if (!removed) {
+      // Không phải bạn bè hoặc không tồn tại
+      return { ok: false, message: "Friendship not found or already removed" }
+    }
+
+    return {
+      ok: true,
+      message: "Friend removed",
+      friendshipId: String(removed._id)
+    }
+  } catch (error) {
+    console.error("Error in removeFriend:", error?.message || error)
+    throw new Error("Failed to remove friend")
+  }
+}
+
+
 export const contactService = {
   getFriendRequests,
   submitRequest,
   updateStatusRequest,
   getAllFriends,
   isFriend,
-  getFriendRelation
+  getFriendRelation,
+  removeFriend
 }

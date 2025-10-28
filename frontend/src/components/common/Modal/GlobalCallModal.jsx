@@ -12,21 +12,18 @@ export default function GlobalCallModal() {
 
   const handleClose = () => {
     const socket = getWebRTCSocket(currentUser._id)
-    
-    // ✅ Emit leave/end call
+
+    // Chỉ rời cuộc gọi (end), KHÔNG emit cancel ở đây
     socket?.emit('call:leave', {
       conversationId: activeCall.conversationId,
       callId: activeCall.callId,
       userId: currentUser._id
     })
-    
-    // ✅ Emit cancel nếu đang ringing (người gọi hủy)
-    socket?.emit('call:cancel', {
-      callId: activeCall.callId
-    })
-    
+
+    // Đóng modal global
     closeCall()
   }
+
 
   return (
     <CallModal
