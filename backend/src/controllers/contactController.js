@@ -47,9 +47,21 @@ const getAllFriends = async (req, res, next) => {
     next(error)
   }
 }
+
+const removeFriend = async (req, res, next) => {
+  try {
+    const userId = req.userId
+    const friendUserId = req.params.friendUserId || req.body?.friendUserId
+    const result = await contactService.removeFriend({ userId, friendUserId })
+    return res.status(StatusCodes.OK).json(result)
+  } catch (error) {
+    next(error)
+  }
+}
 export const contactController = {
   getFriendRequests,
   submitRequest,
   updateStatusRequest,
-  getAllFriends
+  getAllFriends,
+  removeFriend
 }
