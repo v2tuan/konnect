@@ -2,7 +2,7 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Image, MessageCircle, Phone, Trash, Users, X } from "lucide-react"
+import { Image, MessageCircle, Phone, Trash, UserPlus, Users, X } from "lucide-react"
 import { useEffect } from "react"
 
 export default function UserProfilePanel({
@@ -11,8 +11,9 @@ export default function UserProfilePanel({
   user = {},
   onCall = () => {},
   onChat = () => {},
-  onShareContact = () => {},
-  onBlock = () => {}
+  isFriend = false,
+  onAddFriend = () => {},
+  onUnfriend = () => {}
 }) {
   if (!open) return null
 
@@ -154,12 +155,21 @@ export default function UserProfilePanel({
             <Badge variant="secondary">{mutualGroups || 0}</Badge>
           </button>
 
-          <button
-            onClick={onShareContact}
-            className="w-full flex items-center gap-3 p-3 rounded hover:bg-gray-50"
-          >
-            <Trash size={18} /> <span className="flex-1 text-left">Huỷ kết bạn</span>
-          </button>
+          {isFriend ? (
+            <button
+              onClick={onUnfriend}
+              className="w-full flex items-center gap-3 p-3 rounded hover:bg-gray-50 text-red-600"
+            >
+              <Trash size={18} /> <span className="flex-1 text-left">Remove Friend</span>
+            </button>
+          ) : (
+            <button
+              onClick={onAddFriend}
+              className="w-full flex items-center gap-3 p-3 rounded hover:bg-gray-50 text-blue-600"
+            >
+              <UserPlus size={18} /> <span className="flex-1 text-left">Add Friend</span>
+            </button>
+          )}
         </div>
       </div>
     </div>

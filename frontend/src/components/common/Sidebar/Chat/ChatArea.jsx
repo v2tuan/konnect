@@ -1,4 +1,4 @@
-import { submitFriendRequestAPI, updateFriendRequestStatusAPI } from '@/apis'
+import { removeFriendAPI, submitFriendRequestAPI, updateFriendRequestStatusAPI } from '@/apis'
 import { muteConversation, unmuteConversation } from "@/apis/index.js"
 import { useTheme } from '@/components/theme-provider'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -239,6 +239,20 @@ export function ChatArea({
       setFriendReq({ sent: true, requestId, loading: false })
     } catch (e) {
       setFriendReq(s => ({ ...s, loading: false }))
+    }
+  }
+
+  const handleUnfriend = async () => {
+    if (!otherUserId) return
+    try {
+      // optimistic: set UI về 'none'
+      const prev = uiFriendship
+      setUiFriendship({ status: 'none', direction: null, requestId: null })
+      await removeFriendAPI(otherUserId)
+      // có thể toast thành công ở đây
+    } catch (e) {
+      // rollback nếu fail
+      // setUiFriendship(prev) // nếu muốn hoàn tác
     }
   }
 
@@ -656,580 +670,589 @@ export function ChatArea({
 
   return (
     <>
-    <div className="flex flex-col h-full bg-background">
-      {/* Main */}
-      <div className={`flex flex-col flex-1 min-h-0 transition-all duration-300 ease-in-out ${isOpen ? 'mr-80' : 'mr-0'}`}>
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 bg-sidebar backdrop-blur-sm border-b border-border shadow-soft">
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <Avatar className="w-10 h-10">
-                <AvatarImage src={conversation?.conversationAvatarUrl} />
-                <AvatarFallback>{initialChar}</AvatarFallback>
-              </Avatar>
-              {isDirect && (
-                <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-background" style={dotStyle} />
-              )}
+      <div className="flex flex-col h-full bg-background">
+        {/* Main */}
+        <div className={`flex flex-col flex-1 min-h-0 transition-all duration-300 ease-in-out ${isOpen ? 'mr-80' : 'mr-0'}`}>
+          {/* Header */}
+          <div className="flex items-center justify-between p-4 bg-sidebar backdrop-blur-sm border-b border-border shadow-soft">
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <Avatar className="w-10 h-10">
+                  <AvatarImage src={conversation?.conversationAvatarUrl} />
+                  <AvatarFallback>{initialChar}</AvatarFallback>
+                </Avatar>
+                {isDirect && (
+                  <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-background" style={dotStyle} />
+                )}
+              </div>
+              <div>
+                <h2 className="font-semibold text-foreground">{safeName}</h2>
+                {!isCloud && !isGroup && (
+                  <p className={`text-sm ${presenceTextClass}`}>{presenceText}</p>
+                )}
+              </div>
             </div>
-            <div>
-              <h2 className="font-semibold text-foreground">{safeName}</h2>
-              {!isCloud && !isGroup && (
-                <p className={`text-sm ${presenceTextClass}`}>{presenceText}</p>
+
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm">
+                <SearchIcon className="w-5 h-5" />
+              </Button>
+
+              {!isCloud && (
+                <>
+                  <Button variant="ghost" size="sm" onClick={() => handleStartCall('audio')}>
+                    <Phone className="w-5 h-5" />
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => handleStartCall('video')}>
+                    <Video className="w-5 h-5" />
+                  </Button>
+                </>
               )}
+
+              <Button variant="ghost" size="sm" onClick={togglePanel}>
+                <MoreHorizontal className="w-5 h-5" />
+              </Button>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm">
-              <SearchIcon className="w-5 h-5" />
-            </Button>
-
-            {!isCloud && (
-              <>
-                <Button variant="ghost" size="sm" onClick={() => handleStartCall('audio')}>
-                  <Phone className="w-5 h-5" />
-                </Button>
-                <Button variant="ghost" size="sm" onClick={() => handleStartCall('video')}>
-                  <Video className="w-5 h-5" />
-                </Button>
-              </>
-            )}
-
-            <Button variant="ghost" size="sm" onClick={togglePanel}>
-              <MoreHorizontal className="w-5 h-5" />
-            </Button>
-          </div>
-        </div>
-
-        {/* ✅ FRIEND REQUEST BANNER */}
-        {shouldShowFriendBanner && (
-          <div className="px-4 py-3 bg-primary/5 border-b border-primary/20">
-            {/* Case 1: Chưa gửi lời mời */}
-            {uiFriendship.status === 'none' && (
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <UserPlus className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-sm">
+          {/* ✅ FRIEND REQUEST BANNER */}
+          {shouldShowFriendBanner && (
+            <div className="px-4 py-3 bg-primary/5 border-b border-primary/20">
+              {/* Case 1: Chưa gửi lời mời */}
+              {uiFriendship.status === 'none' && (
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <UserPlus className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-sm">
                     Gửi lời mời kết bạn đến người này
-                  </span>
-                </div>
-                <Button
-                  size="sm"
-                  onClick={handleSendFriendRequest}
-                  disabled={friendReq.loading}
-                  className="h-8"
-                >
-                  {friendReq.loading ? (
-                    <>
-                      <LoaderCircle className="w-3 h-3 mr-1 animate-spin" />
-                      Đang gửi...
-                    </>
-                  ) : (
-                    <>
-                      <UserPlus className="w-3 h-3 mr-1" />
-                      Thêm bạn bè
-                    </>
-                  )}
-                </Button>
-              </div>
-            )}
-
-            {/* Case 2: Đã gửi lời mời (outgoing) */}
-            {outgoingSent && (
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <LoaderCircle className="w-4 h-4 text-amber-500 animate-spin" />
-                  <span className="text-sm">
-                    Đã gửi lời mời kết bạn đến <strong>{otherName}</strong>
-                  </span>
-                </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={handleCancelFriendRequest}
-                  disabled={friendReq.loading}
-                  className="h-8"
-                >
-                  {friendReq.loading ? 'Đang hủy...' : 'Hủy lời mời'}
-                </Button>
-              </div>
-            )}
-
-            {/* Case 3: Nhận lời mời (incoming) */}
-            {isIncoming && (
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <UserPlus className="w-4 h-4 text-blue-500" />
-                  <span className="text-sm">
-                    <strong>{otherName}</strong> đã gửi lời mời kết bạn
-                  </span>
-                </div>
-                <div className="flex gap-2">
+                    </span>
+                  </div>
                   <Button
                     size="sm"
-                    onClick={handleAcceptIncomingRequest}
+                    onClick={handleSendFriendRequest}
                     disabled={friendReq.loading}
                     className="h-8"
                   >
-                    <Check />
-                    {friendReq.loading ? 'Đang xử lý...' : 'Accept'}
+                    {friendReq.loading ? (
+                      <>
+                        <LoaderCircle className="w-3 h-3 mr-1 animate-spin" />
+                      Đang gửi...
+                      </>
+                    ) : (
+                      <>
+                        <UserPlus className="w-3 h-3 mr-1" />
+                      Thêm bạn bè
+                      </>
+                    )}
                   </Button>
+                </div>
+              )}
+
+              {/* Case 2: Đã gửi lời mời (outgoing) */}
+              {outgoingSent && (
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <LoaderCircle className="w-4 h-4 text-amber-500 animate-spin" />
+                    <span className="text-sm">
+                    Đã gửi lời mời kết bạn đến <strong>{otherName}</strong>
+                    </span>
+                  </div>
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={handleDeclineIncomingRequest}
+                    onClick={handleCancelFriendRequest}
                     disabled={friendReq.loading}
                     className="h-8"
                   >
-                    <X/>
-                    Decline
+                    {friendReq.loading ? 'Đang hủy...' : 'Hủy lời mời'}
                   </Button>
+                </div>
+              )}
+
+              {/* Case 3: Nhận lời mời (incoming) */}
+              {isIncoming && (
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <UserPlus className="w-4 h-4 text-blue-500" />
+                    <span className="text-sm">
+                      <strong>{otherName}</strong> đã gửi lời mời kết bạn
+                    </span>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      onClick={handleAcceptIncomingRequest}
+                      disabled={friendReq.loading}
+                      className="h-8"
+                    >
+                      <Check />
+                      {friendReq.loading ? 'Đang xử lý...' : 'Accept'}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleDeclineIncomingRequest}
+                      disabled={friendReq.loading}
+                      className="h-8"
+                    >
+                      <X/>
+                    Decline
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Messages Area */}
+          <div
+            ref={messagesContainerRef}
+            className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden relative py-4"
+          >
+            {/* Loading indicator */}
+            {loadingOlder && (
+              <div className="flex justify-center py-2 sticky top-0 bg-background/80 backdrop-blur-sm z-10">
+                <LoaderCircle className="w-5 h-5 animate-spin text-muted-foreground" />
+              </div>
+            )}
+
+            {/* No more messages */}
+            {!hasMore && messages.length > 0 && (
+              <div className="text-center text-xs text-muted-foreground py-2">
+              Không còn tin nhắn cũ hơn
+              </div>
+            )}
+
+            <div className="space-y-3 pt-2 px-4">
+              {messages.length === 0 && (
+                <div className="text-center text-xs opacity-60 mt-10">
+                  {isCloud ? 'Chưa có ghi chú nào.' : 'Chưa có tin nhắn.'}
+                </div>
+              )}
+
+              {groupByDay(messages).map((group, gi) => {
+                const count = group.items.length
+                const first = group.items[0]
+                return (
+                  <div key={group.key}>
+                    <div className="flex justify-center my-3">
+                      <span className="px-3 py-1 rounded-full text-xs bg-muted text-muted-foreground">
+                        {formatChip(first.createdAt || first.timestamp, count)}
+                      </span>
+                    </div>
+
+                    {group.items.map((m, mi) => {
+                      const showAvatar = true
+                      const showMeta = count > 1 && mi === count - 1
+                      return MessageBubble ? (
+                        <MessageBubble
+                          key={m.id || m._id || `${gi}-${mi}`}
+                          message={{ ...m }}
+                          showAvatar={showAvatar}
+                          currentUser={currentUser}
+                          onAvatarClick={handleOpenProfile}
+                          showMeta={showMeta}
+                          conversation={conversation}
+                          setReplyingTo={setReplyingTo}
+                          onOpenViewer={handleOpenViewer} // <-- THÊM PROP NÀY
+                        />
+                      ) : (
+                        <div
+                          key={m.id || m._id || `${gi}-${mi}`}
+                          className={`max-w-[75%] rounded-md border p-3 text-sm ${m.isOwn ? 'ml-auto bg-primary/10' : 'mr-auto bg-card'}`}
+                        >
+                          <div className="whitespace-pre-wrap">{m.text ?? m.body?.text}</div>
+                          {showMeta && (
+                            <div className="mt-1 text-[10px] opacity-60">
+                              {new Date(m.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })}
+              <div ref={messagesEndRef} />
+              {othersTyping && (
+                <div className='flex items-end space-x-2 py-2 px-1 animate-fadeIn'>
+                  <Avatar className="w-8 h-8">
+                    <AvatarImage src={conversation?.direct?.otherUser?.avatarUrl} />
+                  </Avatar>
+
+                  <div className="relative p-3 rounded-lg bg-secondary text-gray-900 rounded-bl-sm">
+                    <div className="flex items-center space-x-2">
+                      <div className="flex space-x-1">
+                        {[0, 1, 2].map((i) => (
+                          <div
+                            key={i}
+                            className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse"
+                            style={{
+                              animationDelay: `${i * 200}ms`,
+                              animationDuration: '1.4s',
+                              animationTimingFunction: 'ease-in-out',
+                              animationIterationCount: 'infinite'
+                            }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </ div>
+              )}
+            </div>
+          </div>
+
+          {/* Input Area */}
+          <div className="p-4 bg-sidebar backdrop-blur-sm border-t border-border shrink-0">
+            {/* Reply Preview Bar */}
+            {replyingTo && (
+              <div className="mb-3 bg-primary/5 border-l-4 border-primary rounded p-3 flex items-start justify-between">
+                <div className="flex flex-1 items-center gap-3">
+                  {/* Thumbnail ảnh nếu có */}
+                  {replyingTo.media && (
+                    <>
+                      {(() => {
+                        const images = replyingTo.media.filter(m => m.type === 'image')
+                        const files = replyingTo.media.filter(m => m.type === 'file')
+                        const audios = replyingTo.media.filter(m => m.type === 'audio')
+                        if (images.length > 0) {
+                          return (
+                            <div className="flex-shrink-0">
+                              <img
+                                src={images[0]?.url}
+                                alt="Preview"
+                                className="w-12 h-12 rounded object-cover"
+                              />
+                            </div>
+                          )
+                        } else if (files.length > 0) {
+                          const mimetype = files[0].metadata?.mimetype || ''
+                          if (mimetype.includes('pdf')) {
+                            return <FileText className="w-8 h-8 text-red-500" />
+                          } else if (mimetype.includes('word') || mimetype.includes('document')) {
+                            return <FileText className="w-8 h-8 text-blue-500" />
+                          } else if (mimetype.includes('sheet') || mimetype.includes('excel')) {
+                            return <FileSpreadsheet className="w-8 h-8 text-green-500" />
+                          } else if (mimetype.includes('zip') || mimetype.includes('rar') || mimetype.includes('archive')) {
+                            return <Archive className="w-8 h-8 text-yellow-600" />
+                          } else if (mimetype.includes('video')) {
+                            return <Video className="w-8 h-8 text-purple-500" />
+                          } else if (mimetype.includes('audio')) {
+                            return <Music className="w-8 h-8 text-pink-500" />
+                          } else {
+                            return <File className="w-8 h-8 text-gray-500" />
+                          }
+                        } else if (audios.length > 0) {
+                          return (
+                            <div className="flex-shrink-0">
+                              <div className="w-12 h-12 rounded bg-muted flex items-center justify-center">
+                                <AudioLines className="w-6 h-6 text-muted-foreground" />
+                              </div>
+                            </div>
+                          )
+                        } else {
+                          return null
+                        }
+                      })()}
+                    </>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="flex text-sm font-semibold items-center gap-1">
+                        <Reply className='h-4 w-4' /> Reply {replyingTo.sender}
+                      </span>
+                    </div>
+                    <p className="text-xs truncate overflow-hidden whitespace-nowrap max-w-4xl">
+                      {replyingTo.content}
+                    </p>
+
+                  </div>
+                  <button
+                    onClick={handleCloseReply}
+                    className="ml-3 tion-colors flex-shrink-0 cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
             )}
+            <div className="flex items-end gap-2">
+              <Input type="file" ref={fileRef} onChange={handleFileChange} className="hidden" />
+              <Input type="file" ref={imageRef} onChange={handleImageChange} accept="image/*" className="hidden" multiple />
+
+              <Button variant="ghost" size="sm" className="shrink-0" onClick={handleFileClick}>
+                <Paperclip className="w-5 h-5" />
+              </Button>
+              <Button variant="ghost" size="sm" className="shrink-0" onClick={handleImageClick}>
+                <Image className="w-5 h-5" />
+              </Button>
+
+              <div className="flex-1 relative">
+                {/* -------- overlay highlight cho @mention (không ảnh hưởng layout) -------- */}
+                <div
+                  className="absolute inset-0 pointer-events-none px-3 py-2 text-sm leading-[1.25rem] whitespace-pre-wrap overflow-hidden"
+                  dangerouslySetInnerHTML={{
+                    __html: highlightInputHTML(messageText, mentions)
+                  }}
+                />
+
+                <Input
+                  ref={inputRef}
+                  value={messageText}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    setMessageText(v)
+
+                    // báo đang gõ (debounce qua emitTypingStart đã khai báo bên ngoài)
+                    emitTypingStart()
+
+                    // gợi ý @mention chỉ khi là nhóm
+                    if (conversation?.type !== 'group') { setMentionOpen(false); return }
+                    const caret = e.target.selectionStart || v.length
+
+                    // tìm token hiện tại (từ cuối lên đầu tới khi gặp space/newline)
+                    let i = caret - 1
+                    while (i >= 0 && v[i] !== ' ' && v[i] !== '\n') i--
+                    const start = i + 1
+
+                    if (v[start] !== '@') { setMentionOpen(false); return }
+
+                    const q = v.slice(start + 1, caret).trim().toLowerCase()
+                    const rawMembers = (conversation?.members || conversation?.group?.members || [])
+                    const list = [
+                      { id: '__ALL__', name: '@All' },
+                      ...rawMembers.map(m => ({
+                        id: String(m._id || m.id),
+                        name: m.fullName || m.name || m.username || ''
+                      }))
+                    ].filter(m => !q ? true : (m.name || '').toLowerCase().includes(q))
+
+                    setMentionList(list.slice(0, 8))
+                    setMentionIndex(list.length ? 0 : -1)
+                    setMentionOpen(list.length > 0)
+                  }}
+                  onKeyDown={(e) => {
+                  // phím thường -> đang gõ
+                    if (e.key !== 'Enter') {
+                      emitTypingStart()
+                    }
+
+                    if (mentionOpen) {
+                      if (e.key === 'ArrowDown') {
+                        e.preventDefault()
+                        setMentionIndex(i => Math.min(i + 1, mentionList.length - 1))
+                        return
+                      }
+                      if (e.key === 'ArrowUp') {
+                        e.preventDefault()
+                        setMentionIndex(i => Math.max(i - 1, 0))
+                        return
+                      }
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        const pick = mentionList[mentionIndex] || mentionList[0]
+                        if (pick) {
+                          const el = inputRef.current
+                          const pos = el.selectionStart
+                          let i = pos - 1
+                          while (i >= 0 && messageText[i] !== ' ' && messageText[i] !== '\n') i--
+                          const start = i + 1
+                          const label = pick.id === '__ALL__' ? '@All' : `@${pick.name}`
+                          const next = messageText.slice(0, start) + label + ' ' + messageText.slice(pos)
+                          setMessageText(next)
+                          setMentionOpen(false)
+                          requestAnimationFrame(() => {
+                            el.focus()
+                            const newPos = start + label.length + 1
+                            el.setSelectionRange(newPos, newPos)
+                          })
+                        }
+                        return
+                      }
+                      if (e.key === 'Escape') {
+                        setMentionOpen(false)
+                        return
+                      }
+                    }
+
+                    // Enter để gửi (không Shift)
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      handleSendMessage()
+                    }
+                  }}
+                  onFocus={() => {
+                    emitTypingStart()
+                  }}
+                  onBlur={() => {
+                    if (typingTimerRef.current) clearTimeout(typingTimerRef.current)
+                    typingTimerRef.current = null
+                    onStopTyping?.()
+                  }}
+                  placeholder={isCloud ? "Viết ghi chú..." : "Nhập tin nhắn..."}
+                  className="pr-12 text-transparent caret-foreground bg-transparent relative"
+                />
+
+
+                {/* nút emoji giữ nguyên */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2"
+                  type="button"
+                >
+                  <Smile className="w-4 h-4" />
+                </Button>
+
+                {showEmojiPicker && (
+                  <div ref={pickerRef} className="absolute bottom-12 right-0 z-50">
+                    <EmojiPicker theme={currentTheme === "dark" ? "dark" : "light"} onEmojiClick={handleEmojiClick} />
+                  </div>
+                )}
+
+                {/* popup gợi ý mention (chỉ thêm) */}
+                {mentionOpen && (
+                  <div
+                    ref={mentionListRef}
+                    className="absolute z-50 left-0 bottom-12 w-[280px] max-h-60 overflow-y-auto rounded-lg border bg-popover shadow-lg"
+                  >
+                    {mentionList.map((u, idx) => (
+                      <button
+                        key={u.id || idx}
+                        className={`w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-muted ${idx === mentionIndex ? 'bg-muted' : ''}`}
+                        onMouseDown={(e) => {
+                          e.preventDefault()
+                          const el = inputRef.current
+                          const pos = el.selectionStart
+                          let i = pos - 1
+                          while (i >= 0 && messageText[i] !== ' ' && messageText[i] !== '\n') i--
+                          const start = i + 1
+                          const label = u.id === '__ALL__' ? '@All' : `@${u.name}`
+                          const next = messageText.slice(0, start) + label + ' ' + messageText.slice(pos)
+                          setMessageText(next)
+                          setMentionOpen(false)
+                          requestAnimationFrame(() => {
+                            el.focus()
+                            const newPos = start + label.length + 1
+                            el.setSelectionRange(newPos, newPos)
+                          })
+                        }}
+                      >
+                        {u.id === '__ALL__' ? (
+                          <div className="w-8 h-8 grid place-items-center rounded-full bg-primary/10">＠</div>
+                        ) : (
+                          <Avatar className="w-8 h-8">
+                            <AvatarImage src={u.avatarUrl} />
+                            <AvatarFallback>{u.name?.[0]}</AvatarFallback>
+                          </Avatar>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium truncate">{u.id === '__ALL__' ? 'Gửi tất cả' : u.name}</div>
+                          <div className="text-xs text-muted-foreground truncate">@{u.id === '__ALL__' ? 'All' : u.name}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {(messageText.trim() || sending) ? (
+                <Button onClick={handleSendMessage} className="shrink-0" disabled={sending}>
+                  {sending ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                </Button>
+              ) : (
+                <Button
+                  variant={isRecording ? 'destructive' : 'ghost'}
+                  size="sm"
+                  onClick={isRecording ? stopRecording : startRecording}
+                  className="shrink-0"
+                  type="button"
+                >
+                  <Mic className={`w-5 h-5 ${isRecording ? 'animate-pulse' : ''}`} />
+                </Button>
+              )}
+            </div>
+
+            {isRecording && (
+              <div className="flex items-center gap-2 mt-2 text-destructive">
+                <div className="w-2 h-2 bg-destructive rounded-full animate-pulse"></div>
+                <span className="text-sm">Đang ghi âm...</span>
+              </div>
+            )}
+
+            {audioUrl && (
+              <div className="flex items-center space-x-2 p-2 bg-background rounded-md">
+                <Button onClick={() => setAudioUrl(null)} className="shrink-0 p-2 bg-red-100 hover:bg-red-200 rounded-full">
+                  <X className="w-4 h-4 text-red-600" />
+                </Button>
+                <audio src={audioUrl} controls className="flex-1 h-8 outline-none" />
+                <Button onClick={handleSendAudioMessage} className="shrink-0 p-2 bg-green-100 hover:bg-green-200 rounded-full" disabled={sending}>
+                  <Send className="w-4 h-4 text-green-600" />
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Right Sidebar */}
+        <ChatSidebarRight conversation={conversation} isOpen={isOpen} />
+
+        {/* Call Ringing Banner */}
+        {ringing && (
+          <div className="fixed left-1/2 -translate-x-1/2 bottom-4 z-50 bg-card border rounded-xl shadow-lg px-4 py-3 flex items-center gap-3">
+            <img src={ringing.peer?.avatarUrl} alt="" className="w-10 h-10 rounded-full object-cover" />
+            <div className="mr-4">
+              <div className="text-sm font-semibold">{ringing.peer?.name}</div>
+              <div className="text-xs text-muted-foreground">
+              Đang gọi… còn {Math.ceil((ringing.leftMs || 0) / 1000)}s
+              </div>
+            </div>
+            <Button size="sm" variant="destructive" onClick={() => cancelCaller(toUserIds)}>
+            Hủy
+            </Button>
           </div>
         )}
 
-        {/* Messages Area */}
-        <div
-          ref={messagesContainerRef}
-          className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden relative py-4"
-        >
-          {/* Loading indicator */}
-          {loadingOlder && (
-            <div className="flex justify-center py-2 sticky top-0 bg-background/80 backdrop-blur-sm z-10">
-              <LoaderCircle className="w-5 h-5 animate-spin text-muted-foreground" />
-            </div>
-          )}
-
-          {/* No more messages */}
-          {!hasMore && messages.length > 0 && (
-            <div className="text-center text-xs text-muted-foreground py-2">
-              Không còn tin nhắn cũ hơn
-            </div>
-          )}
-
-          <div className="space-y-3 pt-2 px-4">
-            {messages.length === 0 && (
-              <div className="text-center text-xs opacity-60 mt-10">
-                {isCloud ? 'Chưa có ghi chú nào.' : 'Chưa có tin nhắn.'}
-              </div>
-            )}
-
-            {groupByDay(messages).map((group, gi) => {
-              const count = group.items.length
-              const first = group.items[0]
-              return (
-                <div key={group.key}>
-                  <div className="flex justify-center my-3">
-                    <span className="px-3 py-1 rounded-full text-xs bg-muted text-muted-foreground">
-                      {formatChip(first.createdAt || first.timestamp, count)}
-                    </span>
-                  </div>
-
-                  {group.items.map((m, mi) => {
-                    const showAvatar = true
-                    const showMeta = count > 1 && mi === count - 1
-                    return MessageBubble ? (
-                      <MessageBubble
-                        key={m.id || m._id || `${gi}-${mi}`}
-                        message={{ ...m }}
-                        showAvatar={showAvatar}
-                        currentUser={currentUser}
-                        onAvatarClick={handleOpenProfile}
-                        showMeta={showMeta}
-                        conversation={conversation}
-                        setReplyingTo={setReplyingTo}
-                        onOpenViewer={handleOpenViewer} // <-- THÊM PROP NÀY
-                      />
-                    ) : (
-                      <div
-                        key={m.id || m._id || `${gi}-${mi}`}
-                        className={`max-w-[75%] rounded-md border p-3 text-sm ${m.isOwn ? 'ml-auto bg-primary/10' : 'mr-auto bg-card'}`}
-                      >
-                        <div className="whitespace-pre-wrap">{m.text ?? m.body?.text}</div>
-                        {showMeta && (
-                          <div className="mt-1 text-[10px] opacity-60">
-                            {new Date(m.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              )
-            })}
-            <div ref={messagesEndRef} />
-            {othersTyping && (
-              <div className='flex items-end space-x-2 py-2 px-1 animate-fadeIn'>
-                <Avatar className="w-8 h-8">
-                  <AvatarImage src={conversation?.direct?.otherUser?.avatarUrl} />
-                </Avatar>
-
-                <div className="relative p-3 rounded-lg bg-secondary text-gray-900 rounded-bl-sm">
-                  <div className="flex items-center space-x-2">
-                    <div className="flex space-x-1">
-                      {[0, 1, 2].map((i) => (
-                        <div
-                          key={i}
-                          className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse"
-                          style={{
-                            animationDelay: `${i * 200}ms`,
-                            animationDuration: '1.4s',
-                            animationTimingFunction: 'ease-in-out',
-                            animationIterationCount: 'infinite'
-                          }}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </ div>
-            )}
-          </div>
-        </div>
-
-        {/* Input Area */}
-        <div className="p-4 bg-sidebar backdrop-blur-sm border-t border-border shrink-0">
-          {/* Reply Preview Bar */}
-          {replyingTo && (
-            <div className="mb-3 bg-primary/5 border-l-4 border-primary rounded p-3 flex items-start justify-between">
-              <div className="flex flex-1 items-center gap-3">
-                {/* Thumbnail ảnh nếu có */}
-                {replyingTo.media && (
-                  <>
-                    {(() => {
-                      const images = replyingTo.media.filter(m => m.type === 'image')
-                      const files = replyingTo.media.filter(m => m.type === 'file')
-                      const audios = replyingTo.media.filter(m => m.type === 'audio')
-                      if (images.length > 0) {
-                        return (
-                          <div className="flex-shrink-0">
-                            <img
-                              src={images[0]?.url}
-                              alt="Preview"
-                              className="w-12 h-12 rounded object-cover"
-                            />
-                          </div>
-                        )
-                      } else if (files.length > 0) {
-                        const mimetype = files[0].metadata?.mimetype || ''
-                        if (mimetype.includes('pdf')) {
-                          return <FileText className="w-8 h-8 text-red-500" />
-                        } else if (mimetype.includes('word') || mimetype.includes('document')) {
-                          return <FileText className="w-8 h-8 text-blue-500" />
-                        } else if (mimetype.includes('sheet') || mimetype.includes('excel')) {
-                          return <FileSpreadsheet className="w-8 h-8 text-green-500" />
-                        } else if (mimetype.includes('zip') || mimetype.includes('rar') || mimetype.includes('archive')) {
-                          return <Archive className="w-8 h-8 text-yellow-600" />
-                        } else if (mimetype.includes('video')) {
-                          return <Video className="w-8 h-8 text-purple-500" />
-                        } else if (mimetype.includes('audio')) {
-                          return <Music className="w-8 h-8 text-pink-500" />
-                        } else {
-                          return <File className="w-8 h-8 text-gray-500" />
-                        }
-                      } else if (audios.length > 0) {
-                        return (
-                          <div className="flex-shrink-0">
-                            <div className="w-12 h-12 rounded bg-muted flex items-center justify-center">
-                              <AudioLines className="w-6 h-6 text-muted-foreground" />
-                            </div>
-                          </div>
-                        )
-                      } else {
-                        return null
-                      }
-                    })()}
-                  </>
-                )}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="flex text-sm font-semibold items-center gap-1">
-                      <Reply className='h-4 w-4' /> Reply {replyingTo.sender}
-                    </span>
-                  </div>
-                  <p className="text-xs truncate overflow-hidden whitespace-nowrap max-w-4xl">
-                    {replyingTo.content}
-                  </p>
-
-                </div>
-                <button
-                  onClick={handleCloseReply}
-                  className="ml-3 tion-colors flex-shrink-0 cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          )}
-          <div className="flex items-end gap-2">
-            <Input type="file" ref={fileRef} onChange={handleFileChange} className="hidden" />
-            <Input type="file" ref={imageRef} onChange={handleImageChange} accept="image/*" className="hidden" multiple />
-
-            <Button variant="ghost" size="sm" className="shrink-0" onClick={handleFileClick}>
-              <Paperclip className="w-5 h-5" />
-            </Button>
-            <Button variant="ghost" size="sm" className="shrink-0" onClick={handleImageClick}>
-              <Image className="w-5 h-5" />
-            </Button>
-
-            <div className="flex-1 relative">
-              {/* -------- overlay highlight cho @mention (không ảnh hưởng layout) -------- */}
-              <div
-                className="absolute inset-0 pointer-events-none px-3 py-2 text-sm leading-[1.25rem] whitespace-pre-wrap overflow-hidden"
-                dangerouslySetInnerHTML={{
-                  __html: highlightInputHTML(messageText, mentions)
-                }}
-              />
-
-              <Input
-                ref={inputRef}
-                value={messageText}
-                onChange={(e) => {
-                  const v = e.target.value
-                  setMessageText(v)
-
-                  // báo đang gõ (debounce qua emitTypingStart đã khai báo bên ngoài)
-                  emitTypingStart()
-
-                  // gợi ý @mention chỉ khi là nhóm
-                  if (conversation?.type !== 'group') { setMentionOpen(false); return }
-                  const caret = e.target.selectionStart || v.length
-
-                  // tìm token hiện tại (từ cuối lên đầu tới khi gặp space/newline)
-                  let i = caret - 1
-                  while (i >= 0 && v[i] !== ' ' && v[i] !== '\n') i--
-                  const start = i + 1
-
-                  if (v[start] !== '@') { setMentionOpen(false); return }
-
-                  const q = v.slice(start + 1, caret).trim().toLowerCase()
-                  const rawMembers = (conversation?.members || conversation?.group?.members || [])
-                  const list = [
-                    { id: '__ALL__', name: '@All' },
-                    ...rawMembers.map(m => ({
-                      id: String(m._id || m.id),
-                      name: m.fullName || m.name || m.username || ''
-                    }))
-                  ].filter(m => !q ? true : (m.name || '').toLowerCase().includes(q))
-
-                  setMentionList(list.slice(0, 8))
-                  setMentionIndex(list.length ? 0 : -1)
-                  setMentionOpen(list.length > 0)
-                }}
-                onKeyDown={(e) => {
-                  // phím thường -> đang gõ
-                  if (e.key !== 'Enter') {
-                    emitTypingStart()
-                  }
-
-                  if (mentionOpen) {
-                    if (e.key === 'ArrowDown') {
-                      e.preventDefault()
-                      setMentionIndex(i => Math.min(i + 1, mentionList.length - 1))
-                      return
-                    }
-                    if (e.key === 'ArrowUp') {
-                      e.preventDefault()
-                      setMentionIndex(i => Math.max(i - 1, 0))
-                      return
-                    }
-                    if (e.key === 'Enter') {
-                      e.preventDefault()
-                      const pick = mentionList[mentionIndex] || mentionList[0]
-                      if (pick) {
-                        const el = inputRef.current
-                        const pos = el.selectionStart
-                        let i = pos - 1
-                        while (i >= 0 && messageText[i] !== ' ' && messageText[i] !== '\n') i--
-                        const start = i + 1
-                        const label = pick.id === '__ALL__' ? '@All' : `@${pick.name}`
-                        const next = messageText.slice(0, start) + label + ' ' + messageText.slice(pos)
-                        setMessageText(next)
-                        setMentionOpen(false)
-                        requestAnimationFrame(() => {
-                          el.focus()
-                          const newPos = start + label.length + 1
-                          el.setSelectionRange(newPos, newPos)
-                        })
-                      }
-                      return
-                    }
-                    if (e.key === 'Escape') {
-                      setMentionOpen(false)
-                      return
-                    }
-                  }
-
-                  // Enter để gửi (không Shift)
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault()
-                    handleSendMessage()
-                  }
-                }}
-                onFocus={() => {
-                  emitTypingStart()
-                }}
-                onBlur={() => {
-                  if (typingTimerRef.current) clearTimeout(typingTimerRef.current)
-                  typingTimerRef.current = null
-                  onStopTyping?.()
-                }}
-                placeholder={isCloud ? "Viết ghi chú..." : "Nhập tin nhắn..."}
-                className="pr-12 text-transparent caret-foreground bg-transparent relative"
-              />
-
-
-              {/* nút emoji giữ nguyên */}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                className="absolute right-2 top-1/2 -translate-y-1/2"
-                type="button"
-              >
-                <Smile className="w-4 h-4" />
-              </Button>
-
-              {showEmojiPicker && (
-                <div ref={pickerRef} className="absolute bottom-12 right-0 z-50">
-                  <EmojiPicker theme={currentTheme === "dark" ? "dark" : "light"} onEmojiClick={handleEmojiClick} />
-                </div>
-              )}
-
-              {/* popup gợi ý mention (chỉ thêm) */}
-              {mentionOpen && (
-                <div
-                  ref={mentionListRef}
-                  className="absolute z-50 left-0 bottom-12 w-[280px] max-h-60 overflow-y-auto rounded-lg border bg-popover shadow-lg"
-                >
-                  {mentionList.map((u, idx) => (
-                    <button
-                      key={u.id || idx}
-                      className={`w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-muted ${idx === mentionIndex ? 'bg-muted' : ''}`}
-                      onMouseDown={(e) => {
-                        e.preventDefault()
-                        const el = inputRef.current
-                        const pos = el.selectionStart
-                        let i = pos - 1
-                        while (i >= 0 && messageText[i] !== ' ' && messageText[i] !== '\n') i--
-                        const start = i + 1
-                        const label = u.id === '__ALL__' ? '@All' : `@${u.name}`
-                        const next = messageText.slice(0, start) + label + ' ' + messageText.slice(pos)
-                        setMessageText(next)
-                        setMentionOpen(false)
-                        requestAnimationFrame(() => {
-                          el.focus()
-                          const newPos = start + label.length + 1
-                          el.setSelectionRange(newPos, newPos)
-                        })
-                      }}
-                    >
-                      {u.id === '__ALL__' ? (
-                        <div className="w-8 h-8 grid place-items-center rounded-full bg-primary/10">＠</div>
-                      ) : (
-                        <Avatar className="w-8 h-8">
-                          <AvatarImage src={u.avatarUrl} />
-                          <AvatarFallback>{u.name?.[0]}</AvatarFallback>
-                        </Avatar>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium truncate">{u.id === '__ALL__' ? 'Gửi tất cả' : u.name}</div>
-                        <div className="text-xs text-muted-foreground truncate">@{u.id === '__ALL__' ? 'All' : u.name}</div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {(messageText.trim() || sending) ? (
-              <Button onClick={handleSendMessage} className="shrink-0" disabled={sending}>
-                {sending ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-              </Button>
-            ) : (
-              <Button
-                variant={isRecording ? 'destructive' : 'ghost'}
-                size="sm"
-                onClick={isRecording ? stopRecording : startRecording}
-                className="shrink-0"
-                type="button"
-              >
-                <Mic className={`w-5 h-5 ${isRecording ? 'animate-pulse' : ''}`} />
-              </Button>
-            )}
-          </div>
-
-          {isRecording && (
-            <div className="flex items-center gap-2 mt-2 text-destructive">
-              <div className="w-2 h-2 bg-destructive rounded-full animate-pulse"></div>
-              <span className="text-sm">Đang ghi âm...</span>
-            </div>
-          )}
-
-          {audioUrl && (
-            <div className="flex items-center space-x-2 p-2 bg-background rounded-md">
-              <Button onClick={() => setAudioUrl(null)} className="shrink-0 p-2 bg-red-100 hover:bg-red-200 rounded-full">
-                <X className="w-4 h-4 text-red-600" />
-              </Button>
-              <audio src={audioUrl} controls className="flex-1 h-8 outline-none" />
-              <Button onClick={handleSendAudioMessage} className="shrink-0 p-2 bg-green-100 hover:bg-green-200 rounded-full" disabled={sending}>
-                <Send className="w-4 h-4 text-green-600" />
-              </Button>
-            </div>
-          )}
-        </div>
+        {/* Call Modal */}
+        {call && (
+          <CallModal
+            open={!!call}
+            onOpenChange={(o) => setCall(o ? call : null)}
+            conversationId={conversation?._id}
+            currentUserId={currentUser?._id}
+            initialMode={call.mode}
+            callStartedAt={call.acceptedAt}
+            callId={call.callId}
+          />
+        )}
+        {viewerOpen && (
+          <MediaWindowViewer
+            open={viewerOpen}
+            startIndex={viewerIndex}
+            items={flatVisualItems}
+            onClose={() => setViewerOpen(false)}
+            title="Ảnh và video trong trò chuyện"
+          />
+        )}
       </div>
 
-      {/* Right Sidebar */}
-      <ChatSidebarRight conversation={conversation} isOpen={isOpen} />
-
-      {/* Call Ringing Banner */}
-      {ringing && (
-        <div className="fixed left-1/2 -translate-x-1/2 bottom-4 z-50 bg-card border rounded-xl shadow-lg px-4 py-3 flex items-center gap-3">
-          <img src={ringing.peer?.avatarUrl} alt="" className="w-10 h-10 rounded-full object-cover" />
-          <div className="mr-4">
-            <div className="text-sm font-semibold">{ringing.peer?.name}</div>
-            <div className="text-xs text-muted-foreground">
-              Đang gọi… còn {Math.ceil((ringing.leftMs || 0) / 1000)}s
-            </div>
-          </div>
-          <Button size="sm" variant="destructive" onClick={() => cancelCaller(toUserIds)}>
-            Hủy
-          </Button>
-        </div>
-      )}
-
-      {/* Call Modal */}
-      {call && (
-        <CallModal
-          open={!!call}
-          onOpenChange={(o) => setCall(o ? call : null)}
-          conversationId={conversation?._id}
-          currentUserId={currentUser?._id}
-          initialMode={call.mode}
-          callStartedAt={call.acceptedAt}
-          callId={call.callId}
-        />
-      )}
-      {viewerOpen && (
-        <MediaWindowViewer
-          open={viewerOpen}
-          startIndex={viewerIndex}
-          items={flatVisualItems}
-          onClose={() => setViewerOpen(false)}
-          title="Ảnh và video trong trò chuyện"
-        />
-      )}
-    </div>
-
-    <UserProfilePanel
+      <UserProfilePanel
         open={profileOpen}
         onClose={() => setProfileOpen(false)}
         user={profileUser || {}}
+        isFriend={uiFriendship.status === 'accepted'}
+        onAddFriend={async () => {
+          await handleSendFriendRequest()
+          setProfileOpen(false)
+        }}
+        onUnfriend={async () => {
+          await handleUnfriend()
+          setProfileOpen(false)
+        }}
       />
     </>
-    
+
   )
 }
