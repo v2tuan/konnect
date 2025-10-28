@@ -36,7 +36,6 @@ import {
 } from 'lucide-react'
 import { use, useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useSelector } from 'react-redux'
-import CallModal from '../../Modal/CallModal'
 import { MessageBubble } from './MessageBubble'
 import { io } from 'socket.io-client'
 import ChatSidebarRight from './ChatSidebarRight'
@@ -324,13 +323,8 @@ export function ChatArea({
   }
 
   // gọi điện
-  const [call, setCall] = useState(null)
-  const { ringing, startCall, cancelCaller, setOnOpenCall } = useCallInvite(currentUser?._id)
-  useEffect(() => {
-    setOnOpenCall((conversationId, mode, acceptedAt, callId) => {
-      setCall({ conversationId, mode, startedAt: acceptedAt, callId })
-    })
-  }, [setOnOpenCall])
+  const { ringing, startCall, cancelCaller } = useCallInvite(currentUser?._id)
+
 
   const toUserIds = isDirect
     ? [otherUserId].filter(Boolean)
@@ -1230,17 +1224,6 @@ export function ChatArea({
         )}
 
         {/* Call Modal */}
-        {call && (
-          <CallModal
-            open={!!call}
-            onOpenChange={(o) => setCall(o ? call : null)}
-            conversationId={conversation?._id}
-            currentUserId={currentUser?._id}
-            initialMode={call.mode}
-            callStartedAt={call.acceptedAt}
-            callId={call.callId}
-          />
-        )}
         {viewerOpen && (
           <MediaWindowViewer
             open={viewerOpen}
