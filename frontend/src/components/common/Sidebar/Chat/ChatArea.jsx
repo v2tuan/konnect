@@ -11,6 +11,8 @@ import { selectCurrentUser } from '@/redux/user/userSlice'
 import { useMuteStore } from "@/store/useMuteStore"
 import { formatChip, groupByDay, pickPeerStatus } from '@/utils/helper'
 import EmojiPicker from 'emoji-picker-react'
+import MediaWindowViewer from './MediaWindowViewer'
+import UserProfilePanel from "@/components/common/Modal/UserProfilePanel"
 import {
   Archive,
   AudioLines,
@@ -33,7 +35,7 @@ import {
   Video,
   X
 } from 'lucide-react'
-import { use, useEffect, useLayoutEffect,useMemo, useRef, useState } from 'react'
+import { use, useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useSelector } from 'react-redux'
 import CallModal from '../../Modal/CallModal'
 import { MessageBubble } from './MessageBubble'
@@ -41,6 +43,7 @@ import { io } from 'socket.io-client'
 import ChatSidebarRight from './ChatSidebarRight'
 import { set } from 'date-fns'
 import MediaWindowViewer from "@/components/common/Sidebar/Chat/MediaWindowViewer.jsx";
+
 
 export function ChatArea({
                            mode = 'direct',
@@ -72,7 +75,7 @@ export function ChatArea({
     sender: '',
     content: ''
   })
-// BƯỚC 1.1: THÊM STATE CHO VIEWER
+  // BƯỚC 1.1: THÊM STATE CHO VIEWER
   const [viewerOpen, setViewerOpen] = useState(false)
   const [viewerIndex, setViewerIndex] = useState(0)
 
@@ -133,6 +136,10 @@ export function ChatArea({
   const isCloud = type === 'cloud'
   const isDirect = type === 'direct'
   const isGroup = type === 'group'
+
+  //mo trang ca nhan
+  const [profileOpen, setProfileOpen] = useState(false)
+  const [profileUser, setProfileUser] = useState(null)
 
   // other user + friendship
   const otherUser = isDirect ? conversation?.direct?.otherUser : null
@@ -264,8 +271,8 @@ export function ChatArea({
   const toUserIds = isDirect
     ? [otherUserId].filter(Boolean)
     : ((conversation?.group?.members || [])
-    .map(m => m?._id || m?.id)
-    .filter(id => id && id !== currentUser?._id))
+      .map(m => m?._id || m?.id)
+      .filter(id => id && id !== currentUser?._id))
 
   const handleStartCall = (mode) => {
     if (!toUserIds.length) return
@@ -304,6 +311,23 @@ export function ChatArea({
     setShowEmojiPicker(false)
     setReplyingTo(null)
     console.log({ type: 'text', content: value, repliedMessage: replyingTo?.messageId || null })
+  }
+
+  const handleOpenProfile = (u) => {
+    if (!u) return
+    setProfileUser({
+      _id: u._id || u.id,
+      fullName: u.fullName || u.username || "User",
+      username: u.username,
+      avatarUrl: u.avatarUrl,
+      coverUrl: u.coverUrl,
+      gender: u.gender,
+      birthday: u.birthday || u.dateOfBirth,
+      phone: u.phone,
+      photos: u.photos || [],
+      mutualGroups: u.mutualGroups || 0
+    })
+    setProfileOpen(true)
   }
 
   const handleSendAudioMessage = () => {
@@ -438,6 +462,7 @@ export function ChatArea({
   }
 
   return (
+    <>
     <div className="flex flex-col h-full bg-background">
       {/* Main */}
       <div className={`flex flex-col flex-1 min-h-0 transition-all duration-300 ease-in-out ${isOpen ? 'mr-80' : 'mr-0'}`}>
@@ -568,6 +593,8 @@ export function ChatArea({
                         key={m.id || m._id || `${gi}-${mi}`}
                         message={{ ...m }}
                         showAvatar={showAvatar}
+                        currentUser={currentUser}
+                        onAvatarClick={handleOpenProfile}
                         showMeta={showMeta}
                         conversation={conversation}
                         setReplyingTo={setReplyingTo}
@@ -811,5 +838,13 @@ export function ChatArea({
         />
       )}
     </div>
+
+    <UserProfilePanel
+        open={profileOpen}
+        onClose={() => setProfileOpen(false)}
+        user={profileUser || {}}
+      />
+    </>
+    
   )
 }
