@@ -28,12 +28,29 @@ export function registerCallSignaling(io, authMiddleware) {
       socket.to(actualRoomId).emit('peer-joined', { peerId: socket.id, userId })
     })
 
-    socket.on('leave-call', ({ roomId, callId }) => {
+    socket.on('leave-call', ({ roomId, callId, conversationId, userId }) => {
       const actualRoomId = callId || roomId
       socket.leave(actualRoomId)
-      socket.to(actualRoomId).emit('peer-left', { peerId: socket.id })
-      console.log(`[WEBRTC] User left call room: ${actualRoomId}`)
+
+      console.log(`[WEBRTC] ${userId} left call room: ${actualRoomId}`)
+
+      // Báo cho các peer khác trong room biết user này rời
+      socket.to(actualRoomId).emit('peer-left', { peerId: socket.id, userId })
+
+      // --- ✅ FIX: nếu phòng chỉ còn 1 người thì gửi call:left để peer tự đóng ---
+      const room = nsp.adapter.rooms.get(actualRoomId)
+      const membersLeft = room ? room.size : 0
+
+      if (conversationId && membersLeft <= 1) {
+        console.log(`[WEBRTC] Broadcasting call:left (room now empty) conv ${conversationId}`)
+        socket.to(actualRoomId).emit('call:left', {
+          callId: actualRoomId,
+          conversationId,
+          userId
+        })
+      }
     })
+
 
     // ===== THÊM: SYNC MODE GIỮA PEERS =====
     socket.on('mode-changed', ({ mode, callId, roomId }) => {
