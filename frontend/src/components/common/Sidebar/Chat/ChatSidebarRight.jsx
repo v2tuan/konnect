@@ -11,12 +11,14 @@ import { deleteConversationAPI, leaveGroupAPI } from "@/apis";
 import { toast } from "react-toastify";
 import { useNavigate, useParams } from "react-router-dom";
 import AddMemberDialog from "../../Modal/AddMemberDialog";
+import GroupInfoDialog from "./GroupInfoDialog.jsx"
+
 
 export default function ChatSidebarRight({ conversation, isOpen, onClose }) {
   const navigate = useNavigate();
   const { conversationId: activeIdFromURL } = useParams();
   const panelRef = useRef(null);
-
+  const [infoOpen, setInfoOpen] = useState(false)
   // Gallery state
   const [showGallery, setShowGallery] = useState(false);
   const [galleryTab, setGalleryTab] = useState("media");
@@ -118,18 +120,31 @@ export default function ChatSidebarRight({ conversation, isOpen, onClose }) {
               <h2 className="text-lg font-semibold truncate">Conversation information</h2>
             </div>
             <div className="p-6 text-center border-b">
-              <div className="w-20 h-20 bg-blue-500 rounded-full flex items-center justify-center mx-auto mb-4 shrink-0">
-                {conversation?.conversationAvatarUrl ? (
-                  <Avatar className="w-20 h-20">
-                    <AvatarImage src={conversation?.conversationAvatarUrl} />
-                    <AvatarFallback>{conversation?.displayName?.[0] || "U"}</AvatarFallback>
-                  </Avatar>
-                ) : (
-                  <span className="text-2xl font-bold text-white">
-                    {conversation?.displayName?.[0] || "U"}
-                  </span>
-                )}
-              </div>
+              <button
+                type="button"
+                onClick={() => setInfoOpen(true)}
+                className="group w-fit mx-auto block"
+                title="Xem/Chỉnh sửa thông tin nhóm"
+              >
+                <div className="relative w-20 h-20 rounded-full mx-auto mb-4 ring-0 group-hover:ring-2 group-hover:ring-primary/40 transition">
+                  {conversation?.conversationAvatarUrl ? (
+                    <Avatar className="w-20 h-20">
+                      <AvatarImage src={conversation?.conversationAvatarUrl} />
+                      <AvatarFallback>{conversation?.displayName?.[0] || "U"}</AvatarFallback>
+                    </Avatar>
+                  ) : (
+                    <div className="w-20 h-20 bg-blue-500 rounded-full grid place-items-center">
+          <span className="text-2xl font-bold text-white">
+            {conversation?.displayName?.[0] || "U"}
+          </span>
+                    </div>
+                  )}
+                  <div className="absolute inset-0 rounded-full bg-background/30 opacity-0 group-hover:opacity-100 transition grid place-items-center">
+                    <span className="text-xs font-medium">Xem chi tiết</span>
+                  </div>
+                </div>
+              </button>
+
               <div className="flex items-center justify-center mb-4">
                 <h3 className="text-xl font-semibold truncate max-w-full px-2">
                   {conversation?.displayName}
@@ -354,6 +369,35 @@ export default function ChatSidebarRight({ conversation, isOpen, onClose }) {
           </div>
         )}
       </div>
+      {/* Group Info Dialog */}
+      <GroupInfoDialog
+        open={infoOpen}
+        onOpenChange={setInfoOpen}
+        conversation={conversation}
+        onAvatarUpdated={(url) => {
+          // tuỳ chọn: phát sự kiện để nơi khác cập nhật avatar
+          window.dispatchEvent(
+            new CustomEvent("conversation:avatar-updated", {
+              detail: { id: conversation?._id, url }
+            })
+          )
+        }}
+        onNameUpdated={(name) => {
+          // tuỳ chọn: phát sự kiện để nơi khác cập nhật tên
+          window.dispatchEvent(
+            new CustomEvent("conversation:name-updated", {
+              detail: { id: conversation?._id, name }
+            })
+          )
+        }}
+        onOpenAddMember={() => {
+          // nếu bạn có dialog AddMember riêng thì mở ở đây
+          // setOpenAddMember(true)
+        }}
+        onOpenManageMembers={() => {
+          // nếu bạn có trang quản trị thành viên riêng thì mở ở đây
+        }}
+      />
     </>
   );
 }

@@ -306,3 +306,48 @@ export const removeFriendAPI = async (friendUserId) => {
   )
   return data
 }
+// ===== Group meta (đổi tên, đổi avatar) =====
+export const renameGroupAPI = async (conversationId, newName) => {
+  const { data } = await authorizeAxiosInstance.patch(
+    `${API_ROOT}/api/conversation/chats/${conversationId}/meta`,
+    { name: newName }
+  );
+  return data;
+};
+
+export const changeGroupAvatarAPI = async (conversationId, file) => {
+  const form = new FormData();
+  form.append("avatar", file);             // field name 'avatar' (xem BE)
+  const { data } = await authorizeAxiosInstance.patch(
+    `${API_ROOT}/api/conversation/chats/${conversationId}/meta`,
+    form,
+    { headers: { "Content-Type": "multipart/form-data" } }
+  );
+  return data;
+};
+
+// ===== Member management (thêm đã có addMemberToGroup; bổ sung xoá) =====
+export const removeMembersFromGroupAPI = async (conversationId, memberIds = []) => {
+  const { data } = await authorizeAxiosInstance.delete(
+    `${API_ROOT}/api/conversation/chats/${conversationId}/members`,
+    { data: { memberIds } }
+  );
+  return data;
+};
+
+// (tuỳ chọn) đổi vai trò
+export const updateMemberRoleAPI = async (conversationId, memberId, role /* 'admin' | 'member' */) => {
+  const { data } = await authorizeAxiosInstance.patch(
+    `${API_ROOT}/api/conversation/chats/${conversationId}/members`,
+    { memberId, role }
+  );
+  return data;
+};
+export const updateConversationMetaAPI = async (conversationId, formData) => {
+  const res = await authorizeAxiosInstance.patch(
+    `${API_ROOT}/api/conversation/chats/${conversationId}/meta`,
+    formData,
+    { headers: { "Content-Type": "multipart/form-data" } }
+  );
+  return res.data;
+};

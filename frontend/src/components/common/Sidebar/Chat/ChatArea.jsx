@@ -823,8 +823,10 @@ export function ChatArea({
               <div className="flex-1 relative">
                 {/* overlay highlight for @mentions */}
                 <div
-                  ref={highlighterRef}
                   className="absolute inset-0 pointer-events-none px-3 py-2 text-sm leading-[1.25rem] whitespace-pre-wrap overflow-hidden"
+                  dangerouslySetInnerHTML={{
+                    __html: highlightInputHTML(messageText, mentions)
+                  }}
                 />
 
                 <Input
@@ -860,16 +862,8 @@ export function ChatArea({
                   onKeyDown={(e) => {
                     if (e.key !== "Enter") emitTypingStart()
                     if (mentionOpen) {
-                      if (e.key === "ArrowDown") {
-                        e.preventDefault()
-                        setMentionIndex((i) => Math.min(i + 1, mentionList.length - 1))
-                        return
-                      }
-                      if (e.key === "ArrowUp") {
-                        e.preventDefault()
-                        setMentionIndex((i) => Math.max(i - 1, 0))
-                        return
-                      }
+                      if (e.key === "ArrowDown") { e.preventDefault(); setMentionIndex((i) => Math.min(i + 1, mentionList.length - 1)); return }
+                      if (e.key === "ArrowUp")   { e.preventDefault(); setMentionIndex((i) => Math.max(i - 1, 0)); return }
                       if (e.key === "Enter") {
                         e.preventDefault()
                         const pick = mentionList[mentionIndex] || mentionList[0]
@@ -891,15 +885,9 @@ export function ChatArea({
                         }
                         return
                       }
-                      if (e.key === "Escape") {
-                        setMentionOpen(false)
-                        return
-                      }
+                      if (e.key === "Escape") { setMentionOpen(false); return }
                     }
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault()
-                      handleSendMessage()
-                    }
+                    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendMessage() }
                   }}
                   onFocus={() => emitTypingStart()}
                   onBlur={() => {
@@ -908,7 +896,8 @@ export function ChatArea({
                     onStopTyping?.()
                   }}
                   placeholder={isCloud ? "Viết ghi chú..." : "Nhập tin nhắn..."}
-                  className="pr-12 bg-transparent relative"
+                  // ✨ Quan trọng: làm chữ input trong suốt + giữ caret màu chuẩn → nhìn “phông chữ” giống file 2
+                  className="pr-12 text-transparent caret-foreground bg-transparent relative"
                 />
 
                 <Button
@@ -923,20 +912,23 @@ export function ChatArea({
 
                 {showEmojiPicker && (
                   <div ref={pickerRef} className="absolute bottom-12 right-0 z-50">
-                    <EmojiPicker theme={currentTheme === "dark" ? "dark" : "light"} onEmojiClick={(e) => {
-                      const emoji = e.emoji
-                      const input = inputRef.current
-                      if (input) {
-                        const start = input.selectionStart || 0
-                        const end = input.selectionEnd || 0
-                        const newText = messageText.substring(0, start) + emoji + messageText.substring(end)
-                        setMessageText(newText)
-                        setTimeout(() => {
-                          input.focus()
-                          input.setSelectionRange(start + emoji.length, start + emoji.length)
-                        }, 0)
-                      }
-                    }} />
+                    <EmojiPicker
+                      theme={currentTheme === "dark" ? "dark" : "light"}
+                      onEmojiClick={(e) => {
+                        const emoji = e.emoji
+                        const input = inputRef.current
+                        if (input) {
+                          const start = input.selectionStart || 0
+                          const end = input.selectionEnd || 0
+                          const newText = messageText.substring(0, start) + emoji + messageText.substring(end)
+                          setMessageText(newText)
+                          setTimeout(() => {
+                            input.focus()
+                            input.setSelectionRange(start + emoji.length, start + emoji.length)
+                          }, 0)
+                        }
+                      }}
+                    />
                   </div>
                 )}
 
