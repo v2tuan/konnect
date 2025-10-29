@@ -1,3 +1,4 @@
+import { User } from "@/components/user-table";
 import axiosClient from "@/lib/axiosClient"
 
 export const getUserStatistics = async (
@@ -35,5 +36,31 @@ export const getNewUserStatistics = async (
   const params = new URLSearchParams()
   params.append("since", since)
   const res = await axiosClient.get(`/users/new-stats?${params.toString()}`)
+  return res.data
+}
+
+export const findUsersWithFilter = async (filter: {
+  search?: string;
+  startDate?: string;
+  endDate?: string;
+  page?: number;
+  limit?: number;
+  sortBy?: string;
+  sort?: 'asc' | 'desc';
+}): Promise<{
+  total: number;
+  page: number;
+  totalPages: number;
+  users: User[];
+}> => {
+  const params = new URLSearchParams()
+  if (filter.search) params.append("search", filter.search)
+  if (filter.startDate) params.append("startDate", filter.startDate)
+  if (filter.endDate) params.append("endDate", filter.endDate)
+  if (filter.page) params.append("page", filter.page.toString())
+  if (filter.limit) params.append("limit", filter.limit.toString())
+  if (filter.sortBy) params.append("sortBy", filter.sortBy)
+  if (filter.sort) params.append("sort", filter.sort)
+  const res = await axiosClient.get(`/users/filter?${params.toString()}`)
   return res.data
 }
