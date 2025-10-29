@@ -69,6 +69,7 @@ import {
     TabsTrigger,
 } from "@/components/ui/tabs"
 import { findUsersWithFilter } from "@/api"
+import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar"
 
 export const userSchema = z.object({
     _id: z.string(),
@@ -113,6 +114,18 @@ const columns: ColumnDef<User>[] = [
                     aria-label="Select row"
                 />
             </div>
+        ),
+        enableSorting: false,
+        enableHiding: false,
+    },
+    {
+        accessorKey: "avatarUrl",
+        header: "Avatar",
+        cell: ({ row }) => (
+            <Avatar>
+                <AvatarImage src={row.original.avatarUrl} />
+                <AvatarFallback>{row.original.username.charAt(0).toUpperCase()}</AvatarFallback>
+            </Avatar>
         ),
         enableSorting: false,
         enableHiding: false,
@@ -265,9 +278,9 @@ const columns: ColumnDef<User>[] = [
                     </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-32">
-                    <DropdownMenuItem>Edit</DropdownMenuItem>
+                    {/* <DropdownMenuItem>Edit</DropdownMenuItem> */}
                     <DropdownMenuItem>View Profile</DropdownMenuItem>
-                    <DropdownMenuItem>Send Message</DropdownMenuItem>
+                    {/* <DropdownMenuItem>Send Message</DropdownMenuItem> */}
                     <DropdownMenuSeparator />
                     <DropdownMenuItem variant="destructive">Delete</DropdownMenuItem>
                 </DropdownMenuContent>
@@ -288,12 +301,12 @@ export function DataTable() {
     const [total, setTotal] = React.useState(0)
     const [data, setData] = React.useState<User[]>([])
     const [loading, setLoading] = React.useState(false)
-    
+
     // Filter states - chỉ là temporary values
     const [searchQuery, setSearchQuery] = React.useState("")
     const [startDate, setStartDate] = React.useState("")
     const [endDate, setEndDate] = React.useState("")
-    
+
     // Applied filters - giá trị thực sự dùng để fetch
     const [appliedFilters, setAppliedFilters] = React.useState({
         search: "",
@@ -409,20 +422,20 @@ export function DataTable() {
                     </SelectTrigger>
                     <SelectContent>
                         <SelectItem value="outline">Outline</SelectItem>
-                        <SelectItem value="past-performance">Past Performance</SelectItem>
+                        {/* <SelectItem value="past-performance">Past Performance</SelectItem>
                         <SelectItem value="key-personnel">Key Personnel</SelectItem>
-                        <SelectItem value="focus-documents">Focus Documents</SelectItem>
+                        <SelectItem value="focus-documents">Focus Documents</SelectItem> */}
                     </SelectContent>
                 </Select>
                 <TabsList className="hidden @4xl/main:flex">
-                    <TabsTrigger value="outline">Outline</TabsTrigger>
-                    <TabsTrigger value="past-performance">
+                    <TabsTrigger value="outline">User Statistics</TabsTrigger>
+                    {/* <TabsTrigger value="past-performance">
                         Past Performance <Badge variant="secondary">3</Badge>
                     </TabsTrigger>
                     <TabsTrigger value="key-personnel">
                         Key Personnel <Badge variant="secondary">2</Badge>
                     </TabsTrigger>
-                    <TabsTrigger value="focus-documents">Focus Documents</TabsTrigger>
+                    <TabsTrigger value="focus-documents">Focus Documents</TabsTrigger> */}
                 </TabsList>
                 <div className="flex items-center gap-2">
                     <DropdownMenu>
@@ -484,7 +497,7 @@ export function DataTable() {
                             </Button>
                         )}
                     </div>
-                    
+
                     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                         {/* Search Input */}
                         <div className="flex flex-col gap-2">
@@ -541,7 +554,7 @@ export function DataTable() {
                         {/* Find Button */}
                         <div className="flex flex-col gap-2">
                             <Label className="text-xs opacity-0">Action</Label>
-                            <Button 
+                            <Button
                                 onClick={handleFind}
                                 className="w-full"
                             >
