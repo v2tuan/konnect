@@ -15,6 +15,7 @@ import CloudPage from "./pages/CloudPage/CloudPage";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import GlobalCallModal from "./components/common/Modal/GlobalCallModal"
+import NotificationsPage from "@/components/common/Notification/NotificationsPage.jsx";
 
 const ProtectedRoute = () => {
   const currentUser = useSelector(selectCurrentUser);
@@ -46,7 +47,7 @@ export default function App() {
           <Route element={<MainLayout />}>
             <Route path="chats" element={<MessagePage />} />
             <Route path="chats/:conversationId" element={<MessagePage />} />
-
+            <Route path="notifications" element={<NotificationsPage />} />
             {/* ⭐ Xem tất cả media của 1 cuộc trò chuyện:
                 - /chats/:conversationId/media?cat=media   (Ảnh/Video)
                 - /chats/:conversationId/media?cat=audio   (Audio)

@@ -25,7 +25,7 @@ Router.use('/conversation', conversationRoutes)
 
 Router.use('/contacts', contactRoutes)
 
-Router.use('/notification/', notificationRoute)
+Router.use('/notification', notificationRoute)
 
 
 export const APIs_V1 = Router

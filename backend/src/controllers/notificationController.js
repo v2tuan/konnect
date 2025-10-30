@@ -64,7 +64,11 @@ const markRead = async (req, res, next) => {
     if (!userId) return res.status(401).json({message: "Unauthorized"})
 
     const {ids = []} = req.body || {}
-    const updated = await notificationService.markAsRead({userId, ids})
+    const updated = await notificationService.markAsRead({
+      userId,
+      ids,
+      io: req.io // ⬅️ Thêm dòng này
+    })
     return res.json({updated})
   } catch (e) {
     console.error("[notificationController][markRead] error:", e.message)

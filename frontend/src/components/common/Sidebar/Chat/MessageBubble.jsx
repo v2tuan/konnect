@@ -76,7 +76,7 @@ function formatFileSize(bytes) {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`
 }
 
-/* === Mentions helpers (được port từ code cũ) === */
+
 function renderMessageWithMentions(text = "", mentions = []) {
   if (!mentions?.length) return [text]
 
@@ -481,6 +481,7 @@ export function MessageBubble({ message, onOpenViewer, showAvatar, contact, show
                               : 'User'}
                           </span>
                         </div>
+
                       </div>
                       <div className="text-sm text-gray-600 truncate">
                         {message.repliedMessage.type === 'text' && (message.repliedMessage.body?.text || message.repliedMessage.text)}
