@@ -144,10 +144,6 @@ export default function FriendRequest() {
       <Card>
         <CardContent className="p-4 sm:p-6">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="relative w-full sm:max-w-sm">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 opacity-60" />
-              <Input className="pl-9" placeholder="Search requester…" value={q} onChange={(e) => setQ(e.target.value)} />
-            </div>
             <div className="flex items-center gap-2">
               <span className="hidden text-sm text-muted-foreground sm:inline-block">Per page</span>
               <select className="h-9 rounded-md border px-2 text-sm" value={limit} onChange={(e) => setLimit(Number(e.target.value))}>
