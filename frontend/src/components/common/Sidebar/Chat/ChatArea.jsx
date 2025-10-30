@@ -34,24 +34,22 @@ import {
   Video,
   X
 } from 'lucide-react'
-import { use, useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useSelector } from 'react-redux'
 import { MessageBubble } from './MessageBubble'
 import { io } from 'socket.io-client'
 import ChatSidebarRight from './ChatSidebarRight'
-import { set } from 'date-fns'
 
-// ===== mention helpers (local, không đụng file khác) =====
+// ===== mention helpers (local) =====
 const reEscape = (s) => s.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")
 
 function buildMentionRegex(candidates = []) {
   const names = candidates
     .map(c => (c.fullName || c.username || c.name || "").trim())
     .filter(Boolean)
-    .sort((a, b) => b.length - a.length) // ưu tiên tên dài hơn
+    .sort((a, b) => b.length - a.length)
     .map(reEscape)
   if (!names.length) return null
-  // Tìm "@Tên Có Khoảng Trắng" nguyên vẹn, không ăn chữ sau cùng (word-boundary)
   return new RegExp(`@(?:${names.join("|")})(?=\\b)`, "g")
 }
 
@@ -60,10 +58,10 @@ function findMentions(text = "", mentionRe) {
   const out = []
   let m
   while ((m = mentionRe.exec(text)) !== null) {
-    const raw = m[0] // "@Duy 36"
+    const raw = m[0]
     out.push({
       raw,
-      name: raw.slice(1), // "Duy 36"
+      name: raw.slice(1),
       start: m.index,
       end: m.index + raw.length
     })
@@ -71,16 +69,14 @@ function findMentions(text = "", mentionRe) {
   return out
 }
 
-// Render HTML highlight cho lớp overlay input:
-// - vẫn hiển thị '@'
-// - tô xanh toàn bộ phần TÊN (không chỉ chữ sát '@')
+// highlight overlay for input with @mention
 function highlightInputHTML(text = "", mentions = []) {
   if (!mentions.length) return text.replace(/\n/g, "<br/>")
   let html = ""
   let i = 0
   for (const mt of mentions) {
     html += text.slice(i, mt.start)
-    const at = text[mt.start] // '@'
+    const at = text[mt.start]
     const name = text.slice(mt.start + 1, mt.end)
     html += `${at}<span class="text-primary font-medium underline decoration-transparent">${name}</span>`
     i = mt.end
@@ -88,7 +84,6 @@ function highlightInputHTML(text = "", mentions = []) {
   html += text.slice(i)
   return html.replace(/\n/g, "<br/>")
 }
-
 
 export function ChatArea({
   mode = 'direct',
@@ -118,29 +113,27 @@ export function ChatArea({
   const { theme, systemTheme } = useTheme()
   const currentTheme = theme === "system" ? systemTheme : theme
 
-  // ---------- @mention: state & refs (chỉ thêm) ----------
+  // mention state
   const [mentionOpen, setMentionOpen] = useState(false)
   const [mentionIndex, setMentionIndex] = useState(-1)
   const [mentionList, setMentionList] = useState([])
   const mentionListRef = useRef(null)
-  // ------------------------------------------------------
 
   const [replyingTo, setReplyingTo] = useState({
     sender: '',
     content: ''
   })
-  // BƯỚC 1.1: THÊM STATE CHO VIEWER
+
+  // Viewer state cho ảnh/video
   const [viewerOpen, setViewerOpen] = useState(false)
   const [viewerIndex, setViewerIndex] = useState(0)
   const flatVisualItems = useMemo(() => {
     const allMedia = []
     if (!Array.isArray(messages)) return []
-
     for (const msg of messages) {
       if (Array.isArray(msg.media)) {
         for (const m of msg.media) {
           if (m && (m.type === 'image' || m.type === 'video')) {
-            // Thêm các thông tin cần thiết cho viewer
             allMedia.push({
               _id: m._id,
               url: m.url,
@@ -158,20 +151,17 @@ export function ChatArea({
     }
     return allMedia
   }, [messages])
-  // BƯỚC 1.3: TẠO HÀM ĐỂ MỞ VIEWER
-  // Hàm này sẽ được truyền xuống MessageBubble
+
   const handleOpenViewer = (clickedMediaItem) => {
     if (!clickedMediaItem) return
-
-    // Tìm vị trí của media được click trong mảng phẳng
     const uniqueId = clickedMediaItem._id || clickedMediaItem.url
     const idx = flatVisualItems.findIndex(item => (item._id || item.url) === uniqueId)
-
     if (idx > -1) {
       setViewerIndex(idx)
       setViewerOpen(true)
     }
   }
+
   const handleCloseReply = () => {
     setReplyingTo(null)
   }
@@ -180,17 +170,17 @@ export function ChatArea({
     setReplyingTo(null)
   }, [conversation?._id])
 
-  // loại cuộc trò chuyện
+  // loại hội thoại
   const type = conversation?.type || mode
   const isCloud = type === 'cloud'
   const isDirect = type === 'direct'
   const isGroup = type === 'group'
 
-  //mo trang ca nhan
+  // modal profile user
   const [profileOpen, setProfileOpen] = useState(false)
   const [profileUser, setProfileUser] = useState(null)
 
-  // other user + friendship
+  // friendship logic
   const otherUser = isDirect ? conversation?.direct?.otherUser : null
   const otherUserId = otherUser?._id || otherUser?.id || null
   const friendship = (otherUser && otherUser.friendship) || { status: 'none' }
@@ -221,13 +211,11 @@ export function ChatArea({
     }))
   }, [conversation?._id, otherUserId, friendship?.status, friendship?.direction, friendship?.requestId])
 
-  // ✅ banner flags (giữ outgoing, thêm incoming)
   const shouldShowFriendBanner = isDirect && !!otherUserId && uiFriendship.status !== 'accepted'
   const outgoingSent = uiFriendship.status === 'pending' && uiFriendship.direction === 'outgoing'
-  const isIncoming = uiFriendship.status === 'pending' && uiFriendship.direction === 'incoming'
-  const otherName = otherUser?.fullName || otherUser?.username || 'Người dùng'
+  const isIncoming   = uiFriendship.status === 'pending' && uiFriendship.direction === 'incoming'
+  const otherName    = otherUser?.fullName || otherUser?.username || 'Người dùng'
 
-  // handlers friend request (giữ cũ + thêm incoming accept/decline)
   const handleSendFriendRequest = async () => {
     if (!otherUserId || friendReq.loading) return
     try {
@@ -244,14 +232,10 @@ export function ChatArea({
   const handleUnfriend = async () => {
     if (!otherUserId) return
     try {
-      // optimistic: set UI về 'none'
-      const prev = uiFriendship
       setUiFriendship({ status: 'none', direction: null, requestId: null })
       await removeFriendAPI(otherUserId)
-      // có thể toast thành công ở đây
     } catch (e) {
-      // rollback nếu fail
-      // setUiFriendship(prev) // nếu muốn hoàn tác
+      // rollback nếu muốn
     }
   }
 
@@ -260,19 +244,16 @@ export function ChatArea({
     if (!rid || friendReq.loading) return
     try {
       setFriendReq(s => ({ ...s, loading: true }))
-      // optimistic
       setUiFriendship({ status: 'none', direction: null, requestId: null })
       setFriendReq(s => ({ ...s, sent: false }))
       await updateFriendRequestStatusAPI({ requestId: rid, action: 'delete' })
       setFriendReq({ sent: false, requestId: null, loading: false })
     } catch (e) {
-      // rollback
       setUiFriendship({ status: 'pending', direction: 'outgoing', requestId: rid })
       setFriendReq(s => ({ ...s, sent: true, loading: false }))
     }
   }
 
-  // ✅ NEW: người nhận Accept / Decline
   const handleAcceptIncomingRequest = async () => {
     const rid = uiFriendship.requestId
     if (!rid || friendReq.loading) return
@@ -303,7 +284,7 @@ export function ChatArea({
   const safeName = conversation?.displayName ?? (isCloud ? 'Cloud Chat' : 'Conversation')
   const initialChar = safeName?.charAt(0)?.toUpperCase?.() || 'C'
 
-  // presence (✅ gọn: chỉ định nghĩa 1 lần, tránh trùng biến)
+  // presence
   const usersById = useSelector(state => state.user.usersById || {})
   const { isOnline, lastActiveAt } = pickPeerStatus(conversation, usersById)
   const presenceText = usePresenceText({ isOnline, lastActiveAt })
@@ -322,9 +303,8 @@ export function ChatArea({
           : 'var(--status-offline)'
   }
 
-  // gọi điện
+  // gọi điện (bản cũ đơn giản)
   const { ringing, startCall, cancelCaller } = useCallInvite(currentUser?._id)
-
 
   const toUserIds = isDirect
     ? [otherUserId].filter(Boolean)
@@ -358,7 +338,7 @@ export function ChatArea({
     const value = messageText.trim()
     if (!value || sending) return
 
-    // map tên → id (nếu BE cần)
+    // map mention name → id
     const mapNameToId = new Map(
       mentionCandidates.map(u => [
         (u.fullName || u.username || u.name || "").trim(),
@@ -384,17 +364,14 @@ export function ChatArea({
     setReplyingTo(null)
   }
 
-
   const handleOpenProfile = (u) => {
     if (!u) return
     const uid = String(u._id || u.id || "")
-    // tìm bản giàu field trong danh sách members của group
     const rich =
-    (conversation?.group?.members || []).find(
-      m => String(m._id || m.id) === uid
-    ) || null
+      (conversation?.group?.members || []).find(
+        m => String(m._id || m.id) === uid
+      ) || null
 
-    // merge: rich > u
     const src = { ...(u || {}), ...(rich || {}) }
 
     setProfileUser({
@@ -403,13 +380,11 @@ export function ChatArea({
       username: src.username || "",
       avatarUrl: src.avatarUrl || "",
       coverUrl: src.coverUrl || "",
-      // dùng model mới: bio & dateOfBirth
       bio: src.bio || "",
       dateOfBirth: src.dateOfBirth || src.birthday || "",
       phone: src.phone || "",
       photos: src.photos || [],
       mutualGroups: typeof src.mutualGroups === "number" ? src.mutualGroups : 0,
-      // mang theo friendship nếu có (để nút Add/Remove render đúng)
       friendship: src.friendship || u.friendship || { status: "none" }
     })
 
@@ -423,13 +398,6 @@ export function ChatArea({
     onSendMessage?.({ type: 'audio', content: blob })
     setAudioUrl(null)
     audioChunksRef.current = []
-  }
-
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSendMessage()
-    }
   }
 
   const handleEmojiClick = (emojiData) => {
@@ -446,16 +414,17 @@ export function ChatArea({
       }, 0)
     }
   }
+
   const isMutedLocal = useMuteStore(s => s.isMuted(conversation?._id))
   const setMutedLocal = useMuteStore(s => s.setMuted)
 
   async function handleMute(duration) {
     if (!conversation?._id) return
-    setMutedLocal(conversation._id, true) // optimistic
+    setMutedLocal(conversation._id, true)
     try {
-      await muteConversation(conversation._id, duration) // "forever" | 2 | 4 | 8 | 12 | 24
+      await muteConversation(conversation._id, duration)
     } catch {
-      setMutedLocal(conversation._id, false) // rollback
+      setMutedLocal(conversation._id, false)
     }
   }
 
@@ -466,6 +435,7 @@ export function ChatArea({
     catch { setMutedLocal(conversation._id, true) }
   }
 
+  // click-outside emoji picker
   useEffect(() => {
     function handleClickOutside(e) {
       if (pickerRef.current && !pickerRef.current.contains(e.target) && !(e.target).closest("button")) {
@@ -476,33 +446,26 @@ export function ChatArea({
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [])
 
+  // lazy load old msgs
   const [loadingOlder, setLoadingOlder] = useState(false)
   const messagesContainerRef = useRef(null)
   const isLoadingOlderRef = useRef(false)
   const shouldScrollToBottomRef = useRef(true)
 
-  // ✅ Lazy load older messages khi scroll lên top
   const handleScroll = useCallback(async () => {
     const container = messagesContainerRef.current
     if (!container || !onLoadOlder || isLoadingOlderRef.current) return
-
-    // Khi scroll gần top (< 100px) và còn tin nhắn cũ
     if (container.scrollTop < 100 && hasMore) {
       isLoadingOlderRef.current = true
       setLoadingOlder(true)
       shouldScrollToBottomRef.current = false
 
-      // Lưu vị trí scroll trước khi load
       const scrollTopBefore = container.scrollTop
       const scrollHeightBefore = container.scrollHeight
 
       try {
         const result = await onLoadOlder()
-
-        // Đợi DOM update
         await new Promise(resolve => setTimeout(resolve, 50))
-
-        // Giữ nguyên vị trí scroll
         if (container && result?.loadedCount > 0) {
           const scrollHeightAfter = container.scrollHeight
           const heightDiff = scrollHeightAfter - scrollHeightBefore
@@ -520,16 +483,13 @@ export function ChatArea({
   useEffect(() => {
     const container = messagesContainerRef.current
     if (!container) return
-
     container.addEventListener('scroll', handleScroll)
     return () => container.removeEventListener('scroll', handleScroll)
   }, [handleScroll])
 
-  // ✅ Detect user scroll position
   const handleUserScroll = useCallback(() => {
     const container = messagesContainerRef.current
     if (!container) return
-
     const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 50
     shouldScrollToBottomRef.current = isAtBottom
   }, [])
@@ -537,12 +497,10 @@ export function ChatArea({
   useEffect(() => {
     const container = messagesContainerRef.current
     if (!container) return
-
     container.addEventListener('scroll', handleUserScroll)
     return () => container.removeEventListener('scroll', handleUserScroll)
   }, [handleUserScroll])
 
-  // ✅ Auto scroll to bottom only if user is at bottom
   useLayoutEffect(() => {
     if (shouldScrollToBottomRef.current && messagesEndRef.current) {
       setTimeout(() => {
@@ -551,7 +509,6 @@ export function ChatArea({
     }
   }, [messages])
 
-  // ✅ Force scroll to bottom when conversation changes
   useEffect(() => {
     shouldScrollToBottomRef.current = true
     if (messagesEndRef.current) {
@@ -596,8 +553,15 @@ export function ChatArea({
       console.error("Error accessing microphone", err)
     }
   }
-  const socketRef = useRef(null)
 
+  const stopRecording = () => {
+    mediaRecorderRef.current?.stop()
+    mediaRecorderRef.current?.stream.getTracks().forEach(track => track.stop())
+    setIsRecording(false)
+  }
+
+  // socket to refresh media sidebar
+  const socketRef = useRef(null)
   useEffect(() => {
     socketRef.current = io(import.meta.env.VITE_WS_URL, { withCredentials: true })
     const s = socketRef.current
@@ -618,24 +582,18 @@ export function ChatArea({
       s.disconnect()
     }
   }, [conversation?._id])
-  const stopRecording = () => {
-    mediaRecorderRef.current?.stop()
-    mediaRecorderRef.current?.stream.getTracks().forEach(track => track.stop())
-    setIsRecording(false)
-  }
 
-  // ----- mention state -----
+  // ----- mention highlighter / typing indicators -----
   const [mentions, setMentions] = useState([])
   const highlighterRef = useRef(null)
 
-  // Ứng viên mention (chỉ với group)
   const mentionCandidates = (
     isGroup ? (conversation?.group?.members || []) : []
   ).filter(m => (m?.id || m?._id) && (m?.fullName || m?.username || m?.name))
 
   const mentionRe = useMemo(
     () => buildMentionRegex(mentionCandidates),
-    [conversation?._id] // đủ để re-build khi đổi group
+    [conversation?._id]
   )
 
   const recomputeMentions = useCallback((text) => {
@@ -654,21 +612,16 @@ export function ChatArea({
   useEffect(() => { recomputeMentions(messageText) }, [messageText, recomputeMentions])
 
   const typingTimerRef = useRef(null)
-  // thời gian không gõ nữa thì gửi stop (ms)
   const TYPING_STOP_DELAY = 10000
 
   const emitTypingStart = useCallback(() => {
-  // báo bắt đầu gõ
     onStartTyping?.()
-
-    // reset timer; nếu trong vòng 2s không gõ nữa thì stop
     if (typingTimerRef.current) clearTimeout(typingTimerRef.current)
     typingTimerRef.current = setTimeout(() => {
       onStopTyping?.()
       typingTimerRef.current = null
     }, TYPING_STOP_DELAY)
   }, [onStartTyping, onStopTyping])
-
 
   useEffect(() => {
     return () => {
@@ -723,17 +676,14 @@ export function ChatArea({
             </div>
           </div>
 
-          {/* ✅ FRIEND REQUEST BANNER */}
+          {/* Friend request banner */}
           {shouldShowFriendBanner && (
             <div className="px-4 py-3 bg-primary/5 border-b border-primary/20">
-              {/* Case 1: Chưa gửi lời mời */}
               {uiFriendship.status === 'none' && (
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <UserPlus className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-sm">
-                    Gửi lời mời kết bạn đến người này
-                    </span>
+                    <span className="text-sm">Gửi lời mời kết bạn đến người này</span>
                   </div>
                   <Button
                     size="sm"
@@ -744,25 +694,24 @@ export function ChatArea({
                     {friendReq.loading ? (
                       <>
                         <LoaderCircle className="w-3 h-3 mr-1 animate-spin" />
-                      Đang gửi...
+                        Đang gửi...
                       </>
                     ) : (
                       <>
                         <UserPlus className="w-3 h-3 mr-1" />
-                      Thêm bạn bè
+                        Thêm bạn bè
                       </>
                     )}
                   </Button>
                 </div>
               )}
 
-              {/* Case 2: Đã gửi lời mời (outgoing) */}
               {outgoingSent && (
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <LoaderCircle className="w-4 h-4 text-amber-500 animate-spin" />
                     <span className="text-sm">
-                    Đã gửi lời mời kết bạn đến <strong>{otherName}</strong>
+                      Đã gửi lời mời kết bạn đến <strong>{otherName}</strong>
                     </span>
                   </div>
                   <Button
@@ -777,7 +726,6 @@ export function ChatArea({
                 </div>
               )}
 
-              {/* Case 3: Nhận lời mời (incoming) */}
               {isIncoming && (
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -803,8 +751,8 @@ export function ChatArea({
                       disabled={friendReq.loading}
                       className="h-8"
                     >
-                      <X/>
-                    Decline
+                      <X />
+                      Decline
                     </Button>
                   </div>
                 </div>
@@ -816,18 +764,17 @@ export function ChatArea({
           <div
             ref={messagesContainerRef}
             className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden relative py-4"
+            onScroll={handleUserScroll}
           >
-            {/* Loading indicator */}
             {loadingOlder && (
               <div className="flex justify-center py-2 sticky top-0 bg-background/80 backdrop-blur-sm z-10">
                 <LoaderCircle className="w-5 h-5 animate-spin text-muted-foreground" />
               </div>
             )}
 
-            {/* No more messages */}
             {!hasMore && messages.length > 0 && (
               <div className="text-center text-xs text-muted-foreground py-2">
-              Không còn tin nhắn cũ hơn
+                Không còn tin nhắn cũ hơn
               </div>
             )}
 
@@ -862,7 +809,7 @@ export function ChatArea({
                           showMeta={showMeta}
                           conversation={conversation}
                           setReplyingTo={setReplyingTo}
-                          onOpenViewer={handleOpenViewer} // <-- THÊM PROP NÀY
+                          onOpenViewer={handleOpenViewer}
                         />
                       ) : (
                         <div
@@ -882,6 +829,7 @@ export function ChatArea({
                 )
               })}
               <div ref={messagesEndRef} />
+
               {othersTyping && (
                 <div className='flex items-end space-x-2 py-2 px-1 animate-fadeIn'>
                   <Avatar className="w-8 h-8">
@@ -906,7 +854,7 @@ export function ChatArea({
                       </div>
                     </div>
                   </div>
-                </ div>
+                </div>
               )}
             </div>
           </div>
@@ -917,7 +865,6 @@ export function ChatArea({
             {replyingTo && (
               <div className="mb-3 bg-primary/5 border-l-4 border-primary rounded p-3 flex items-start justify-between">
                 <div className="flex flex-1 items-center gap-3">
-                  {/* Thumbnail ảnh nếu có */}
                   {replyingTo.media && (
                     <>
                       {(() => {
@@ -965,6 +912,7 @@ export function ChatArea({
                       })()}
                     </>
                   )}
+
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="flex text-sm font-semibold items-center gap-1">
@@ -974,17 +922,18 @@ export function ChatArea({
                     <p className="text-xs truncate overflow-hidden whitespace-nowrap max-w-4xl">
                       {replyingTo.content}
                     </p>
-
                   </div>
+
                   <button
                     onClick={handleCloseReply}
-                    className="ml-3 tion-colors flex-shrink-0 cursor-pointer"
+                    className="ml-3 cursor-pointer"
                   >
                     <X className="w-4 h-4" />
                   </button>
                 </div>
               </div>
             )}
+
             <div className="flex items-end gap-2">
               <Input type="file" ref={fileRef} onChange={handleFileChange} className="hidden" />
               <Input type="file" ref={imageRef} onChange={handleImageChange} accept="image/*" className="hidden" multiple />
@@ -997,8 +946,9 @@ export function ChatArea({
               </Button>
 
               <div className="flex-1 relative">
-                {/* -------- overlay highlight cho @mention (không ảnh hưởng layout) -------- */}
+                {/* overlay highlight for @mention */}
                 <div
+                  ref={highlighterRef}
                   className="absolute inset-0 pointer-events-none px-3 py-2 text-sm leading-[1.25rem] whitespace-pre-wrap overflow-hidden"
                   dangerouslySetInnerHTML={{
                     __html: highlightInputHTML(messageText, mentions)
@@ -1012,14 +962,14 @@ export function ChatArea({
                     const v = e.target.value
                     setMessageText(v)
 
-                    // báo đang gõ (debounce qua emitTypingStart đã khai báo bên ngoài)
+                    // typing indicator
                     emitTypingStart()
 
-                    // gợi ý @mention chỉ khi là nhóm
+                    // gợi ý mention chỉ trong group
                     if (conversation?.type !== 'group') { setMentionOpen(false); return }
                     const caret = e.target.selectionStart || v.length
 
-                    // tìm token hiện tại (từ cuối lên đầu tới khi gặp space/newline)
+                    // tìm token hiện tại (từ caret ngược về space/newline)
                     let i = caret - 1
                     while (i >= 0 && v[i] !== ' ' && v[i] !== '\n') i--
                     const start = i + 1
@@ -1041,7 +991,6 @@ export function ChatArea({
                     setMentionOpen(list.length > 0)
                   }}
                   onKeyDown={(e) => {
-                  // phím thường -> đang gõ
                     if (e.key !== 'Enter') {
                       emitTypingStart()
                     }
@@ -1084,7 +1033,7 @@ export function ChatArea({
                       }
                     }
 
-                    // Enter để gửi (không Shift)
+                    // Enter để gửi
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault()
                       handleSendMessage()
@@ -1102,8 +1051,7 @@ export function ChatArea({
                   className="pr-12 text-transparent caret-foreground bg-transparent relative"
                 />
 
-
-                {/* nút emoji giữ nguyên */}
+                {/* emoji button */}
                 <Button
                   variant="ghost"
                   size="sm"
@@ -1120,7 +1068,7 @@ export function ChatArea({
                   </div>
                 )}
 
-                {/* popup gợi ý mention (chỉ thêm) */}
+                {/* mention popup */}
                 {mentionOpen && (
                   <div
                     ref={mentionListRef}
@@ -1205,7 +1153,11 @@ export function ChatArea({
         </div>
 
         {/* Right Sidebar */}
-        <ChatSidebarRight conversation={conversation} isOpen={isOpen} />
+        <ChatSidebarRight
+          conversation={conversation}
+          isOpen={isOpen}
+          onClose={() => setIsOpen(false)}
+        />
 
         {/* Call Ringing Banner */}
         {ringing && (
@@ -1214,16 +1166,16 @@ export function ChatArea({
             <div className="mr-4">
               <div className="text-sm font-semibold">{ringing.peer?.name}</div>
               <div className="text-xs text-muted-foreground">
-              Đang gọi… còn {Math.ceil((ringing.leftMs || 0) / 1000)}s
+                Đang gọi… còn {Math.ceil((ringing.leftMs || 0) / 1000)}s
               </div>
             </div>
             <Button size="sm" variant="destructive" onClick={() => cancelCaller(toUserIds)}>
-            Hủy
+              Hủy
             </Button>
           </div>
         )}
 
-        {/* Call Modal */}
+        {/* Media viewer full-screen */}
         {viewerOpen && (
           <MediaWindowViewer
             open={viewerOpen}
@@ -1235,6 +1187,7 @@ export function ChatArea({
         )}
       </div>
 
+      {/* Profile Side Panel */}
       <UserProfilePanel
         open={profileOpen}
         onClose={() => setProfileOpen(false)}
@@ -1250,6 +1203,5 @@ export function ChatArea({
         }}
       />
     </>
-
   )
 }

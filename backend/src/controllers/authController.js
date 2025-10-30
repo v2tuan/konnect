@@ -31,7 +31,6 @@ let login = async (req, res) => {
     }
 
     generateToken(user._id, res)
-
     const userSafe = await User.findById(user._id)
       .select("-password -__v -_destroy")
       .lean()

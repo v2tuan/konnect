@@ -250,3 +250,37 @@ export const removeFriendAPI = async (friendUserId) => {
   )
   return data
 }
+// ======================== NOTIFICATION APIs ========================
+export async function listNotifications({
+                                          cursor = null,
+                                          limit = 20,
+                                          onlyUnread = false,
+                                          type = null // ⬅️ THÊM VÀO
+                                        } = {}) {
+  const params = {};
+  if (cursor) params.cursor = cursor;
+  if (limit) params.limit = limit;
+  if (onlyUnread) params.onlyUnread = true;
+  if (type) params.type = type; // ⬅️ THÊM DÒNG NÀY
+
+  const { data } = await authorizeAxiosInstance.get(`${API_ROOT}/api/notification`, { params });
+  // Chuẩn hoá: support cả array hoặc {items:[...]}
+  return Array.isArray(data) ? data : (data?.items || []);
+}
+export async function markAllNotificationsRead({ type = null, conversationId = null } = {}) {
+  const body = {}
+  if (type) body.type = type
+  if (conversationId) body.conversationId = conversationId
+  const res = await authorizeAxiosInstance.put(`${API_ROOT}/api/notification/mark-all-read`, body)
+  return res.data || { modified: 0 }
+}
+
+export async function markNotificationsRead(ids = []) {
+  const res = await authorizeAxiosInstance.put(`${API_ROOT}/api/notification/mark-read`, { ids })
+  return res.data || { modified: 0 }
+}
+
+export async function unreadCount() {
+  const res = await authorizeAxiosInstance.get(`${API_ROOT}/api/notification/unread-count`)
+  return Number(res.data?.count || 0)
+}
