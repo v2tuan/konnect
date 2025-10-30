@@ -410,7 +410,47 @@ export function ChatSidebar({ currentView, onViewChange }) {
       window.removeEventListener('conversation:deleted', handleConversationDeletedFromOtherComponent)
     }
   }, [activeIdFromURL, navigate, setUnread])
+  useEffect(() => {
+    const onNameUpdated = (e) => {
+      const { id, name } = e.detail || {};
+      if (!id || !name) return;
+      setConversationList(prev =>
+        prev.map(c =>
+          String(extractId(c)) === String(id)
+            ? {
+              ...c,
+              displayName: name,
+              // nếu BE/FE còn dùng group.name ở đâu đó:
+              group: { ...(c.group || {}), name }
+            }
+            : c
+        )
+      );
+    };
 
+    const onAvatarUpdated = (e) => {
+      const { id, url } = e.detail || {};
+      if (!id || !url) return;
+      setConversationList(prev =>
+        prev.map(c =>
+          String(extractId(c)) === String(id)
+            ? {
+              ...c,
+              conversationAvatarUrl: url,
+              group: { ...(c.group || {}), avatarUrl: url }
+            }
+            : c
+        )
+      );
+    };
+
+    window.addEventListener('conversation:name-updated', onNameUpdated);
+    window.addEventListener('conversation:avatar-updated', onAvatarUpdated);
+    return () => {
+      window.removeEventListener('conversation:name-updated', onNameUpdated);
+      window.removeEventListener('conversation:avatar-updated', onAvatarUpdated);
+    };
+  }, [setConversationList]);
   // Initial load
   useEffect(() => {
     setCurrentPage(1)

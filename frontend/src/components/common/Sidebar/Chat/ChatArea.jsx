@@ -106,6 +106,8 @@ export function ChatArea({
   const audioChunksRef = useRef([])
   const isLoadingOlderRef = useRef(false)
   const shouldScrollToBottomRef = useRef(true)
+  const [localDisplayName, setLocalDisplayName] = useState(conversation?.displayName);
+  const [localAvatarUrl, setLocalAvatarUrl] = useState(conversation?.conversationAvatarUrl);
 
   const [isOpen, setIsOpen] = useState(false)
   const messagesEndRef = useRef(null)
@@ -183,6 +185,26 @@ export function ChatArea({
 
   const [uiFriendship, setUiFriendship] = useState({ status: "none", direction: null, requestId: null })
   const [friendReq, setFriendReq] = useState({ sent: false, requestId: null, loading: false })
+  useEffect(() => {
+    setLocalDisplayName(conversation?.displayName);
+    setLocalAvatarUrl(conversation?.conversationAvatarUrl);
+  }, [conversation?._id, conversation?.displayName, conversation?.conversationAvatarUrl]);
+  useEffect(() => {
+    const onNameUpdated = (e) => {
+      const { id, name } = e.detail || {};
+      if (String(id) === String(conversation?._id) && name) setLocalDisplayName(name);
+    };
+    const onAvatarUpdated = (e) => {
+      const { id, url } = e.detail || {};
+      if (String(id) === String(conversation?._id) && url) setLocalAvatarUrl(url);
+    };
+    window.addEventListener('conversation:name-updated', onNameUpdated);
+    window.addEventListener('conversation:avatar-updated', onAvatarUpdated);
+    return () => {
+      window.removeEventListener('conversation:name-updated', onNameUpdated);
+      window.removeEventListener('conversation:avatar-updated', onAvatarUpdated);
+    };
+  }, [conversation?._id]);
 
   useEffect(() => {
     setUiFriendship({
@@ -267,8 +289,8 @@ export function ChatArea({
 
   // ----- presence -----
   const currentUser = useSelector(selectCurrentUser)
-  const safeName = conversation?.displayName ?? (isCloud ? "Cloud Chat" : "Conversation")
-  const initialChar = safeName?.charAt(0)?.toUpperCase?.() || "C"
+  const safeName = localDisplayName ?? (isCloud ? "Cloud Chat" : "Conversation");
+  const initialChar = safeName?.charAt(0)?.toUpperCase?.() || "C";
 
   const usersById = useSelector((state) => state.user.usersById || {})
   const { isOnline, lastActiveAt } = pickPeerStatus(conversation, usersById)
@@ -562,7 +584,7 @@ export function ChatArea({
             <div className="flex items-center gap-3">
               <div className="relative">
                 <Avatar className="w-10 h-10">
-                  <AvatarImage src={conversation?.conversationAvatarUrl} />
+                  <AvatarImage src={localAvatarUrl} />
                   <AvatarFallback>{initialChar}</AvatarFallback>
                 </Avatar>
                 {isDirect && (
