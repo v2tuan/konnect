@@ -48,20 +48,50 @@ function ViewerContent({
   useEffect(() => { setRotation(0); setScale(1); setFit(true); }, [active]);
 
   // Keyboard
+
+
+  // Keyboard
   useEffect(() => {
     const onKey = (e) => {
-      if (e.key === "Escape") onClose?.();
-      if (e.key === "ArrowDown" || e.key.toLowerCase() === "j") setActive((i) => Math.min(i + 1, items.length - 1));
-      if (e.key === "ArrowUp" || e.key.toLowerCase() === "k") setActive((i) => Math.max(i - 1, 0));
-      if (isImage && (e.key === "+" || e.key === "=")) setScale((s) => Math.min(s + 0.1, 5));
-      if (isImage && e.key === "-") setScale((s) => Math.max(s - 0.1, 0.2));
-      if (isImage && e.key.toLowerCase() === "r") setRotation((r) => (r + 90) % 360);
-      if (isImage && e.key.toLowerCase() === "f") setFit((f) => !f);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [items.length, onClose, isImage]);
+      // ✅ Ngăn chặn Escape lan ra ngoài Dialog
+      if (e.key === "Escape") {
+        e.preventDefault(); // Ngăn hành vi mặc định (nếu có)
+        e.stopPropagation(); // Ngăn không cho Dialog bắt được event này
+        onClose?.();
+        return; // Dừng xử lý
+      }
 
+      // Bỏ qua nếu đang gõ chữ
+      const tag = (e.target?.tagName || "").toLowerCase();
+      const typing = tag === "input" || tag === "textarea" || e.target?.isContentEditable;
+      if (typing) return;
+
+      // Các phím tắt khác (ArrowUp/Down, J/K, +, -, R, F)
+      if (e.key === "ArrowDown" || e.key.toLowerCase() === "j") {
+        setActive((i) => Math.min(i + 1, items.length - 1)); return;
+      }
+      if (e.key === "ArrowUp" || e.key.toLowerCase() === "k") {
+        setActive((i) => Math.max(i - 1, 0)); return;
+      }
+      const withMod = e.ctrlKey || e.metaKey || e.altKey;
+      if (isImage && (e.key === "+" || e.key === "=") && !withMod) {
+        e.preventDefault(); setScale((s) => Math.min(5, s + 0.1)); return;
+      }
+      if (isImage && e.key === "-" && !withMod) {
+        e.preventDefault(); setScale((s) => Math.max(0.2, s - 0.1)); return;
+      }
+      if (isImage && e.key.toLowerCase() === "r" && !withMod) {
+        e.preventDefault(); setRotation((r) => (r + 90) % 360); return;
+      }
+      if (isImage && e.key.toLowerCase() === "f" && !withMod) {
+        e.preventDefault(); setFit((f) => !f);
+      }
+    };
+
+    // Dùng capture: true để bắt sự kiện Esc trước Dialog
+    window.addEventListener("keydown", onKey, { capture: true });
+    return () => window.removeEventListener("keydown", onKey, { capture: true });
+  }, [items.length, isImage, onClose]); // Dependencies giữ nguyên
   // Load-more khi gần cuối cột phải
   const onRightScroll = useCallback(() => {
     if (!rightPaneRef.current || !hasMore || !onLoadMore) return;
@@ -101,22 +131,30 @@ function ViewerContent({
   const scaleText = useMemo(() => `${Math.round(scale * 100)}%`, [scale]);
 
   return (
-    <div className="fixed inset-0 z-[1000] bg-black/90 text-white">
+    <div className="fixed inset-0 z-[1000] bg-black/90 text-white" onClick={(e) => e.stopPropagation()}>
       {/* Top bar */}
       <div className="h-12 px-4 border-b border-white/10 flex items-center justify-between">
         <div className="truncate">{title}</div>
         <div className="flex items-center gap-3">
           <div className="text-xs opacity-80">{items.length ? `${active + 1}/${items.length}` : "0/0"}</div>
-          <Button size="sm" variant="secondary" onClick={onClose} className="h-8 px-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            // ✅ Ngăn click nút Đóng lan ra ngoài Dialog
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose?.();
+            }}
+            className="h-8 px-2"
+          >
             <X className="w-4 h-4 mr-1" /> Đóng
           </Button>
         </div>
       </div>
-
       {/* Body */}
       <div className="h-[calc(100vh-6.5rem)] w-full flex">
         {/* Main */}
-        <div className="flex-1 flex items-center justify-center p-4 relative overflow-hidden">
+        <div className="flex-1 flex items-center justify-center p-4 relative overflow-hidden">y
           {/* media */}
           <div className="max-w-[96%] max-h-[96%]">
             {isVideo ? (

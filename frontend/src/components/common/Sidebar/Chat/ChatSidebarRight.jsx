@@ -12,6 +12,7 @@ import { toast } from "react-toastify";
 import { useNavigate, useParams } from "react-router-dom";
 import AddMemberDialog from "../../Modal/AddMemberDialog";
 import GroupInfoDialog from "./GroupInfoDialog.jsx"
+import DirectInfoDialog from "./DirectInfoDialog.jsx";
 
 
 export default function ChatSidebarRight({ conversation, isOpen, onClose }) {
@@ -93,7 +94,20 @@ export default function ChatSidebarRight({ conversation, isOpen, onClose }) {
   const buttonStyle = "h-full w-full grid place-items-center rounded-lg hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
   const contentStyle = "flex flex-col items-center leading-none";
   const textStyle = "text-xs font-medium";
-
+  const peer =
+    conversation?.type === "direct"
+      ? {
+        id: conversation?.direct?.otherUser?.id,
+        fullName: conversation?.direct?.otherUser?.fullName,
+        username: conversation?.direct?.otherUser?.userName,
+        avatarUrl: conversation?.direct?.otherUser?.avatarUrl,
+        // Nếu backend đã trả thêm các field này thì truyền vào:
+        bio: conversation?.direct?.otherUser?.bio,
+        dateOfBirth: conversation?.direct?.otherUser?.dateOfBirth,
+        phone: conversation?.direct?.otherUser?.phone,
+        gender: conversation?.direct?.otherUser?.gender
+      }
+      : null;
   return (
     <>
       <div
@@ -370,34 +384,40 @@ export default function ChatSidebarRight({ conversation, isOpen, onClose }) {
         )}
       </div>
       {/* Group Info Dialog */}
-      <GroupInfoDialog
-        open={infoOpen}
-        onOpenChange={setInfoOpen}
-        conversation={conversation}
-        onAvatarUpdated={(url) => {
-          // tuỳ chọn: phát sự kiện để nơi khác cập nhật avatar
-          window.dispatchEvent(
-            new CustomEvent("conversation:avatar-updated", {
+      {conversation?.type === "group" ? (
+        <GroupInfoDialog
+          open={infoOpen}
+          onOpenChange={setInfoOpen}
+          conversation={conversation}
+          onAvatarUpdated={(url) => {
+            window.dispatchEvent(new CustomEvent("conversation:avatar-updated", {
               detail: { id: conversation?._id, url }
-            })
-          )
-        }}
-        onNameUpdated={(name) => {
-          // tuỳ chọn: phát sự kiện để nơi khác cập nhật tên
-          window.dispatchEvent(
-            new CustomEvent("conversation:name-updated", {
+            }));
+          }}
+          onNameUpdated={(name) => {
+            window.dispatchEvent(new CustomEvent("conversation:name-updated", {
               detail: { id: conversation?._id, name }
-            })
-          )
-        }}
-        onOpenAddMember={() => {
-          // nếu bạn có dialog AddMember riêng thì mở ở đây
-          // setOpenAddMember(true)
-        }}
-        onOpenManageMembers={() => {
-          // nếu bạn có trang quản trị thành viên riêng thì mở ở đây
-        }}
-      />
+            }));
+          }}
+          onOpenAddMember={() => {}}
+          onOpenManageMembers={() => {}}
+        />
+      ) : (
+        <DirectInfoDialog
+          open={infoOpen}
+          onOpenChange={setInfoOpen}
+          conversation={conversation}
+          peer={peer}
+          onCall={(p) => {
+            // Hook cuộc gọi (tuỳ bạn triển khai)
+            toast.info(`Bắt đầu gọi: ${p?.fullName || "người dùng"}`);
+          }}
+          onMessage={() => {
+            setInfoOpen(false);
+            // đã đang ở cuộc trò chuyện hiện tại nên không cần điều hướng
+          }}
+        />
+      )}
     </>
   );
 }

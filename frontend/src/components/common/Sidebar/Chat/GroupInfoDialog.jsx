@@ -17,9 +17,40 @@ import {
   fetchConversationMedia
 } from "@/apis";
 
-// ⬇️ PORTAL VIEWER (bạn đã có file riêng). Import đúng đường dẫn của bạn:
+// ✅ Portal viewer dùng chung của bạn
 import MediaWindowViewer from "@/components/common/Sidebar/Chat/MediaWindowViewer.jsx";
 
+/* ----------------------------- Helpers ảnh-only ---------------------------- */
+const IMG_EXT = ["jpg","jpeg","png","gif","webp","bmp","avif","jfif","heic","heif"];
+
+function isImageMedia(m) {
+  const mime = (m?.mimeType || m?.contentType || m?.metadata?.mimetype || "").toLowerCase();
+  if (mime.startsWith("image/")) return true;
+  const url = m?.secure_url || m?.url || "";
+  const ext = (url.split("?")[0].split(".").pop() || "").toLowerCase();
+  if (IMG_EXT.includes(ext)) return true;
+  return (m?.type || "").toLowerCase() === "image";
+}
+
+function normalizeImage(m) {
+  if (!isImageMedia(m)) return null;
+  const url = m?.secure_url || m?.url || "";
+  if (!url) return null;
+  return {
+    _id: m._id || m.id || url,
+    url,
+    type: "image",
+    thumbnailUrl: m?.thumbnailUrl || m?.metadata?.thumbnailUrl || url,
+    metadata: {
+      originalName: m?.originalName || m?.metadata?.originalName || m?.metadata?.filename || "",
+      createdAt: m?.createdAt || m?.metadata?.createdAt,
+      senderName: m?.senderName || m?.metadata?.senderName,
+      mimetype: (m?.mimeType || m?.contentType || m?.metadata?.mimetype || "").toLowerCase()
+    }
+  };
+}
+
+/* --------------------------------- Dialog --------------------------------- */
 function GroupInfoDialog({
                            open,
                            onOpenChange,
@@ -33,26 +64,26 @@ function GroupInfoDialog({
   const [name, setName] = useState(conversation?.displayName || "");
   const [saving, setSaving] = useState(false);
 
-  // avatar
+  // Avatar
   const fileRef = useRef(null);
   const [avatarFile, setAvatarFile] = useState(null);
   const [avatarPreview, setAvatarPreview] = useState(null);
 
-  // media preview (4 tile)
-  const [preview, setPreview] = useState([]);   // 0..3 items
-  const [totalCount, setTotalCount] = useState(0);
+  // Preview media (4 tiles)
+  const [preview, setPreview] = useState([]);      // array ảnh đã normalize
+  const [totalCount, setTotalCount] = useState(0); // tổng ảnh
   const [loadingMedia, setLoadingMedia] = useState(false);
-  const [mediaBump, setMediaBump] = useState(0); // trigger reload
+  const [mediaBump, setMediaBump] = useState(0);   // trigger reload preview
 
-  // full viewer state
+  // Viewer state (chỉ ảnh)
   const [viewerOpen, setViewerOpen] = useState(false);
-  const [viewerItems, setViewerItems] = useState([]);
+  const [viewerItems, setViewerItems] = useState([]); // ảnh đã normalize
   const [viewerIndex, setViewerIndex] = useState(0);
   const [viewerPage, setViewerPage] = useState(1);
   const [viewerHasMore, setViewerHasMore] = useState(false);
   const viewerLimit = 36;
 
-  // reset khi mở
+  // Reset khi mở
   useEffect(() => {
     if (!open) return;
     setName(conversation?.displayName || "");
@@ -66,7 +97,7 @@ function GroupInfoDialog({
     setMediaBump((t) => t + 1);
   }, [open, conversation?._id, conversation?.displayName]);
 
-  // load media preview (tối đa 4)
+  // Load preview ảnh (tối đa 4)
   useEffect(() => {
     let alive = true;
     async function run() {
@@ -74,17 +105,16 @@ function GroupInfoDialog({
       setLoadingMedia(true);
       try {
         const res = await fetchConversationMedia({
-          type: "image, video",
           conversationId: conversation._id,
-          // tuỳ BE, có thể dùng "visual" hoặc bỏ trống type.
-          // để chắc ăn, để trống => lấy tất cả ảnh/video.
+          type: "image",  // ép BE trả về chỉ ảnh
           page: 1,
           limit: 4
         });
-        const items = res?.items ?? res?.data ?? [];
-        const total = res?.total ?? res?.count ?? items.length;
+        const raw = res?.items ?? res?.data ?? [];
+        const imgs = raw.map(normalizeImage).filter(Boolean);
+        const total = res?.total ?? res?.count ?? imgs.length;
         if (!alive) return;
-        setPreview(items.slice(0, 4));
+        setPreview(imgs.slice(0, 4));
         setTotalCount(total);
       } catch (e) {
         if (!alive) return;
@@ -99,7 +129,7 @@ function GroupInfoDialog({
     return () => { alive = false; };
   }, [open, conversation?._id, mediaBump]);
 
-  // lắng nghe khi upload xong để reload preview
+  // Reload preview khi upload xong (sự kiện toàn cục của bạn)
   useEffect(() => {
     const onUploaded = (e) => {
       if (e?.detail?.conversationId === conversation?._id) {
@@ -110,7 +140,7 @@ function GroupInfoDialog({
     return () => window.removeEventListener("media:uploaded", onUploaded);
   }, [conversation?._id]);
 
-  // helpers
+  // Helpers
   const initials = useMemo(
     () => (name || conversation?.displayName || "G")?.[0]?.toUpperCase?.() || "G",
     [name, conversation?.displayName]
@@ -148,6 +178,7 @@ function GroupInfoDialog({
         tasks.push(
           changeGroupAvatarAPI(conversation._id, avatarFile).then((res) => {
             onAvatarUpdated?.(res?.avatarUrl);
+            // phát event để preview reload
             window.dispatchEvent(
               new CustomEvent("media:uploaded", { detail: { conversationId: conversation._id } })
             );
@@ -165,18 +196,20 @@ function GroupInfoDialog({
     }
   };
 
-  // =============== MEDIA VIEWER ===============
+  /* ========================= MEDIA VIEWER (ảnh-only) ======================== */
   const openViewerAt = async (index = 0) => {
     if (!conversation?._id) return;
-    // load trang đầu tiên cho viewer
     try {
       const res = await fetchConversationMedia({
         conversationId: conversation._id,
+        type: "image",   // ép chỉ ảnh
         page: 1,
         limit: viewerLimit
       });
-      const items = res?.items ?? res?.data ?? [];
+      const raw = res?.items ?? res?.data ?? [];
+      const items = raw.map(normalizeImage).filter(Boolean);
       const total = res?.total ?? res?.count ?? items.length;
+
       setViewerItems(items);
       setViewerIndex(Math.max(0, Math.min(index, items.length - 1)));
       setViewerPage(1);
@@ -194,12 +227,15 @@ function GroupInfoDialog({
     try {
       const res = await fetchConversationMedia({
         conversationId: conversation._id,
+        type: "image",   // ép chỉ ảnh
         page: next,
         limit: viewerLimit
       });
-      const items = res?.items ?? res?.data ?? [];
-      const total = res?.total ?? res?.count ?? (viewerItems.length + items.length);
-      const merged = [...viewerItems, ...items];
+      const raw = res?.items ?? res?.data ?? [];
+      const more = raw.map(normalizeImage).filter(Boolean);
+      const total = res?.total ?? res?.count ?? (viewerItems.length + more.length);
+
+      const merged = [...viewerItems, ...more];
       setViewerItems(merged);
       setViewerPage(next);
       setViewerHasMore(merged.length < total);
@@ -211,19 +247,15 @@ function GroupInfoDialog({
   // Ô thứ 4 thể hiện “+N”
   const remain = Math.max(0, totalCount - Math.min(preview.length, 3));
 
-  // unified thumb renderer – luôn vuông, ảnh không méo
-  const Thumb = ({ src, isVideo = false, onClick, title }) => (
+  // Thumb vuông, đồng đều kích thước
+  const Thumb = ({ src, onClick, title }) => (
     <button
       type="button"
       onClick={onClick}
       title={title || ""}
       className="relative aspect-square rounded-md overflow-hidden bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
-      {isVideo ? (
-        <video src={src} className="absolute inset-0 w-full h-full object-cover" muted />
-      ) : (
-        <img src={src} alt="" className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
-      )}
+      <img src={src} alt="" loading="lazy" className="absolute inset-0 w-full h-full object-cover" />
     </button>
   );
 
@@ -234,12 +266,14 @@ function GroupInfoDialog({
           className="w-[460px] max-w-[92vw] p-0 flex flex-col overflow-hidden rounded-xl bg-card"
           style={{ maxHeight: "85vh" }}
         >
+          {/* Header */}
           <DialogHeader className="px-4 py-3 border-b sticky top-0 bg-card z-10">
             <DialogTitle className="text-base">Thông tin nhóm</DialogTitle>
           </DialogHeader>
 
+          {/* Body scroll */}
           <div className="overflow-y-auto flex-1">
-            {/* avatar + tên */}
+            {/* Avatar + tên */}
             <div className="px-4 pt-5 pb-4 text-center">
               <div className="relative w-20 h-20 mx-auto mb-3">
                 <Avatar className="w-20 h-20 text-2xl border">
@@ -312,7 +346,7 @@ function GroupInfoDialog({
 
             <div className="h-px bg-border" />
 
-            {/* Ảnh & Video – 4 ô vuông */}
+            {/* Ảnh & Video – 4 ô vuông (ảnh-only) */}
             <div className="px-4 py-3">
               <div className="flex items-center justify-between mb-2">
                 <div className="text-sm font-medium">Ảnh &amp; Video</div>
@@ -321,7 +355,7 @@ function GroupInfoDialog({
                   size="sm"
                   className="h-8 px-2"
                   disabled={loadingMedia || totalCount === 0}
-                  onClick={() => openViewerAt(0)}
+                  onClick={() => openViewerAt(0)} // mở viewer từ ảnh đầu tiên
                 >
                   Xem tất cả ({totalCount})
                 </Button>
@@ -339,41 +373,30 @@ function GroupInfoDialog({
                 </div>
               ) : (
                 <div className="grid grid-cols-4 gap-2">
-                  {/* 3 ô đầu là media thật */}
-                  {preview.slice(0, 3).map((m, idx) => {
-                    const src = m?.thumbnailUrl || m?.metadata?.thumbnailUrl || m?.secure_url || m?.url;
-                    const isVideo = (m?.type || m?.mimeType || "").startsWith("video");
-                    return (
-                      <Thumb
-                        key={(m._id || m.id || src || idx) + "p"}
-                        src={src}
-                        isVideo={isVideo}
-                        onClick={() => openViewerAt(idx)}
-                        title={m?.metadata?.originalName}
-                      />
-                    );
-                  })}
+                  {/* 3 ô đầu là ảnh thật */}
+                  {preview.slice(0, 3).map((m, idx) => (
+                    <Thumb
+                      key={m._id || m.url || idx}
+                      src={m.thumbnailUrl || m.url}
+                      onClick={() => openViewerAt(idx)}
+                      title={m?.metadata?.originalName}
+                    />
+                  ))}
 
-                  {/* Ô thứ 4: nếu còn nhiều thì hiện +N, nếu đủ 4 thì hiện media thứ 4 */}
-                  {remain > 0 ? (
+                  {/* Ô thứ 4: nếu còn nhiều thì hiện +N; nếu đủ 4 thì hiện ảnh thứ 4 */}
+                  {Math.max(0, totalCount - Math.min(preview.length, 3)) > 0 ? (
                     <button
                       type="button"
                       className="relative aspect-square rounded-md bg-muted flex items-center justify-center text-base font-medium"
                       onClick={() => openViewerAt(3)}
-                      title={`Xem thêm ${remain} ảnh/video khác`}
+                      title={`Xem thêm ${totalCount - 3} ảnh khác`}
                     >
-                      +{remain}
+                      +{totalCount - 3}
                     </button>
                   ) : preview[3] ? (
                     <Thumb
-                      key={(preview[3]._id || preview[3].id || 3) + "p"}
-                      src={
-                        preview[3].thumbnailUrl ||
-                        preview[3].metadata?.thumbnailUrl ||
-                        preview[3].secure_url ||
-                        preview[3].url
-                      }
-                      isVideo={(preview[3]?.type || preview[3]?.mimeType || "").startsWith("video")}
+                      key={preview[3]._id || preview[3].url || "p3"}
+                      src={preview[3].thumbnailUrl || preview[3].url}
                       onClick={() => openViewerAt(3)}
                       title={preview[3]?.metadata?.originalName}
                     />
@@ -434,6 +457,7 @@ function GroupInfoDialog({
             )}
           </div>
 
+          {/* Footer */}
           <DialogFooter className="px-4 py-3 border-t sticky bottom-0 bg-card z-10">
             <div className="ml-auto flex gap-2">
               <Button variant="ghost" size="sm" onClick={() => onOpenChange?.(false)}>
@@ -449,25 +473,20 @@ function GroupInfoDialog({
         </DialogContent>
       </Dialog>
 
-      {/* Media viewer portal */}
+      {/* Media viewer portal – ẢNH ONLY */}
       {viewerOpen && (
         <MediaWindowViewer
           items={viewerItems.map((m) => ({
-            // Chuẩn hóa field cho viewer
-            _id: m._id || m.id,
-            url: m.secure_url || m.url, // ảnh/video gốc
-            type: (m.type || m.mimeType || "").startsWith("video") ? "video" : "image",
-            metadata: {
-              originalName: m.originalName || m.metadata?.originalName || "",
-              createdAt: m.createdAt || m.metadata?.createdAt,
-              senderName: m.senderName || m.metadata?.senderName
-            }
+            _id: m._id,
+            url: m.url,
+            type: "image",         // đảm bảo ảnh
+            metadata: m.metadata
           }))}
           startIndex={viewerIndex}
           hasMore={viewerHasMore}
           onLoadMore={loadMoreViewer}
           onClose={() => setViewerOpen(false)}
-          title="Ảnh/Video"
+          title="Ảnh"
         />
       )}
     </>
