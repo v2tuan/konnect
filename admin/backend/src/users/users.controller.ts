@@ -1,4 +1,4 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Delete, Get, Param, Post, Query } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { FilterUsersDto } from './dto/filter-users.dto';
 
@@ -37,5 +37,15 @@ export class UsersController {
   @Get('filter')
   async findWithFilter(@Query() query: FilterUsersDto) {
     return this.userService.findWWithFilter(query);
+  }
+
+  @Delete(':id')
+  async deleteUser(@Param('id') id: string) {
+    return this.userService.deleteUser(id);
+  }
+
+  @Post(':id/restore')
+  async restoreUser(@Param('id') id: string) {
+    return this.userService.restoreUser(id);
   }
 }

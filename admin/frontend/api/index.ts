@@ -64,3 +64,13 @@ export const findUsersWithFilter = async (filter: {
   const res = await axiosClient.get(`/users/filter?${params.toString()}`)
   return res.data
 }
+
+export const deleteUser = async (id: string): Promise<User | null> => {
+  const res = await axiosClient.delete(`/users/${id}`)
+  return res.data
+}
+
+export const restoreUser = async (id: string): Promise<User | null> => {
+  const res = await axiosClient.post(`/users/${id}/restore`)
+  return res.data
+}

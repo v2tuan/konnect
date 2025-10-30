@@ -169,4 +169,17 @@ export class UsersService {
       users,
     };
   }
+
+  async deleteUser(id: string): Promise<User | null> {
+    await this.userModel
+      .findByIdAndUpdate(id, { _destroy: true }, { new: true })
+      .exec();
+    return this.userModel.findById(id).exec();
+  }
+
+  async restoreUser(id: string): Promise<User | null> {
+    return this.userModel
+      .findByIdAndUpdate(id, { _destroy: false }, { new: true })
+      .exec();
+  }
 }

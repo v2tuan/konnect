@@ -68,8 +68,11 @@ import {
     TabsList,
     TabsTrigger,
 } from "@/components/ui/tabs"
-import { findUsersWithFilter } from "@/api"
+import { deleteUser, findUsersWithFilter, restoreUser } from "@/api"
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar"
+import { AlertTriangle, RotateCcw } from "lucide-react"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog"
+import { de } from "zod/v4/locales"
 
 export const userSchema = z.object({
     _id: z.string(),
@@ -91,206 +94,8 @@ export const userSchema = z.object({
 
 export type User = z.infer<typeof userSchema>
 
-const columns: ColumnDef<User>[] = [
-    {
-        id: "select",
-        header: ({ table }) => (
-            <div className="flex items-center justify-center">
-                <Checkbox
-                    checked={
-                        table.getIsAllPageRowsSelected() ||
-                        (table.getIsSomePageRowsSelected() && "indeterminate")
-                    }
-                    onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
-                    aria-label="Select all"
-                />
-            </div>
-        ),
-        cell: ({ row }) => (
-            <div className="flex items-center justify-center">
-                <Checkbox
-                    checked={row.getIsSelected()}
-                    onCheckedChange={(value) => row.toggleSelected(!!value)}
-                    aria-label="Select row"
-                />
-            </div>
-        ),
-        enableSorting: false,
-        enableHiding: false,
-    },
-    {
-        accessorKey: "avatarUrl",
-        header: "Avatar",
-        cell: ({ row }) => (
-            <Avatar>
-                <AvatarImage src={row.original.avatarUrl} />
-                <AvatarFallback>{row.original.username.charAt(0).toUpperCase()}</AvatarFallback>
-            </Avatar>
-        ),
-        enableSorting: false,
-        enableHiding: false,
-    },
-    {
-        accessorKey: "fullName",
-        header: ({ column }) => {
-            return (
-                <Button
-                    variant="ghost"
-                    onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-                    className="-ml-4"
-                >
-                    User
-                    {column.getIsSorted() === "asc" ? (
-                        <IconArrowUp className="ml-2 size-4" />
-                    ) : column.getIsSorted() === "desc" ? (
-                        <IconArrowDown className="ml-2 size-4" />
-                    ) : null}
-                </Button>
-            )
-        },
-        cell: ({ row }) => {
-            return <div className="font-medium">{row.original.fullName}</div>
-        },
-        enableHiding: false,
-    },
-    {
-        accessorKey: "email",
-        header: ({ column }) => {
-            return (
-                <Button
-                    variant="ghost"
-                    onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-                    className="-ml-4"
-                >
-                    Email
-                    {column.getIsSorted() === "asc" ? (
-                        <IconArrowUp className="ml-2 size-4" />
-                    ) : column.getIsSorted() === "desc" ? (
-                        <IconArrowDown className="ml-2 size-4" />
-                    ) : null}
-                </Button>
-            )
-        },
-        cell: ({ row }) => (
-            <div className="text-sm">
-                {row.original.email}
-            </div>
-        ),
-    },
-    {
-        accessorKey: "username",
-        header: ({ column }) => {
-            return (
-                <Button
-                    variant="ghost"
-                    onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-                    className="-ml-4"
-                >
-                    Username
-                    {column.getIsSorted() === "asc" ? (
-                        <IconArrowUp className="ml-2 size-4" />
-                    ) : column.getIsSorted() === "desc" ? (
-                        <IconArrowDown className="ml-2 size-4" />
-                    ) : null}
-                </Button>
-            )
-        },
-        cell: ({ row }) => (
-            <Badge variant="outline" className="text-muted-foreground px-1.5">
-                @{row.original.username}
-            </Badge>
-        ),
-    },
-    {
-        accessorKey: "status.isOnline",
-        header: "Status",
-        cell: ({ row }) => (
-            <Badge variant="outline" className="text-muted-foreground px-1.5 gap-1">
-                {row.original.status.isOnline ? (
-                    <IconCircleCheckFilled className="fill-green-500 dark:fill-green-400 size-3" />
-                ) : (
-                    <IconCircle className="size-3" />
-                )}
-                {row.original.status.isOnline ? "Online" : "Offline"}
-            </Badge>
-        ),
-    },
-    {
-        accessorKey: "dateOfBirth",
-        header: ({ column }) => {
-            return (
-                <Button
-                    variant="ghost"
-                    onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-                    className="-ml-4"
-                >
-                    Date of Birth
-                    {column.getIsSorted() === "asc" ? (
-                        <IconArrowUp className="ml-2 size-4" />
-                    ) : column.getIsSorted() === "desc" ? (
-                        <IconArrowDown className="ml-2 size-4" />
-                    ) : null}
-                </Button>
-            )
-        },
-        cell: ({ row }) => (
-            <div className="text-sm">
-                {new Date(row.original.dateOfBirth).toLocaleDateString()}
-            </div>
-        ),
-    },
-    {
-        accessorKey: "createdAt",
-        header: ({ column }) => {
-            return (
-                <Button
-                    variant="ghost"
-                    onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-                    className="-ml-4"
-                >
-                    Created At
-                    {column.getIsSorted() === "asc" ? (
-                        <IconArrowUp className="ml-2 size-4" />
-                    ) : column.getIsSorted() === "desc" ? (
-                        <IconArrowDown className="ml-2 size-4" />
-                    ) : null}
-                </Button>
-            )
-        },
-        cell: ({ row }) => (
-            <div className="text-sm">
-                {new Date(row.original.createdAt).toLocaleDateString()}
-            </div>
-        ),
-    },
-    {
-        id: "actions",
-        cell: () => (
-            <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                    <Button
-                        variant="ghost"
-                        className="data-[state=open]:bg-muted text-muted-foreground flex size-8"
-                        size="icon"
-                    >
-                        <IconDotsVertical />
-                        <span className="sr-only">Open menu</span>
-                    </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-32">
-                    {/* <DropdownMenuItem>Edit</DropdownMenuItem> */}
-                    <DropdownMenuItem>View Profile</DropdownMenuItem>
-                    {/* <DropdownMenuItem>Send Message</DropdownMenuItem> */}
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem variant="destructive">Delete</DropdownMenuItem>
-                </DropdownMenuContent>
-            </DropdownMenu>
-        ),
-    },
-]
-
 export function DataTable() {
-    const [rowSelection, setRowSelection] = React.useState({})
+    const [rowSelection, setRowSelection] = React.useState<Record<string, boolean>>({})
     const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({})
     const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
     const [sorting, setSorting] = React.useState<SortingState>([])
@@ -301,6 +106,8 @@ export function DataTable() {
     const [total, setTotal] = React.useState(0)
     const [data, setData] = React.useState<User[]>([])
     const [loading, setLoading] = React.useState(false)
+    const [open, setOpen] = React.useState(false)
+    const [selectedId, setSelectedId] = React.useState<string>("")
 
     // Filter states - chỉ là temporary values
     const [searchQuery, setSearchQuery] = React.useState("")
@@ -346,6 +153,228 @@ export function DataTable() {
 
         fetchData()
     }, [appliedFilters, sorting, pagination])
+
+    const columns: ColumnDef<User>[] = [
+        {
+            id: "select",
+            header: ({ table }) => (
+                <div className="flex items-center justify-center">
+                    <Checkbox
+                        checked={
+                            table.getIsAllPageRowsSelected() ||
+                            (table.getIsSomePageRowsSelected() && "indeterminate")
+                        }
+                        onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+                        aria-label="Select all"
+                    />
+                </div>
+            ),
+            cell: ({ row }) => (
+                <div className="flex items-center justify-center">
+                    <Checkbox
+                        checked={row.getIsSelected()}
+                        onCheckedChange={(value) => row.toggleSelected(!!value)}
+                        aria-label="Select row"
+                    />
+                </div>
+            ),
+            enableSorting: false,
+            enableHiding: false,
+        },
+        {
+            accessorKey: "avatarUrl",
+            header: "Avatar",
+            cell: ({ row }) => (
+                <Avatar>
+                    <AvatarImage src={row.original.avatarUrl} />
+                    <AvatarFallback>{row.original.username.charAt(0).toUpperCase()}</AvatarFallback>
+                </Avatar>
+            ),
+            enableSorting: false,
+            enableHiding: false,
+        },
+        {
+            accessorKey: "fullName",
+            header: ({ column }) => {
+                return (
+                    <Button
+                        variant="ghost"
+                        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+                        className="-ml-4"
+                    >
+                        User
+                        {column.getIsSorted() === "asc" ? (
+                            <IconArrowUp className="ml-2 size-4" />
+                        ) : column.getIsSorted() === "desc" ? (
+                            <IconArrowDown className="ml-2 size-4" />
+                        ) : null}
+                    </Button>
+                )
+            },
+            cell: ({ row }) => {
+                return <div className="font-medium">{row.original.fullName}</div>
+            },
+            enableHiding: false,
+        },
+        {
+            accessorKey: "email",
+            header: ({ column }) => {
+                return (
+                    <Button
+                        variant="ghost"
+                        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+                        className="-ml-4"
+                    >
+                        Email
+                        {column.getIsSorted() === "asc" ? (
+                            <IconArrowUp className="ml-2 size-4" />
+                        ) : column.getIsSorted() === "desc" ? (
+                            <IconArrowDown className="ml-2 size-4" />
+                        ) : null}
+                    </Button>
+                )
+            },
+            cell: ({ row }) => (
+                <div className="text-sm">
+                    {row.original.email}
+                </div>
+            ),
+        },
+        {
+            accessorKey: "username",
+            header: ({ column }) => {
+                return (
+                    <Button
+                        variant="ghost"
+                        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+                        className="-ml-4"
+                    >
+                        Username
+                        {column.getIsSorted() === "asc" ? (
+                            <IconArrowUp className="ml-2 size-4" />
+                        ) : column.getIsSorted() === "desc" ? (
+                            <IconArrowDown className="ml-2 size-4" />
+                        ) : null}
+                    </Button>
+                )
+            },
+            cell: ({ row }) => (
+                <Badge variant="outline" className="text-muted-foreground px-1.5">
+                    @{row.original.username}
+                </Badge>
+            ),
+        },
+        {
+            accessorKey: "status.isOnline",
+            header: "Status",
+            cell: ({ row }) => (
+                <Badge variant="outline" className="text-muted-foreground px-1.5 gap-1">
+                    {row.original.status.isOnline ? (
+                        <IconCircleCheckFilled className="fill-green-500 dark:fill-green-400 size-3" />
+                    ) : (
+                        <IconCircle className="size-3" />
+                    )}
+                    {row.original.status.isOnline ? "Online" : "Offline"}
+                </Badge>
+            ),
+        },
+        {
+            accessorKey: "dateOfBirth",
+            header: ({ column }) => {
+                return (
+                    <Button
+                        variant="ghost"
+                        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+                        className="-ml-4"
+                    >
+                        Date of Birth
+                        {column.getIsSorted() === "asc" ? (
+                            <IconArrowUp className="ml-2 size-4" />
+                        ) : column.getIsSorted() === "desc" ? (
+                            <IconArrowDown className="ml-2 size-4" />
+                        ) : null}
+                    </Button>
+                )
+            },
+            cell: ({ row }) => (
+                <div className="text-sm">
+                    {new Date(row.original.dateOfBirth).toLocaleDateString()}
+                </div>
+            ),
+        },
+        {
+            accessorKey: "createdAt",
+            header: ({ column }) => {
+                return (
+                    <Button
+                        variant="ghost"
+                        onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+                        className="-ml-4"
+                    >
+                        Created At
+                        {column.getIsSorted() === "asc" ? (
+                            <IconArrowUp className="ml-2 size-4" />
+                        ) : column.getIsSorted() === "desc" ? (
+                            <IconArrowDown className="ml-2 size-4" />
+                        ) : null}
+                    </Button>
+                )
+            },
+            cell: ({ row }) => (
+                <div className="text-sm">
+                    {new Date(row.original.createdAt).toLocaleDateString()}
+                </div>
+            ),
+        },
+        {
+            accessorKey: "_destroy",
+            header: "Deleted",
+            cell: ({ row }) => {
+                const isDeleted = row.original._destroy;
+
+                return (
+                    <Badge
+                        variant={isDeleted ? "destructive" : "secondary"}
+                        className={`px-2 py-0.5 ${isDeleted ? "opacity-90" : "text-muted-foreground"}`}
+                    >
+                        {isDeleted ? "Yes" : "No"}
+                    </Badge>
+                );
+            },
+        },
+        {
+            id: "actions",
+            cell: ({ row }) => (
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button
+                            variant="ghost"
+                            className="data-[state=open]:bg-muted text-muted-foreground flex size-8"
+                            size="icon"
+                        >
+                            <IconDotsVertical />
+                            <span className="sr-only">Open menu</span>
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-32">
+                        {/* <DropdownMenuItem>Edit</DropdownMenuItem> */}
+                        <DropdownMenuItem>View Profile</DropdownMenuItem>
+                        {/* <DropdownMenuItem>Send Message</DropdownMenuItem> */}
+                        <DropdownMenuSeparator />
+                        {row.original._destroy ? (
+                            <DropdownMenuItem onClick={() => { setOpen(v => !v); setSelectedId(row.original._id) }} className="text-green-600 hover:text-green-700">
+                                Restore User
+                            </DropdownMenuItem>
+                        ) : (
+                            <DropdownMenuItem onClick={() => { setOpen(v => !v); setSelectedId(row.original._id) }} className="text-red-600 hover:text-red-700">
+                                Delete User
+                            </DropdownMenuItem>
+                        )}
+                    </DropdownMenuContent>
+                </DropdownMenu>
+            ),
+        },
+    ]
 
     const table = useReactTable({
         data,
@@ -401,6 +430,18 @@ export function DataTable() {
         if (e.key === 'Enter') {
             handleFind()
         }
+    }
+
+    const handleDeleteUsers = async () => {
+        await deleteUser(selectedId)
+        // Refresh data
+        handleFind()
+    }
+
+    const handleRestoreUsers = async () => {
+        await restoreUser(selectedId)
+        // Refresh data
+        handleFind()
     }
 
     return (
@@ -755,6 +796,19 @@ export function DataTable() {
                         </div>
                     </div>
                 </div>
+
+                <ConfirmActionDialog
+                    actionType={data.find(user => user._id === selectedId && !user._destroy) ? "delete" : "restore"}
+                    open={open}
+                    setOpen={setOpen}
+                    onConfirm={() => {
+                        if (data.find(user => user._id === selectedId && !user._destroy)) {
+                            handleDeleteUsers()
+                        } else {
+                            handleRestoreUsers()
+                        }
+                    }}
+                />
             </TabsContent>
             <TabsContent
                 value="past-performance"
@@ -772,5 +826,68 @@ export function DataTable() {
                 <div className="aspect-video w-full flex-1 rounded-lg border border-dashed"></div>
             </TabsContent>
         </Tabs>
+    )
+}
+
+// components hiện thông báo bạn có chắc chắn muốn xóa hoặc muốn restore không dùng dialog shadcn
+// Reusable Dialog Components
+type ConfirmActionDialogProps = {
+    actionType: "delete" | "restore"
+    onConfirm?: () => void
+    open: boolean
+    setOpen: (open: boolean) => void
+}
+
+export function ConfirmActionDialog({
+    actionType,
+    onConfirm,
+    open,
+    setOpen,
+}: ConfirmActionDialogProps) {
+    const handleConfirm = () => {
+        if (onConfirm) onConfirm()
+        setOpen(false)
+    }
+
+    const isDelete = actionType === "delete"
+    const iconColor = isDelete ? "text-red-500" : "text-green-500"
+    const icon = isDelete ? (
+        <AlertTriangle className={`h-8 w-8 ${iconColor}`} />
+    ) : (
+        <RotateCcw className={`h-8 w-8 ${iconColor}`} />
+    )
+
+    const title = isDelete
+        ? "Are you absolutely sure you want to delete?"
+        : "Are you sure you want to restore this item?"
+
+    const description = isDelete
+        ? "This action cannot be undone. This will permanently delete your account and remove your data from our servers."
+        : "This will restore the item and make it visible or usable again."
+
+    const confirmButtonText = isDelete ? "Delete" : "Restore"
+    const confirmButtonVariant = isDelete ? "destructive" : "default"
+
+    return (
+        <Dialog open={open} onOpenChange={setOpen}>
+            <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader className="text-center">
+                    <div className="flex justify-center mb-3">{icon}</div>
+                    <DialogTitle className="text-lg font-semibold">{title}</DialogTitle>
+                    <DialogDescription className="text-gray-500 text-sm">
+                        {description}
+                    </DialogDescription>
+                </DialogHeader>
+
+                <DialogFooter className="mt-5 flex justify-end space-x-2">
+                    <Button variant="outline" onClick={() => setOpen(false)}>
+                        Cancel
+                    </Button>
+                    <Button variant={confirmButtonVariant} onClick={handleConfirm}>
+                        {confirmButtonText}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     )
 }
