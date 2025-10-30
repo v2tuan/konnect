@@ -243,6 +243,13 @@ export const addMemberToGroup = async (conversationId, memberIds) => {
   )
   return response.data
 }
+
+export const removeFriendAPI = async (friendUserId) => {
+  const { data } = await authorizeAxiosInstance.delete(
+    `${API_ROOT}/api/contacts/friends/${friendUserId}`
+  )
+  return data
+}
 // ======================== NOTIFICATION APIs ========================
 export async function listNotifications({
                                           cursor = null,

@@ -10,5 +10,7 @@ Router.route('/friends/requests')
   .put(authMiddleware, contactController.updateStatusRequest)
 Router.route('/friends')
   .get(authMiddleware, contactController.getAllFriends)
+  
+Router.delete('/friends/:friendUserId', authMiddleware, contactController.removeFriend)
 
 export const contactRoutes = Router

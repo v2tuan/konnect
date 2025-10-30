@@ -211,6 +211,11 @@ export function useWebRTCGroup({ roomId, currentUserId, initialMode = 'video', c
         newMap.delete(peerId)
         return newMap
       })
+
+      if (peerIdsRef.current.length === 0) {
+        console.log('[WebRTC] No peers left, leaving call automatically')
+        socket.emit('leave-call', { roomId, callId, conversationId: roomId, userId: currentUserId })
+  }
     }
 
     // ===== THÊM: Xử lý mode change từ peer =====
@@ -302,7 +307,7 @@ export function useWebRTCGroup({ roomId, currentUserId, initialMode = 'video', c
       socket.off('rtc-answer', onRtcAnswer)
       socket.off('rtc-ice', onRtcIce)
 
-      socket.emit('leave-call', { roomId, callId })
+      socket.emit('leave-call', { roomId, callId, conversationId: roomId, userId: currentUserId })
       stopLocal()
 
       pcsRef.current.forEach(pc => pc.close())

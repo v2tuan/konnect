@@ -127,7 +127,7 @@ function findMentionsFromMembers(text = "", conversation) {
 }
 /* === End mentions helpers === */
 
-export function MessageBubble({ message,onOpenViewer, showAvatar, contact, showMeta = true, conversation, setReplyingTo }) {
+export function MessageBubble({ message, onOpenViewer, showAvatar, contact, showMeta = true, conversation, setReplyingTo, currentUser, onAvatarClick }) {
   const [hovered, setHovered] = useState(false)
   const [open, setOpen] = useState(false)
   const isOwn = !!message?.isOwn
@@ -142,8 +142,6 @@ export function MessageBubble({ message,onOpenViewer, showAvatar, contact, showM
   const sysSid = (message?.sender?._id || message?.senderId || "").toString()
   const sysName = (message?.sender?.fullName || message?.sender?.username || "").trim().toLowerCase()
   const isSystemMessage = sysName === "system" || sysSid === SYSTEM_ID_FALLBACK
-
-  const sender = useMemo(() => pickSender(conversation, message, contact), [conversation, message, contact])
 
   const [usersData, setUsersData] = useState({})
   useEffect(() => {
@@ -160,6 +158,69 @@ export function MessageBubble({ message,onOpenViewer, showAvatar, contact, showM
       }
     })()
   }, [userEmojiMap])
+
+  function getMemberById(conversation, id) {
+    const mems = conversation?.group?.members || []
+    return mems.find(u => String(u.id || u._id) === String(id)) || null
+  }
+
+  const resolveSender = () => {
+    const type = conversation?.type
+
+    // GROUP: ưu tiên message.sender (nếu BE đã enrich),
+    // nếu chưa có thì fallback tra trong conversation.group.members theo senderId
+    if (type === "group") {
+      if (message?.sender) {
+        const s = message.sender
+        return {
+          _id: s._id || s.id || message.senderId || null,
+          fullName: s.fullName || s.username || "User",
+          username: s.username || null,
+          avatarUrl: s.avatarUrl || null,
+          status: s.status || null
+        }
+      }
+      const sid = message?.senderId
+      if (!sid) return null
+      const m = getMemberById(conversation, sid)
+      if (m) {
+        return {
+          _id: m._id || m.id,
+          fullName: m.fullName || m.username || "User",
+          username: m.username || null,
+          avatarUrl: m.avatarUrl || null,
+          status: m.status || null
+        }
+      }
+      // cuối cùng: tối thiểu hóa từ senderId
+      return {
+        _id: sid,
+        fullName: "User",
+        username: null,
+        avatarUrl: null,
+        status: null
+      }
+    }
+
+    // DIRECT: so sánh với currentUser để biết mình/đối phương
+    if (type === "direct") {
+      const meId = String(currentUser?._id || "")
+      const senderIsMe = String(message?.senderId || "") === meId
+      return senderIsMe ? currentUser : conversation?.direct?.otherUser || null
+    }
+
+    // CLOUD: luôn là chính mình
+    if (type === "cloud") {
+      return currentUser || null
+    }
+
+    return null
+  }
+
+
+  const sender = resolveSender()
+  const senderName = sender?.fullName || sender?.username || "User"
+
 
   const formatTime = (ts) => {
     if (!ts) return ""
@@ -216,18 +277,30 @@ export function MessageBubble({ message,onOpenViewer, showAvatar, contact, showM
 
   return (
     <div
-      className={`flex gap-2 ${message.reactions.length > 0 ? 'mb-4' : 'mb-2'} ${
+      className={`flex gap-2 ${(Array.isArray(message?.reactions) && message.reactions.length > 0) ? 'mb-4' : 'mb-2'} ${
         isSystemMessage ? 'justify-center' : (isOwn ? 'justify-end' : 'justify-start')
       }`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {!isOwn && showAvatar && !isSystemMessage && (
-        <Avatar className="w-8 h-8">
-          <AvatarImage src={isGroup ? sender?.avatarUrl : conversation?.direct?.otherUser?.avatarUrl} />
-          <AvatarFallback>{(isGroup ? sender?.fullName : contact?.name)?.charAt?.(0)?.toUpperCase?.() ?? "U"}</AvatarFallback>
-        </Avatar>
+
+      {!isSystemMessage && !isOwn && showAvatar && (
+        <button
+          type="button"
+          onClick={() => {
+            console.log("Clicked avatar of", sender)
+            sender && onAvatarClick?.(sender)
+          }}
+          className="rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
+          aria-label={`Open profile of ${senderName}`}
+        >
+          <Avatar className="w-8 h-8">
+            <AvatarImage src={sender?.avatarUrl} />
+            <AvatarFallback>{senderName.charAt(0).toUpperCase()}</AvatarFallback>
+          </Avatar>
+        </button>
       )}
+
 
       <div className={`relative ${isSystemMessage ? "max-w-[80%]" : "max-w-[70%]"} ${isOwn ? "order-first" : ""}`}>
         {isGroup && !isOwn && !isSystemMessage && (
@@ -272,158 +345,140 @@ export function MessageBubble({ message,onOpenViewer, showAvatar, contact, showM
             </div>
           ) : (
             <>
-              {message.media && message.media.length > 0 ? (
-                <>
-                  <div className="space-y-2">
+              {/* Bubble thường (media hoặc text) */}
+              {(message.media?.length ?? 0) > 0 ? (
+                <div className="space-y-2">
+                  {(() => {
+                    const list = Array.isArray(message.media) ? message.media : []
 
-                    {/* Hiển thị images và videos với grid layout */}
-                    {(images.length > 0 || videos.length > 0) && (
-                      <div className={`
-                        ${(images.length + videos.length) === 1 ? 'flex justify-center' :
-                        (images.length + videos.length) === 2 ? 'grid grid-cols-2 gap-2' :
-                          (images.length + videos.length) <= 4 ? 'grid grid-cols-2 gap-2 max-w-md' :
-                            'grid grid-cols-3 gap-2 max-w-lg'
-                      }
-                      `}>
-                        {/* Gộp cả mảng images và videos để render chung */}
-                        {[...images, ...videos].map((media, index) => {
+                    const images = list.filter(m => (m?.type || '').toLowerCase() === 'image')
+                    const videos = list.filter(m => (m?.type || '').toLowerCase() === 'video')
+                    const audios = list.filter(m => (m?.type || '').toLowerCase() === 'audio')
+                    const files = list.filter(m => (m?.type || '').toLowerCase() === 'file')
 
-                          // Tính tổng số media để quyết định style
-                          const totalMedia = images.length + videos.length;
+                    const grid = [...images, ...videos]
+                    const gridClass =
+        grid.length === 1
+          ? 'flex justify-center'
+          : grid.length === 2
+            ? 'grid grid-cols-2 gap-2'
+            : grid.length <= 4
+              ? 'grid grid-cols-2 gap-2 max-w-md'
+              : 'grid grid-cols-3 gap-2 max-w-lg'
 
-                          return (
-                            <button
-                              type="button"
-                              key={media._id || media.url || `media-${index}`}
-                              className={`relative overflow-hidden rounded-lg cursor-pointer group 
-                                ${totalMedia > 1 ? 'aspect-square' : ''}  /* ✅ CHỈ ÉP VUÔNG KHI CÓ NHIỀU MEDIA */
-                              `}
-                              onClick={() => onOpenViewer?.(media)}
-                            >
-                              {message.isPinned && (
-                                <Pin className="absolute top-1 right-1 w-3 h-3 text-yellow-500 z-10" />
-                              )}
+                    return (
+                      <>
+                        {/* Grid ảnh & video */}
+                        {grid.length > 0 && (
+                          <div className={gridClass}>
+                            {grid.map((media, index) => (
+                              <button
+                                type="button"
+                                key={media._id || media.url || `media-${index}`}
+                                className="relative aspect-square overflow-hidden rounded-lg cursor-pointer group"
+                                onClick={() => onOpenViewer?.(media)}
+                              >
+                                {message.isPinned && (
+                                  <Pin className="absolute top-1 right-1 w-3 h-3 text-yellow-500 z-10" />
+                                )}
 
-                              {media.type === 'image' ? (
-                                <img
-                                  src={media.url}
-                                  alt={media.metadata?.filename || "message attachment"}
-                                  className={`
-                                    ${totalMedia > 1
-                                    ? 'w-full h-full object-cover' // Style cho grid (nhiều media)
-                                    : 'max-w-xs md:max-w-sm max-h-96 object-contain' // ✅ Style cho 1 media (giới hạn kích thước)
-                                  }
-                                    group-hover:brightness-75 transition-all rounded-lg
-                                  `}
-                                />
-                              ) : (
-                                // SỬA LỖI 2: Thêm logic render video
-                                <video
-                                  src={media.url}
-                                  className={`
-                                    ${totalMedia > 1
-                                    ? 'w-full h-full object-cover' // Style cho grid (nhiều media)
-                                    : 'max-w-xs md:max-w-sm max-h-96 object-contain' // ✅ Style cho 1 media (giới hạn kích thước)
-                                  }
-                                    group-hover:brightness-75 transition-all rounded-lg
-                                  `}
-                                  muted
-                                />
-                              )}
-                            </button>
-                          )
-                        })}
-                      </div>
-                    )}
-
-                    {/* Files (Giữ nguyên logic render file) */}
-                    {files.length > 0 && (
-                      <div className="space-y-1">
-                        {files.map((m, i) => {
-                          const mimetype = m?.metadata?.mimetype || ""
-                          const filename = m?.metadata?.filename || "Unknown file"
-                          const sizeText = formatFileSize(m?.metadata?.size)
-                          const url = mediaUrl(m, message)
-                          const Icon =
-                            mimetype.includes("pdf")
-                              ? FileText
-                              : mimetype.includes("word") || mimetype.includes("document")
-                                ? FileText
-                                : mimetype.includes("sheet") || mimetype.includes("excel")
-                                  ? FileSpreadsheet
-                                  : mimetype.includes("zip") || mimetype.includes("rar") || mimetype.includes("archive")
-                                    ? Archive
-                                    : mimetype.includes("video")
-                                      ? VideoIcon
-                                      : mimetype.includes("audio")
-                                        ? Music
-                                        : File
-                          return (
-                            <div key={`file-${i}`} className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg border border-gray-200 transition-colors duration-200">
-                              <Icon className="w-8 h-8 text-gray-600" />
-                              <div className="flex-1 min-w-0">
-                                <div className="text-sm font-medium text-gray-900 truncate">{filename}</div>
-                                <div className="text-xs text-gray-500">{sizeText}</div>
-                              </div>
-                              <button onClick={() => handleDownload(url, filename)}>
-                                <Download className="w-4 h-4 text-gray-400 cursor-pointer" />
+                                {((media.type || '').toLowerCase() === 'image') ? (
+                                  <img
+                                    src={media.url ?? message.body?.media?.url}
+                                    alt={media.metadata?.filename || 'message attachment'}
+                                    className="w-full h-full object-cover group-hover:brightness-75 transition-all"
+                                  />
+                                ) : (
+                                  <video
+                                    src={media.url}
+                                    className="w-full h-full object-cover group-hover:brightness-75 transition-all"
+                                    muted
+                                  />
+                                )}
                               </button>
-                              {message.isPinned && <Pin className="w-3 h-3 text-yellow-500" />}
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )}
-
-                    {/* Hiển thị audio (Giữ nguyên logic render audio) */}
-                    {audios.length > 0 && (
-                      <div className="space-y-2">
-                        {audios.map((media, index) => (
-                          <div
-                            key={`audio-${index}`}
-                            className={`flex items-center gap-2 p-2 max-w-xs rounded-sm
-                                ${message.isOwn ? 'ml-auto bg-primary/10 border border-primary rounded-l-lg rounded-tr-lg'
-                              : 'mr-auto bg-gray-100 text-black rounded-r-lg rounded-tl-lg'} 
-                                shadow-sm`}
-                          >
-                            <audio controls className="flex-1 min-w-0">
-                              <source src={media.url} type={media.metadata?.mimetype || 'audio/webm'} />
-                              Your browser does not support the audio element.
-                            </audio>
-                            {message.isPinned && (
-                              <Pin className="w-4 h-4 text-yellow-500 shrink-0" />
-                            )}
+                            ))}
                           </div>
-                        ))}
-                      </div>
-                    )}
+                        )}
 
-                  </div>
-                </>
+                        {/* Files */}
+                        {files.length > 0 && (
+                          <div className="space-y-1">
+                            {files.map((m, i) => {
+                              const mimetype = m?.metadata?.mimetype || ''
+                              const filename = m?.metadata?.filename || 'Unknown file'
+                              const sizeText = formatFileSize(m?.metadata?.size)
+                              const url = mediaUrl(m, message)
+                              const Icon =
+                  mimetype.includes('pdf') ? FileText
+                    : (mimetype.includes('word') || mimetype.includes('document')) ? FileText
+                      : (mimetype.includes('sheet') || mimetype.includes('excel')) ? FileSpreadsheet
+                        : (mimetype.includes('zip') || mimetype.includes('rar') || mimetype.includes('archive')) ? Archive
+                          : mimetype.includes('video') ? VideoIcon
+                            : mimetype.includes('audio') ? Music
+                              : File
+
+                              return (
+                                <div key={`file-${i}`} className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg border border-gray-200 transition-colors duration-200">
+                                  <Icon className="w-8 h-8 text-gray-600" />
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-sm font-medium text-gray-900 truncate">{filename}</div>
+                                    <div className="text-xs text-gray-500">{sizeText}</div>
+                                  </div>
+                                  <button onClick={() => handleDownload(url, filename)}>
+                                    <Download className="w-4 h-4 text-gray-400 cursor-pointer" />
+                                  </button>
+                                  {message.isPinned && <Pin className="w-3 h-3 text-yellow-500" />}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+
+                        {/* Audio */}
+                        {audios.length > 0 && (
+                          <div className="space-y-2">
+                            {audios.map((media, index) => (
+                              <div
+                                key={`audio-${index}`}
+                                className={`flex items-center gap-2 p-2 max-w-xs rounded-sm
+                    ${message.isOwn ? 'ml-auto bg-primary/10 border border-primary rounded-l-lg rounded-tr-lg'
+                                : 'mr-auto bg-gray-100 text-black rounded-r-lg rounded-tl-lg'}
+                    shadow-sm`}
+                              >
+                                <audio controls className="flex-1 min-w-0">
+                                  <source src={media.url} type={media.metadata?.mimetype || 'audio/webm'} />
+                    Your browser does not support the audio element.
+                                </audio>
+                                {message.isPinned && <Pin className="w-4 h-4 text-yellow-500 shrink-0" />}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    )
+                  })()}
+                </div>
               ) : (
+              /* Bubble text thường */
                 <div
                   className={`
-                    relative p-3 rounded-sm
-                    ${isOwn
-                    ? 'bg-primary/10 border border-primary rounded-br-sm'
-                    : 'bg-secondary text-secondary-foreground rounded-bl-sm'
-                  }
-                  `}
+      relative p-3 rounded-sm
+      ${isOwn ? 'bg-primary/10 border border-primary rounded-br-sm'
+                  : 'bg-secondary text-secondary-foreground rounded-bl-sm'}
+    `}
                 >
                   {message.isPinned && <Pin className="absolute top-1 right-1 w-3 h-3 text-yellow-500" />}
+
                   {message.repliedMessage && (
                     <div
                       className={`flex-col items-center gap-2 p-2 mb-2 border-l-4 ${isOwn ? 'border-primary bg-primary/10' : 'border-secondary bg-secondary/10'} rounded-sm cursor-pointer`}
-                      onClick={() => {
-                        // Cuộn đến tin nhắn được trả lời (nếu có thể)
-                      }}
                     >
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 mb-1">
                           <span className="flex text-sm font-semibold items-center gap-1">
                             {message.repliedMessage.senderId
-                              ? (message.repliedMessage.senderId.fullName || message.repliedMessage.senderId.username || "User")
-                              : "User"}
+                              ? (message.repliedMessage.senderId.fullName || message.repliedMessage.senderId.username || 'User')
+                              : 'User'}
                           </span>
                         </div>
 
@@ -436,9 +491,13 @@ export function MessageBubble({ message,onOpenViewer, showAvatar, contact, showM
                       </div>
                     </div>
                   )}
-                  <p className="text-sm whitespace-pre-wrap break-words">{message.text ?? message.body?.text ?? ""}</p>
+
+                  <p className="text-sm whitespace-pre-wrap break-words">
+                    {renderMessageWithMentions(text, mentions)}
+                  </p>
                 </div>
               )}
+
 
               {Array.isArray(message?.reactions) && message.reactions.length > 0 && (
                 <div className="absolute -bottom-2 right-2 cursor-pointer shadow-sm rounded-full border" onClick={() => setOpen(true)}>
