@@ -368,10 +368,13 @@ export function MessageBubble({ message, onOpenViewer, showAvatar, contact, show
 
         {!isSystemMessage && (
           <div
-            className={`pointer-events-auto absolute top-1/2 -translate-y-1/2 ${isOwn ? "-left-22" : "-right-22"} opacity-0 transition-opacity duration-150 ${
+            className={`pointer-events-auto absolute top-1/2 -translate-y-1/2 ${
+              isOwn ? "-left-22" : "-right-22"
+            } opacity-0 transition-opacity duration-150 ${
               hovered ? "opacity-100" : "opacity-0"
-            } flex items-center gap-1`}
+            } flex items-center gap-1 z-[100]`}
           >
+
             <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => {
               const images = message.media.filter(m => m.type === 'image')
               const files = message.media.filter(m => m.type === 'file')
@@ -639,7 +642,7 @@ export function MessageBubble({ message, onOpenViewer, showAvatar, contact, show
                 onClick={() => handleAction("delete")}
               >
         Delete
-                <span className="block text-[11px] text-gray-500">Chỉ xoá với bạn</span>
+                <span className="block text-[11px] text-gray-500">Chỉ xoá tin nhắn với bạn</span>
               </button>
 
               {/* Thu hồi: chỉ nếu là tin của mình */}
@@ -648,9 +651,9 @@ export function MessageBubble({ message, onOpenViewer, showAvatar, contact, show
                   className="w-full text-left px-3 py-2 hover:bg-gray-100 text-red-600"
                   onClick={() => handleAction("recall")}
                 >
-          Thu hồi
+          Recall
                   <span className="block text-[11px] text-gray-500 text-red-500">
-            Thu hồi với tất cả mọi người
+            Thu hồi tin nhắn với tất cả mọi người
                   </span>
                 </button>
               )}
@@ -664,9 +667,9 @@ export function MessageBubble({ message, onOpenViewer, showAvatar, contact, show
                   setShowMenu(false)
                 }}
               >
-        View Detail
+        View detail
                 <span className="block text-[11px] text-gray-500">
-          Thông tin gửi
+          Xem chi tiết
                 </span>
               </button>
             </div>
