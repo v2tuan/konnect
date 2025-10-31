@@ -1,3 +1,4 @@
+/* eslint-disable no-empty */
 import { createListenerMiddleware, isAnyOf } from "@reduxjs/toolkit"
 import {
   loginUserAPI,
@@ -121,6 +122,20 @@ presenceListener.startListening({
     stopHeartbeat()
     const s = getSocket()
     if (s) {
+      try {
+        if (s.connected) {
+          // Emit logout with ack to avoid race with disconnect
+          await new Promise((resolve) => {
+            let settled = false
+            try {
+              s.timeout(1000).emit("user:logout", () => { settled = true; resolve() })
+            } catch {
+              resolve()
+            }
+            setTimeout(() => { if (!settled) resolve() }, 1200)
+          })
+        }
+      } catch {}
       s.off("presence:update")
       s.off("presence:snapshot")
       s.off("connect")
