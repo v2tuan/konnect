@@ -1,6 +1,16 @@
 import { User } from "@/components/user-table";
 import axiosClient from "@/lib/axiosClient"
 
+export const login = async (email: string, password: string): Promise<{ message: string; token: string }> => {
+  const res = await axiosClient.post('/auth/login', { email, password })
+  return { message: res.data.message, token: res.data.token }
+}
+
+export const logout = async (): Promise<{ message: string }> => {
+  const res = await axiosClient.post('/auth/logout')
+  return res.data
+}
+
 export const getUserStatistics = async (
   from?: string,
   to?: string
@@ -28,11 +38,11 @@ export const getNewUsersCount = async (since: string): Promise<number> => {
 export const getNewUserStatistics = async (
   since: string
 ): Promise<{
-    currentCount: number;
-    previousCount: number;
-    percentageChange: number;
-    trend: 'increase' | 'decrease' | 'no change';
-  }> => {
+  currentCount: number;
+  previousCount: number;
+  percentageChange: number;
+  trend: 'increase' | 'decrease' | 'no change';
+}> => {
   const params = new URLSearchParams()
   params.append("since", since)
   const res = await axiosClient.get(`/users/new-stats?${params.toString()}`)

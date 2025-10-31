@@ -1,7 +1,9 @@
-import { NestFactory } from '@nestjs/core';
+import { NestFactory, Reflector } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ValidationPipe } from '@nestjs/common';
+import cookieParser from 'cookie-parser';
+import { JwtAuthGuard } from './auth/jwt-auth.guard';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -11,6 +13,8 @@ async function bootstrap() {
     .setDescription('The Konnect Admin Backend API description')
     .setVersion('1.0')
     .build();
+
+  app.use(cookieParser());
 
   // Mở CORS cho tất cả nguồn (không khuyến khích cho production)
   app.enableCors({
@@ -28,6 +32,10 @@ async function bootstrap() {
       transform: true, // Tự động chuyển đổi payload thành các kiểu dữ liệu trong DTO
     }),
   );
+
+  // Áp guard toàn cục: mọi route đều qua JwtAuthGuard trừ route gắn @Public()
+  const reflector = app.get(Reflector);
+  app.useGlobalGuards(new JwtAuthGuard(reflector));
 
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api', app, document);

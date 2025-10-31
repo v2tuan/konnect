@@ -78,12 +78,14 @@ import {
   FieldSeparator,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { log } from "console"
+import { login } from "@/api"
 
 export default function LoginForm({
 }: React.ComponentProps<"div">) {
   const router = useRouter()
 
-  const handleSubmit = (event: React.FormEvent) => {
+  const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
     // Handle form submission logic here
     // Có 4 cách để lấy dữ liệu từ form
@@ -95,7 +97,10 @@ export default function LoginForm({
     const email = formData.get("email")
     const password = formData.get("password")
     console.log({ email, password })
-    if(email === "admin@gmail.com" && password === "admin"){
+    // Sau khi xử lý xong, chuyển hướng người dùng
+    const response = await login(email as string, password as string)
+    console.log("Login response:", response)
+    if (response.token) {
       router.push("/dashboard")
     } else {
       alert("Login failed")

@@ -73,6 +73,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar"
 import { AlertTriangle, RotateCcw } from "lucide-react"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog"
 import { de } from "zod/v4/locales"
+import { getSocket } from "@/lib/socket"
 
 export const userSchema = z.object({
     _id: z.string(),
@@ -94,6 +95,12 @@ export const userSchema = z.object({
 
 export type User = z.infer<typeof userSchema>
 
+type PresenceUpdate = {
+    userId: string;
+    isOnline: boolean;
+    lastActiveAt: string;
+}
+
 export function DataTable() {
     const [rowSelection, setRowSelection] = React.useState<Record<string, boolean>>({})
     const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({})
@@ -108,6 +115,23 @@ export function DataTable() {
     const [loading, setLoading] = React.useState(false)
     const [open, setOpen] = React.useState(false)
     const [selectedId, setSelectedId] = React.useState<string>("")
+
+    // Socket.io presence updates
+    React.useEffect(() => {
+        if (!data.length) return
+        const socket = getSocket()
+
+        socket.on("presence:update", (presenceData) => {
+            console.log("Received presence update:", presenceData)
+            setData(prevData =>
+                prevData.map(u =>
+                    u._id === presenceData.userId
+                        ? { ...u, status: { ...u.status, isOnline: presenceData.isOnline } }
+                        : u
+                )
+            )
+        })
+    }, [data])
 
     // Filter states - chỉ là temporary values
     const [searchQuery, setSearchQuery] = React.useState("")
