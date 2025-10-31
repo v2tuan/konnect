@@ -134,14 +134,54 @@ export function registerPresence(io, { userService }) {
       presence._clearActive(uid, conversationId);
     });
 
+    // Mark offline proactively when the client logs out (force across all sockets)
+    socket.on('user:logout', () => {
+      const uid = String(authedUserId || '');
+      if (!uid) return;
+
+      const wasOnline = presence.isOnline(uid);
+
+      // Force-offline all sockets for this user
+      const entry = presence.online.get(uid);
+      const allSids = entry ? Array.from(entry.sockets) : [];
+
+      for (const sid of allSids) {
+        presence._setOffline(uid, sid);
+        if (sid !== socket.id) {
+          const otherSock = io.sockets.sockets.get(sid);
+          try { otherSock?.disconnect(true); } catch {}
+        }
+      }
+
+      // Clear active view state
+      presence._clearActive(uid);
+
+      if (wasOnline && !presence.isOnline(uid)) {
+        const lastActiveAt = new Date();
+        Promise
+          .resolve(userService.markUserStatus(uid, { isOnline: false, lastActiveAt }))
+          .catch(() => {});
+        io.emit('presence:update', {
+          userId: uid,
+          isOnline: false,
+          lastActiveAt: lastActiveAt.toISOString()
+        });
+      }
+
+      // Ensure the transport closes and does not auto-reconnect
+      try { socket.disconnect(true); } catch {}
+    });
+
     socket.on('disconnect', () => {
       const uid = String(authedUserId || '');
       if (!uid) return;
 
+      // Guard to avoid duplicate OFFLINE after a forced logout
+      const wasOnline = presence.isOnline(uid);
       presence._setOffline(uid, socket.id);
 
       // Khi user hoàn toàn offline (không còn socket nào) → broadcast OFFLINE
-      if (!presence.isOnline(uid)) {
+      if (wasOnline && !presence.isOnline(uid)) {
         presence._clearActive(uid);
         const lastActiveAt = new Date();
         Promise.resolve(userService.markUserStatus(uid, { isOnline: false, lastActiveAt })).catch(() => {});
