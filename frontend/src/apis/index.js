@@ -428,3 +428,39 @@ export async function recallMessageAPI({ messageId, conversationId }) {
     }
   )
 }
+
+
+// ======================== Story ========================
+export const createStoryAPI = async (formData) => {
+  const response = await authorizeAxiosInstance.post(
+    `${API_ROOT}/api/stories`,
+    formData,
+    {
+      headers: { "Content-Type": "multipart/form-data" }
+    }
+  )
+  return response.data
+}
+
+export const getStoriesByUserIdsAPI = async (userIds) => {
+  const response = await authorizeAxiosInstance.get(
+    `${API_ROOT}/api/stories`,
+    {
+      params: { userIds }
+    }
+  )
+  return response.data
+}
+
+export const getStoriesByFriends = async ({ page, limit }) => {
+  const response = await authorizeAxiosInstance.get(
+    `${API_ROOT}/api/stories/all`,
+    {
+      params: {
+        page,
+        limit
+      }
+    }
+  )
+  return response.data
+}

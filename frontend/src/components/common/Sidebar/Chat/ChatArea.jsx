@@ -1,3 +1,4 @@
+/* eslint-disable no-empty */
 import { removeFriendAPI, submitFriendRequestAPI, updateFriendRequestStatusAPI } from '@/apis'
 import { muteConversation, unmuteConversation } from "@/apis/index.js"
 import { useTheme } from '@/components/theme-provider'
@@ -39,6 +40,8 @@ import { useSelector } from 'react-redux'
 import { MessageBubble } from './MessageBubble'
 import { io } from 'socket.io-client'
 import ChatSidebarRight from './ChatSidebarRight'
+import { useNavigate } from 'react-router-dom'
+import { getConversationByUserId } from '@/apis'
 
 // ===== mention helpers (local) =====
 const reEscape = (s) => s.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")
@@ -109,6 +112,8 @@ export function ChatArea({
   const pickerRef = useRef(null)
   const fileRef = useRef(null)
   const imageRef = useRef(null)
+  const navigate = useNavigate()
+
   const [localDisplayName, setLocalDisplayName] = useState(conversation?.displayName)
   const [localAvatarUrl, setLocalAvatarUrl] = useState(conversation?.conversationAvatarUrl)
   const { theme, systemTheme } = useTheme()
@@ -341,9 +346,16 @@ export function ChatArea({
       .map(m => m?._id || m?.id)
       .filter(id => id && id !== currentUser?._id))
 
+  // Banner hủy cuộc gọi cần nhớ đúng toUserIds của lần quay số gần nhất
+  const lastDialIdsRef = useRef([])
+
   const handleStartCall = (mode) => {
     if (!toUserIds.length) return
     const callId = `${conversation._id}:${Date.now()}`
+
+    // nhớ lại toUserIds để cancel đúng khi đang ringing
+    lastDialIdsRef.current = toUserIds
+
     startCall({
       callId,
       conversationId: conversation._id,
@@ -359,6 +371,69 @@ export function ChatArea({
         avatarUrl: otherUser.avatarUrl
       } : null
     })
+  }
+
+  // Mở chat từ UserProfilePanel
+  const handlePanelChat = async () => {
+    const targetId =
+      profileFriendStatus.targetUserId ||
+      profileUser?._id || profileUser?.id ||
+      otherUserId
+    if (!targetId) return
+    try {
+      const res = await getConversationByUserId(targetId)
+      const id = res?.data?._id || res?.data?.id || res?._id || res?.id
+      if (id) {
+        navigate(`/chats/${id}`)
+        setProfileOpen(false)
+      }
+    } catch (e) {
+      console.error('open chat from panel failed:', e)
+    }
+  }
+
+  // Gọi từ UserProfilePanel (hiện banner đếm ngược 30s)
+  const handlePanelCall = async () => {
+    const targetId =
+      profileFriendStatus.targetUserId ||
+      profileUser?._id || profileUser?.id ||
+      otherUserId
+    if (!targetId || !currentUser?._id) return
+
+    // lấy conversationId cho cuộc gọi 1-1
+    let conversationId = null
+    if (isDirect && String(otherUserId) === String(targetId)) {
+      conversationId = conversation?._id
+    } else {
+      try {
+        const res = await getConversationByUserId(targetId)
+        conversationId = res?.data?._id || res?.data?.id || res?._id || res?.id || null
+      } catch {}
+    }
+    if (!conversationId) return
+
+    const toUserIds = [targetId]
+    lastDialIdsRef.current = toUserIds
+
+    const peerName =
+      profileUser?.fullName || profileUser?.username ||
+      otherUser?.fullName || otherUser?.username || 'User'
+    const peerAvatar = profileUser?.avatarUrl || otherUser?.avatarUrl || ''
+
+    startCall({
+      callId: `${conversationId}:${Date.now()}`,
+      conversationId,
+      mode: 'audio',
+      toUserIds,
+      me: {
+        id: currentUser._id,
+        name: currentUser.displayName || currentUser.username,
+        avatarUrl: currentUser.avatarUrl
+      },
+      peer: { name: peerName, avatarUrl: peerAvatar }
+    })
+
+    setProfileOpen(false)
   }
 
   const togglePanel = () => setIsOpen(!isOpen)
@@ -1360,7 +1435,8 @@ export function ChatArea({
                 Đang gọi… còn {Math.ceil((ringing.leftMs || 0) / 1000)}s
               </div>
             </div>
-            <Button size="sm" variant="destructive" onClick={() => cancelCaller(toUserIds)}>
+            {/* dùng lastDialIdsRef để hủy đúng người đang gọi, kể cả khi gọi từ panel */}
+            <Button size="sm" variant="destructive" onClick={() => cancelCaller(lastDialIdsRef.current)}>
               Hủy
             </Button>
           </div>
@@ -1384,62 +1460,44 @@ export function ChatArea({
         onClose={() => setProfileOpen(false)}
         user={profileUser || {}}
         isFriend={profileFriendStatus.status === "accepted"}
+        onChat={handlePanelChat}
+        onCall={handlePanelCall}
         onAddFriend={async () => {
           const targetId = profileFriendStatus.targetUserId || otherUserId
           if (!targetId) return
-
           try {
             const res = await submitFriendRequestAPI(targetId)
             const requestId =
-      res?.requestId ||
-      res?.data?.requestId ||
-      res?.data?._id ||
-      res?._id ||
-      null
-
-            // 1) cập nhật trạng thái riêng của panel
+              res?.requestId || res?.data?.requestId || res?.data?._id || res?._id || null
             setProfileFriendStatus(s => ({
               ...s,
               status: "pending",
               direction: "outgoing",
               requestId
             }))
-
-            // 2) đồng bộ banner nếu đây đúng là otherUser của khung chat direct
             syncFriendshipAfterAdd(requestId)
-
-            // 3) đóng panel
             setProfileOpen(false)
           } catch (err) {
             console.error("send friend request failed:", err)
           }
         }}
-
         onUnfriend={async () => {
           const targetId = profileFriendStatus.targetUserId || otherUserId
           if (!targetId) return
-
           try {
             await removeFriendAPI(targetId)
-
-            // 1) update local cho panel
             setProfileFriendStatus(s => ({
               ...s,
               status: "none",
               direction: null,
               requestId: null
             }))
-
-            // 2) sync banner nếu đang chat với chính người này
             syncFriendshipAfterUnfriend()
-
-            // 3) đóng panel
             setProfileOpen(false)
           } catch (err) {
             console.error("unfriend failed:", err)
           }
         }}
-
       />
 
     </>

@@ -19,6 +19,7 @@ import { useUnreadStore } from '@/store/useUnreadStore'
 import { connectSocket, getSocket } from '@/lib/socket'
 import { toast } from 'react-toastify'
 import ConversationMenu from './ConversationMenu'
+import { StoryList } from '../Stories/StoryList'
 
 /* ========================= Helpers ========================= */
 
@@ -789,6 +790,8 @@ export function ChatSidebar({ currentView, onViewChange }) {
         </div>
       </div>
 
+      <StoryList/>
+
       {/* Tabs */}
       <div className="px-4 py-2 border-b border-border">
         <div className="flex gap-1">
@@ -806,7 +809,7 @@ export function ChatSidebar({ currentView, onViewChange }) {
             onClick={() => onViewChange?.('priority')}
             className="flex-1"
           >
-            <span className="mr-2">👥</span> Bạn bè
+            <span className="mr-2">👥</span> Block
           </Button>
         </div>
       </div>
@@ -912,18 +915,6 @@ export function ChatSidebar({ currentView, onViewChange }) {
             )}
           </div>
         )}
-      </div>
-
-      {/* Quick Actions */}
-      <div className="p-4 border-t border-border">
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" className="flex-1">
-            📞 Cuộc gọi
-          </Button>
-          <Button variant="outline" size="sm" className="flex-1">
-            🎥 Video
-          </Button>
-        </div>
       </div>
     </div>
   )
