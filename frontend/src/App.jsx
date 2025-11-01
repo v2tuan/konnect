@@ -18,6 +18,7 @@ import GlobalCallModal from "./components/common/Modal/GlobalCallModal"
 import NotificationsPage from "@/components/common/Notification/NotificationsPage.jsx";
 import StoryCreator from "./pages/StoryCreate/StoryCreator";
 import StoryViewer from "./pages/StoryCreate/StoryViewer";
+import AIAssistantPage from "./pages/AIAssistantPage";
 
 const ProtectedRoute = () => {
   const currentUser = useSelector(selectCurrentUser);
@@ -61,6 +62,7 @@ export default function App() {
 
             <Route path="contacts/*" element={<ContactPage />} />
             <Route path="chats/cloud" element={<CloudPage />} />
+            <Route path="agent" element={<AIAssistantPage />} /> {/* <-- add */}
           </Route>
         </Route>
 
