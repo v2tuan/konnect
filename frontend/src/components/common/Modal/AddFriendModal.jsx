@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState, useMemo } from "react"
 import { createPortal } from "react-dom"
 import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"        // [+] thêm
 import { Search, X, MessageCircle } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { toast } from "react-toastify"
@@ -45,7 +46,7 @@ function mapToUserProfile(contact) {
 export default function AddFriendModal({ open = false, onClose = () => {} }) {
   const navigate = useNavigate()
   const currentUser = useSelector(selectCurrentUser)
-  const { startCall } = useCallInvite(currentUser?._id)
+  const { startCall, ringing, cancelCaller } = useCallInvite(currentUser?._id) // [*] lấy ringing + cancel
 
   const [query, setQuery] = useState("")
   const [loading, setLoading] = useState(false)
@@ -60,6 +61,7 @@ export default function AddFriendModal({ open = false, onClose = () => {} }) {
   const [friendIdSet, setFriendIdSet] = useState(() => new Set())
 
   const debounceRef = useRef(null)
+  const lastDialIdsRef = useRef([])                   // [+] nhớ toUserIds để cancel
 
   // reset khi modal đóng
   useEffect(() => {
@@ -294,10 +296,14 @@ export default function AddFriendModal({ open = false, onClose = () => {} }) {
         return
       }
 
+      const toUserIds = [uid]                         // [+]
+      lastDialIdsRef.current = toUserIds              // [+]
+
       startCall({
+        callId: `${conversationId}:${Date.now()}`,    // [+] giống ChatArea
         conversationId,
         mode: "audio",
-        toUserIds: [uid],
+        toUserIds,
         me: {
           id: currentUser._id,
           name: currentUser.fullName || currentUser.username || currentUser.email,
@@ -309,8 +315,8 @@ export default function AddFriendModal({ open = false, onClose = () => {} }) {
         },
       })
 
-      setShowProfile(false)
-      onClose()
+      setShowProfile(false)                           // đóng panel
+      // KHÔNG gọi onClose() để banner còn hiển thị trên màn hình modal
     } catch (e) {
       console.error(e)
     }
@@ -466,6 +472,24 @@ export default function AddFriendModal({ open = false, onClose = () => {} }) {
               onAddFriend={handleAddFriendFromPanel}
               onUnfriend={handleUnfriendFromPanel}
             />
+          </div>,
+          document.body
+        )}
+
+      {/* Ringing Banner giống ChatArea (portal ra body) */}
+      {ringing &&
+        createPortal(
+          <div className="fixed left-1/2 -translate-x-1/2 bottom-4 z-[100] bg-card border rounded-xl shadow-lg px-4 py-3 flex items-center gap-3">
+            <img src={ringing.peer?.avatarUrl} alt="" className="w-10 h-10 rounded-full object-cover" />
+            <div className="mr-4">
+              <div className="text-sm font-semibold">{ringing.peer?.name}</div>
+              <div className="text-xs text-muted-foreground">
+                Đang gọi… còn {Math.ceil((ringing.leftMs || 0) / 1000)}s
+              </div>
+            </div>
+            <Button size="sm" variant="destructive" onClick={() => cancelCaller(lastDialIdsRef.current)}>
+              Hủy
+            </Button>
           </div>,
           document.body
         )}
