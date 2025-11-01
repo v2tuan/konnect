@@ -12,7 +12,7 @@ import { toast } from "react-toastify";
 import { useNavigate, useParams } from "react-router-dom";
 import AddMemberDialog from "../../Modal/AddMemberDialog";
 import GroupInfoDialog from "./GroupInfoDialog.jsx"
-import DirectInfoDialog from "./DirectInfoDialog.jsx";
+import UserProfilePanel from "@/components/common/Modal/UserProfilePanel.jsx";
 
 
 export default function ChatSidebarRight({ conversation, isOpen, onClose }) {
@@ -47,15 +47,18 @@ export default function ChatSidebarRight({ conversation, isOpen, onClose }) {
       if (panelRef.current?.contains(t)) return;
       // 2) inside media viewer portal => ignore
       if (t.closest("#media-window-portal")) return;
-      // 3) inside popper/command => ignore
+
+      // 3) inside popper/command/dialog => ignore   <-- SỬA Ở ĐÂY
       if (
         t.closest("[data-radix-popper-content-wrapper]") ||
+        t.closest("[role='dialog']") || // ✅ THÊM DÒNG NÀY
         t.closest("[cmdk-root]") ||
         t.closest("[cmdk-list]") ||
         t.closest('[role="listbox"]')
       ) {
-        return;
+        return; // Bỏ qua, không đóng sidebar
       }
+
       // 4) outside => close
       if (showGallery) setShowGallery(false);
       else onClose?.();
@@ -101,11 +104,14 @@ export default function ChatSidebarRight({ conversation, isOpen, onClose }) {
         fullName: conversation?.direct?.otherUser?.fullName,
         username: conversation?.direct?.otherUser?.userName,
         avatarUrl: conversation?.direct?.otherUser?.avatarUrl,
-        // Nếu backend đã trả thêm các field này thì truyền vào:
+        coverUrl: conversation?.direct?.otherUser?.coverUrl || "",
         bio: conversation?.direct?.otherUser?.bio,
         dateOfBirth: conversation?.direct?.otherUser?.dateOfBirth,
         phone: conversation?.direct?.otherUser?.phone,
-        gender: conversation?.direct?.otherUser?.gender
+        gender: conversation?.direct?.otherUser?.gender,
+        photos: conversation?.direct?.otherUser?.photos || [],
+        mutualGroups: conversation?.direct?.otherUser?.mutualGroups || 0,
+        isFriend: !!conversation?.direct?.otherUser?.isFriend
       }
       : null;
   return (
@@ -403,18 +409,41 @@ export default function ChatSidebarRight({ conversation, isOpen, onClose }) {
           onOpenManageMembers={() => {}}
         />
       ) : (
-        <DirectInfoDialog
+        <UserProfilePanel
           open={infoOpen}
-          onOpenChange={setInfoOpen}
-          conversation={conversation}
-          peer={peer}
-          onCall={(p) => {
-            // Hook cuộc gọi (tuỳ bạn triển khai)
-            toast.info(`Bắt đầu gọi: ${p?.fullName || "người dùng"}`);
+          onClose={() => setInfoOpen(false)}
+          user={{
+            fullName: peer?.fullName || "Người dùng",
+            avatarUrl: peer?.avatarUrl || "",
+            coverUrl: peer?.coverUrl || "",
+            bio: peer?.bio || "",
+            dateOfBirth: peer?.dateOfBirth || "",
+            phone: peer?.phone || "",
+            photos: Array.isArray(peer?.photos) ? peer.photos : [],
+            mutualGroups: peer?.mutualGroups || 0
           }}
-          onMessage={() => {
+          isFriend={!!peer?.isFriend}
+          onCall={() => {
+            toast.info(`Bắt đầu gọi: ${peer?.fullName || "người dùng"}`);
+          }}
+          onChat={() => {
             setInfoOpen(false);
-            // đã đang ở cuộc trò chuyện hiện tại nên không cần điều hướng
+          }}
+          onAddFriend={async () => {
+            try {
+              // await addFriendAPI(peer?.id)
+              toast.success("Đã gửi lời mời kết bạn");
+            } catch (e) {
+              toast.error(e?.message || "Không thể gửi lời mời");
+            }
+          }}
+          onUnfriend={async () => {
+            try {
+              // await unfriendAPI(peer?.id)
+              toast.success("Đã huỷ kết bạn");
+            } catch (e) {
+              toast.error(e?.message || "Không thể huỷ kết bạn");
+            }
           }}
         />
       )}

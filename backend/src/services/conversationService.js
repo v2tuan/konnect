@@ -480,6 +480,16 @@ const fetchConversationDetail = async (userId, conversationId, limit = 30, befor
 
   await messageService.assertCanAccessConversation(userId, convo)
 
+  // ===== Lấy map nickname/role CHUNG cho cả conversation =====
+  const cmsAll = await ConversationMember.find(
+    { conversation: convo._id, deletedAt: null },
+    { userId: 1, role: 1, nickname: 1 }
+  ).lean()
+
+  const nickById = new Map((cmsAll || []).map(cm => [ String(cm.userId), cm.nickname || "" ]))
+  const roleMap  = new Map((cmsAll || []).map(cm => [ String(cm.userId), cm.role || "member" ]))
+  const memberIds = (cmsAll || []).map(cm => String(cm.userId))
+
   // ===== Header =====
   let displayName = null
   let conversationAvatarUrl = null
@@ -493,16 +503,18 @@ const fetchConversationDetail = async (userId, conversationId, limit = 30, befor
       User.findById(convo.direct?.userB)
         .select("fullName username avatarUrl status phone dateOfBirth bio")
         .lean()
-    ]);
+    ])
 
-    const meIsA = String(convo.direct?.userA) === String(userId);
-    const other = meIsA ? userB : userA;
+    const meIsA = String(convo.direct?.userA) === String(userId)
+    const other = meIsA ? userB : userA
 
     if (other) {
-      const mutualCount = await countMutualGroups(userId, other._id);
+      const mutualCount = await countMutualGroups(userId, other._id)
+      const otherNick = nickById.get(String(other._id)) || null
 
-      displayName = other.fullName || other.username || "User";
-      conversationAvatarUrl = other.avatarUrl || null;
+      // Header giữ tên hiển thị theo profile; FE sẽ dùng sender.displayName trong messages
+      displayName = other.fullName || other.username || "User"
+      conversationAvatarUrl = other.avatarUrl || null
       enrichedDirect = {
         ...convo.direct,
         otherUser: {
@@ -514,14 +526,14 @@ const fetchConversationDetail = async (userId, conversationId, limit = 30, befor
           phone: other.phone || null,
           dateOfBirth: other.dateOfBirth || null,
           bio: other.bio || "",
-          mutualGroups: mutualCount
+          mutualGroups: mutualCount,
+          nickname: otherNick                       // ✅ nickname cho DIRECT
         }
-      };
+      }
     } else {
-      displayName = "Conversation";
+      displayName = "Conversation"
     }
   }
-
 
   if (convo.type === 'group') {
     displayName = convo.group?.name || 'Group'
@@ -534,118 +546,75 @@ const fetchConversationDetail = async (userId, conversationId, limit = 30, befor
   }
 
   // ===== Messages (oldest -> newest) =====
-  const messages = await messageService.listMessages({ 
-    userId, 
-    conversationId, 
-    limit, 
-    beforeSeq 
+  const messages = await messageService.listMessages({
+    userId,
+    conversationId,
+    limit,
+    beforeSeq
   })
-  
+
   const nextBeforeSeq = messages.length > 0 ? messages[0].seq : null
   const hasMore = messages.length === limit
 
-  // ===== Group members =====
-  let groupMembers = []
-  let memberIds = []
-  if (convo.type === 'group') {
-    const cms = await ConversationMember.find(
-      { conversation: convo._id },
-      { userId: 1 }
-    ).lean()
-
-    memberIds = (cms || [])
-      .map(cm => cm?.userId)
-      .filter(Boolean)
-      .map(id => String(id))
-  }
-
-  // ===== Load users =====
-  const senderIds = [
-    ...new Set(
-      messages
-        .map(m => m?.senderId)
-        .filter(Boolean)
-        .map(id => String(id))
-    )
-  ]
-
+  // ===== Load users cho messages + members =====
+  const senderIds = [...new Set(messages.map(m => m?.senderId).filter(Boolean).map(String))]
   const combinedIds = [...new Set([...senderIds, ...memberIds])]
 
   let usersById = new Map()
   if (combinedIds.length) {
     const users = await User.find(
       { _id: { $in: combinedIds.map(id => new mongoose.Types.ObjectId(id)) } },
-      { fullName: 1, username: 1, avatarUrl: 1, status: 1 }
+      { fullName: 1, username: 1, avatarUrl: 1, status: 1, phone: 1, dateOfBirth: 1, bio: 1 }
     ).lean()
     usersById = new Map(users.map(u => [String(u._id), u]))
   }
 
+  // ===== GROUP members (kèm nickname/role) =====
+  let groupMembers = []
   if (convo.type === 'group') {
-    // Lấy toàn bộ profile giàu field cho các member trong group
-    const users = await User.find(
-      { _id: { $in: memberIds.map(id => new mongoose.Types.ObjectId(id)) } },
-      { fullName: 1, username: 1, avatarUrl: 1, status: 1, phone: 1, dateOfBirth: 1, bio: 1 }
-    ).lean();
+    groupMembers = (memberIds || []).map(uid => {
+      const u = usersById.get(String(uid))
+      return {
+        id: uid,
+        fullName: u?.fullName || null,
+        username: u?.username || null,
+        avatarUrl: u?.avatarUrl || null,
+        status: u?.status || null,
+        phone: u?.phone || null,
+        dateOfBirth: u?.dateOfBirth || null,
+        bio: u?.bio || "",
+        // mutualGroups có thể tính thêm nếu cần (tốn query); để 0/undefined cho nhẹ
+        mutualGroups: String(uid) === String(userId) ? 0 : undefined,
+        role: roleMap.get(String(uid)) || 'member',
+        nickname: nickById.get(String(uid)) || ""       // ✅ nickname cho GROUP
+      }
+    })
+  }
 
-    const richById = new Map(users.map(u => [String(u._id), u]));
+  // ===== Enrich messages.sender + displayName (ưu tiên nickname) =====
+  const messagesWithSender = messages.map(m => {
+    const key = m?.senderId ? String(m.senderId) : null
+    const u = key ? usersById.get(key) : null
+    const displayName =
+      (key && nickById.get(key)) ||
+      u?.fullName ||
+      u?.username ||
+      null
 
-    // Tính mutualGroups cho từng thành viên (so với userId hiện tại)
-    const enriched = await Promise.all(
-      memberIds.map(async (uid) => {
-        const k = String(uid);
-        const u = richById.get(k);
-        if (!u) {
-          return {
-            id: uid,
-            fullName: null,
-            username: null,
-            avatarUrl: null,
-            status: null,
-            phone: null,
-            dateOfBirth: null,
-            bio: "",
-            mutualGroups: 0
-          };
-        }
-        const mg = String(uid) === String(userId) ? 0 : await countMutualGroups(userId, u._id);
-        return {
+    return {
+      ...m,
+      sender: u
+        ? {
           id: u._id,
           fullName: u.fullName || null,
           username: u.username || null,
           avatarUrl: u.avatarUrl || null,
           status: u.status || null,
-          phone: u.phone || null,
-          dateOfBirth: u.dateOfBirth || null,
-          bio: u.bio || "",
-          mutualGroups: mg
-        };
-      })
-    );
-
-    groupMembers = enriched;
-  }
-
-
-  // Enrich messages.sender cho group
-  const messagesWithSender =
-    convo.type === 'group'
-      ? messages.map(m => {
-        const key = m?.senderId ? String(m.senderId) : null
-        const u = key ? usersById.get(key) : null
-        return {
-          ...m,
-          sender: u
-            ? {
-              id: u._id,
-              fullName: u.fullName || null,
-              username: u.username || null,
-              avatarUrl: u.avatarUrl || null,
-              status: u.status || null
-            }
-            : null
+          displayName                         // ✅ FE read this
         }
-      })
-      : messages
+        : (displayName ? { id: key, displayName } : null)
+    }
+  })
 
   const result = {
     conversation: {
@@ -663,19 +632,20 @@ const fetchConversationDetail = async (userId, conversationId, limit = 30, befor
       updatedAt: convo.updatedAt
     },
     messages: messagesWithSender,
-    pageInfo: { 
-      limit, 
-      beforeSeq, 
-      nextBeforeSeq, 
+    pageInfo: {
+      limit,
+      beforeSeq,
+      nextBeforeSeq,
       hasMore
     }
   }
 
-  // ✅ CRITICAL: Mark friendship BEFORE returning
+  // Mark friendship info
   await markFriendshipOnConversation(userId, result.conversation)
 
   return result
 }
+
 
 const getUnreadSummary = async (userId) => {
   // Lấy membership của user

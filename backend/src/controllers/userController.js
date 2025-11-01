@@ -41,67 +41,49 @@ const getDisplayUsers = async (req, res, next) => {
 }
 
 const selectedUser = async (req, res, next) => {
-    try {
-        let userId = req.params.userId
-        const currentUserId = req.userId
-        const user = await userService.findById(userId, req.userId)
-        if (user) {
-            // res.json(user)
-            // Kiểm tra conversation đã tồn tại chưa
-            let conversation = await Conversation.findOne({
-                $or: [
-                    { 'direct.userA': currentUserId, 'direct.userB': userId },
-                    { 'direct.userA': userId, 'direct.userB': currentUserId }
-                ]
-            })
+  try {
+    const userId = req.params.userId
+    const currentUserId = req.userId
+    const user = await userService.findById(userId, req.userId)
+    if (!user) return res.status(StatusCodes.NOT_FOUND).json({ message: "No user found" })
 
-            console.log('akdgaskjdf', conversation)
+    let conversation = await Conversation.findOne({
+      $or: [
+        { 'direct.userA': currentUserId, 'direct.userB': userId },
+        { 'direct.userA': userId, 'direct.userB': currentUserId }
+      ]
+    })
 
-            if (!conversation) {
-                let conversationDataToCreate = {
-                    type: 'direct',
-                    memberIds: [
-                        currentUserId,
-                        userId
-                    ]
-                }
-                conversation = await conversationService.createConversation(conversationDataToCreate, null, currentUserId)
-            }
-            console.log(conversation)
-
-            const conversationData = {
-                id: conversation._id,
-                type: conversation.type,
-                lastMessage: conversation.lastMessage,
-                messageSeq: conversation.messageSeq,
-                updatedAt: conversation.updatedAt,
-                direct: {
-                    otherUser: {
-                        id: user._id,
-                        fullName: user.fullName,
-                        userName: user.username,
-                        avatarUrl: user.avatarUrl,
-                        status: user.status,
-                        friendship: user.friendship ? true : false
-                    }
-                },
-                displayName: user.fullName,
-                conversationAvatarUrl: user.avatarUrl 
-            }
-
-            res.status(StatusCodes.OK).json({
-                data: conversationData
-            })
-        }
-        else {
-            res.status(StatusCodes.NOT_FOUND).json({
-                message: "No user found"
-            })
-        }
+    if (!conversation) {
+      const conversationDataToCreate = { type: 'direct', memberIds: [currentUserId, userId] }
+      // CHANGED: truyền req.io
+      conversation = await conversationService.createConversation(conversationDataToCreate, null, currentUserId, req.io)
     }
-    catch (error) {
-        next(error)
+
+    const conversationData = {
+      id: conversation._id,
+      type: conversation.type,
+      lastMessage: conversation.lastMessage,
+      messageSeq: conversation.messageSeq,
+      updatedAt: conversation.updatedAt,
+      direct: {
+        otherUser: {
+          id: user._id,
+          fullName: user.fullName,
+          userName: user.username,
+          avatarUrl: user.avatarUrl,
+          status: user.status,
+          friendship: user.friendship ? true : false
+        }
+      },
+      displayName: user.fullName,
+      conversationAvatarUrl: user.avatarUrl
     }
+
+    res.status(StatusCodes.OK).json({ data: conversationData })
+  } catch (error) {
+    next(error)
+  }
 }
 
 const searchUserById = async (req, res, next) => {

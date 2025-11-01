@@ -37,10 +37,8 @@ route.patch(
   conversationController.updateMemberRole
 );
 route.patch(
-    "/chats/:conversationId/meta",
-    authMiddleware,
-    multerUploadMiddleware.upload.single("avatarUrl"),
-    conversationController.updateMeta
-  );
-
+  '/chats/:conversationId/members/nickname',
+  authMiddleware,
+  conversationController.updateMemberNickname
+);
 export const conversationRoutes = route

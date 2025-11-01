@@ -12,9 +12,7 @@ import { toast } from "react-toastify";
 import PropTypes from "prop-types";
 
 import {
-  renameGroupAPI,
-  changeGroupAvatarAPI,
-  fetchConversationMedia
+  fetchConversationMedia, updateGroupMetaAPI, updateMemberNicknameAPI
 } from "@/apis";
 
 // ✅ Portal viewer dùng chung của bạn
@@ -49,7 +47,123 @@ function normalizeImage(m) {
     }
   };
 }
+function MembersDialog({ open, onOpenChange, conversation }) {
+  const [items, setItems] = useState(() => (conversation?.group?.members || []).map(m => ({
+    id: String(m._id || m.id),
+    avatarUrl: m.avatarUrl || "",
+    name: m.fullName || m.username || "User",
+    nickname: m.nickname || "",
+    saving: false,
+  })));
+  const [filter, setFilter] = useState("");
 
+  useEffect(() => {
+    // đồng bộ khi mở lại dialog hoặc đổi hội thoại
+    if (!open) return;
+    setItems((conversation?.group?.members || []).map(m => ({
+      id: String(m._id || m.id),
+      avatarUrl: m.avatarUrl || "",
+      name: m.fullName || m.username || "User",
+      nickname: m.nickname || "",
+      saving: false,
+    })));
+  }, [open, conversation?._id]);
+
+  const onChangeNick = (id, v) => {
+    setItems(prev =>
+      prev.map(it => (it.id === String(id) ? { ...it, nickname: v } : it))
+    );
+  };
+
+  const onSaveNick = async (id) => {
+    let nickname = "";
+    setItems((prev) => {
+      const hit = prev.find((i) => i.id === id);
+      nickname = (hit && hit.nickname) || "";
+      return prev.map((it) => (it.id === id ? { ...it, saving: true } : it));
+    });
+
+    try {
+      await updateMemberNicknameAPI(conversation._id, id, nickname);
+      toast.success("Đã cập nhật biệt danh");
+
+    } catch (e) {
+      const msg = (e?.response?.data?.message) || e.message || "Lưu biệt danh thất bại";
+      toast.error(msg);
+    } finally {
+      setItems((prev) =>
+        prev.map((it) => (it.id === id ? { ...it, saving: false } : it))
+      );
+    }
+  };
+  const list = items.filter(it => {
+    const q = filter.trim().toLowerCase();
+    if (!q) return true;
+    return it.name.toLowerCase().includes(q) || (it.nickname || "").toLowerCase().includes(q);
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="w-[520px] max-w-[92vw] p-0 overflow-hidden rounded-xl bg-card">
+        <DialogHeader className="px-4 py-3 border-b sticky top-0 bg-card z-10">
+          <DialogTitle className="text-base">Thành viên</DialogTitle>
+        </DialogHeader>
+
+        <div className="px-4 pt-3">
+          <Input
+            placeholder="Tìm theo tên hoặc biệt danh…"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            className="h-9"
+          />
+        </div>
+
+        <div className="px-2 py-2 max-h-[60vh] overflow-y-auto">
+          {list.length === 0 ? (
+            <div className="px-2 py-6 text-sm text-muted-foreground text-center">Không có thành viên</div>
+          ) : (
+            <ul className="space-y-2">
+              {list.map(m => (
+                <li key={m.id} className="flex items-center gap-3 p-2 rounded-md hover:bg-muted/50">
+                  <Avatar className="w-9 h-9">
+                    <AvatarImage src={m.avatarUrl} />
+                    <AvatarFallback>{(m.name[0] || "U").toUpperCase()}</AvatarFallback>
+                  </Avatar>
+
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate">{m.name}</div>
+                    <div className="mt-1 flex items-center gap-2">
+                      <Input
+                        value={m.nickname}
+                        onChange={(e) => onChangeNick(m.id, e.target.value)}
+                        placeholder="Biệt danh (tuỳ chọn)"
+                        className="h-8"
+                      />
+                      <Button
+                        size="sm"
+                        className="h-8"
+                        disabled={m.saving}
+                        onClick={() => onSaveNick(m.id)}
+                      >
+                        {m.saving ? <Loader2 className="w-4 h-4 animate-spin" /> : "Lưu"}
+                      </Button>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <DialogFooter className="px-4 py-3 border-t sticky bottom-0 bg-card">
+          <Button variant="ghost" size="sm" onClick={() => onOpenChange?.(false)}>
+            Đóng
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 /* --------------------------------- Dialog --------------------------------- */
 function GroupInfoDialog({
                            open,
@@ -82,6 +196,7 @@ function GroupInfoDialog({
   const [viewerPage, setViewerPage] = useState(1);
   const [viewerHasMore, setViewerHasMore] = useState(false);
   const viewerLimit = 36;
+  const [membersOpen, setMembersOpen] = useState(false);
 
   // Reset khi mở
   useEffect(() => {
@@ -158,39 +273,67 @@ function GroupInfoDialog({
 
   const handleSave = async () => {
     if (!conversation?._id || !isGroup || saving) return;
+
     const nameChanged = name.trim() && name.trim() !== (conversation?.displayName || "");
     const avatarChanged = !!avatarFile;
+
     if (!nameChanged && !avatarChanged) {
       toast.info("Không có thay đổi để lưu.");
       return;
     }
+
     try {
       setSaving(true);
-      const tasks = [];
-      if (nameChanged) {
-        tasks.push(
-          renameGroupAPI(conversation._id, name.trim()).then((res) =>
-            onNameUpdated?.(res?.name || name.trim())
-          )
-        );
+
+      // ✅ GỌI API CHUNG với cả name và avatar
+      const result = await updateGroupMetaAPI(conversation._id, {
+        displayName: nameChanged ? name.trim() : null,
+        avatarFile: avatarChanged ? avatarFile : null
+      });
+
+      console.log('✅ Update result:', result);
+
+      // ✅ Lấy giá trị từ response
+      const newName = result?.displayName;
+      const newAvatar = result?.conversationAvatarUrl;
+
+      // Callbacks
+      if (newName) {
+        onNameUpdated?.(newName);
       }
-      if (avatarChanged) {
-        tasks.push(
-          changeGroupAvatarAPI(conversation._id, avatarFile).then((res) => {
-            onAvatarUpdated?.(res?.avatarUrl);
-            // phát event để preview reload
-            window.dispatchEvent(
-              new CustomEvent("media:uploaded", { detail: { conversationId: conversation._id } })
-            );
-          })
-        );
+      if (newAvatar) {
+        onAvatarUpdated?.(newAvatar);
       }
-      await Promise.all(tasks);
+
+      // ✅ Dispatch events để các components khác cập nhật
+      if (newName) {
+        window.dispatchEvent(new CustomEvent('conversation:name-updated', {
+          detail: { id: conversation._id, name: newName }
+        }));
+      }
+
+      if (newAvatar) {
+        window.dispatchEvent(new CustomEvent('conversation:avatar-updated', {
+          detail: { id: conversation._id, url: newAvatar }
+        }));
+
+        // Reload media preview
+        window.dispatchEvent(new CustomEvent("media:uploaded", {
+          detail: { conversationId: conversation._id }
+        }));
+      }
+
       toast.success("Đã cập nhật thông tin nhóm");
-      onOpenChange?.(false);
+
+      // Đợi 300ms để events được xử lý trước khi đóng dialog
+      setTimeout(() => {
+        onOpenChange?.(false);
+      }, 300);
+
     } catch (e) {
-      console.error(e);
-      toast.error(e?.response?.data?.message || e?.message || "Cập nhật thất bại");
+      console.error("❌ handleSave error:", e);
+      const errMsg = e?.response?.data?.message || e?.message || "Cập nhật thất bại";
+      toast.error(errMsg);
     } finally {
       setSaving(false);
     }
@@ -325,13 +468,19 @@ function GroupInfoDialog({
                     <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => onOpenAddMember?.()}>
                       <UserPlus className="w-4 h-4 mr-1" /> Thêm
                     </Button>
-                    <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => onOpenManageMembers?.()}>
+                    <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => setMembersOpen(true)}>
                       <Users className="w-4 h-4 mr-1" /> Xem tất cả
                     </Button>
                   </div>
                 )}
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+
+              {/* 👉 Bấm vào dãy avatar cũng mở */}
+              <button
+                type="button"
+                className="flex flex-wrap items-center gap-2 w-full text-left"
+                onClick={() => setMembersOpen(true)}
+              >
                 {(conversation?.group?.members || []).slice(0, 8).map((m) => {
                   const nm = m?.fullName || m?.username || "User";
                   return (
@@ -341,7 +490,12 @@ function GroupInfoDialog({
                     </Avatar>
                   );
                 })}
-              </div>
+                {((conversation?.group?.members || []).length > 8) && (
+                  <div className="text-xs text-muted-foreground ml-1">
+                    +{(conversation?.group?.members?.length || 0) - 8}
+                  </div>
+                )}
+              </button>
             </div>
 
             <div className="h-px bg-border" />
@@ -472,7 +626,11 @@ function GroupInfoDialog({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
+      <MembersDialog
+        open={membersOpen}
+        onOpenChange={setMembersOpen}
+        conversation={conversation}
+      />
       {/* Media viewer portal – ẢNH ONLY */}
       {viewerOpen && (
         <MediaWindowViewer

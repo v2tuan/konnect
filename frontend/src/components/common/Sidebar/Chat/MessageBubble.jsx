@@ -1,7 +1,18 @@
 import { useEffect, useMemo, useState } from "react"
 import {
-  Pin, Reply, MoreHorizontal, Clock, Check, CheckCheck,
-  FileText, FileSpreadsheet, Archive, Video as VideoIcon, Music, File, Download
+  Pin,
+  Reply,
+  MoreHorizontal,
+  Clock,
+  Check,
+  CheckCheck,
+  FileText,
+  FileSpreadsheet,
+  Archive,
+  Video as VideoIcon,
+  Music,
+  File,
+  Download
 } from "lucide-react"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
@@ -11,7 +22,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { getDisplayUsers } from "@/apis"
 
-// ===== Helpers =====
+/** Helpers */
 const mediaUrl = (m, message) => m?.secure_url || m?.url || message?.body?.media?.url || ""
 
 function processReactions(reactions = []) {
@@ -25,9 +36,9 @@ function processReactions(reactions = []) {
     userEmojiMap[userId].count += 1
   })
   const topEmojis = Object.entries(emojiCountMap)
-  .sort((a, b) => b[1] - a[1])
-  .slice(0, 3)
-  .map(([emoji, count]) => ({ emoji, count }))
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([emoji, count]) => ({ emoji, count }))
   return { topEmojis, userEmojiMap, emojiCountMap }
 }
 
@@ -62,10 +73,10 @@ function escapeRe(s) { return s.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&") }
 function findMentionsFromMembers(text = "", conversation) {
   if (conversation?.type !== "group") return []
   const names = (conversation?.group?.members || [])
-  .map(m => (m.fullName || m.username || m.name || "").trim())
-  .filter(Boolean)
-  .sort((a, b) => b.length - a.length)
-  .map(escapeRe)
+    .map(m => (m.fullName || m.username || m.name || "").trim())
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length)
+    .map(escapeRe)
   if (!names.length) return []
   const re = new RegExp(`@(?:${names.join("|")})(?=\\b)`, "g")
   const out = []
@@ -79,16 +90,17 @@ function findMentionsFromMembers(text = "", conversation) {
 /* === End mentions helpers === */
 
 export function MessageBubble({
-                                message,
-                                onOpenViewer,
-                                showAvatar,
-                                contact,
-                                showMeta = true,
-                                conversation,
-                                setReplyingTo,
-                                currentUser,
-                                onAvatarClick
-                              }) {
+  message,
+  onOpenViewer,
+  showAvatar,
+  contact,
+  showMeta = true,
+  conversation,
+  setReplyingTo,
+  currentUser,
+  onAvatarClick,
+  nickById
+}) {
   const [hovered, setHovered] = useState(false)
   const [open, setOpen] = useState(false)
   const isOwn = !!message?.isOwn
@@ -98,7 +110,7 @@ export function MessageBubble({
     [message?.reactions]
   )
 
-  // Lightbox (giữ nếu cần modal riêng)
+  // Lightbox (optional modal preview)
   const [preview, setPreview] = useState({ open: false, url: "", type: "image" })
 
   // System
@@ -115,8 +127,8 @@ export function MessageBubble({
     (async () => {
       try {
         const users = await getDisplayUsers(ids)
-        const m = {}
-        ;(users || []).forEach((u) => (m[u.id || u._id] = u))
+        const m = {};
+        (users || []).forEach((u) => (m[u.id || u._id] = u))
         setUsersData(m)
       } catch (e) {
         console.error("Failed to fetch users for reactions", e)
@@ -200,6 +212,52 @@ export function MessageBubble({
       console.error("Download failed", err)
     }
   }
+  const senderDisplay = useMemo(
+    () => getDisplayName({ message, conversation, currentUser, nickById }),
+    [message, conversation, currentUser, nickById]
+  )
+  function getDisplayName({ message, conversation, currentUser, nickById }) {
+    const s = message?.sender;
+    let sid_raw = s?._id || s?.id || message?.senderId;
+
+    // === SỬA LỖI: Chuẩn hoá ID ===
+    // Nếu sid_raw là object (do populate), lấy ._id bên trong nó
+    if (sid_raw && typeof sid_raw === 'object' && sid_raw._id) {
+      sid_raw = sid_raw._id;
+    }
+    // Giờ sid là một chuỗi ID chuẩn hoặc null
+    const sid = String(sid_raw || "");
+    // ============================
+    // 1) Ưu tiên nickname trong group
+    if (conversation?.type === "group") {
+      // Dùng `sid` trực tiếp (vì nó đã là string)
+      if (sid && nickById?.get?.(sid)) return nickById.get(sid);
+
+      // So sánh String(m.id || m._id) với `sid` (đã là string)
+      const mem = (conversation?.group?.members || []).find(m => String(m.id || m._id) === sid);
+      if (mem?.nickname) return mem.nickname;
+    }
+
+    // 2) Sau đó tới displayName / fullName / username
+    if (s?.displayName) return s.displayName;
+    if (s?.fullName || s?.username) return s.fullName || s.username;
+
+    // 3) DIRECT / cloud
+    if (conversation?.type === "direct") {
+      const meId = String(currentUser?._id || "");
+      const isMe = sid === meId;
+      if (isMe) return currentUser?.fullName || currentUser?.username || "You";
+      const other = conversation?.direct?.otherUser;
+      if (other) return other.nickname || other.fullName || other.username || "User";
+    }
+
+    // 4) Cuối cùng: lấy từ members nếu còn trống
+    if (sid) {
+      const mem = (conversation?.group?.members || []).find(m => String(m.id || m._id) === sid);
+      if (mem) return mem.fullName || mem.username || "User";
+    }
+    return "User";
+  }
 
   const { images, videos, files, audios } = useMemo(() => {
     const list = Array.isArray(message?.media) ? message.media : []
@@ -217,21 +275,21 @@ export function MessageBubble({
     mentions = findMentionsFromMembers(text, conversation)
   }
 
-  // Tính grid cho ảnh + video
+  // Grid class for image+video
   const gridMedias = [...images, ...videos]
   const gridClass =
     gridMedias.length === 1
-      ? 'flex justify-center'
+      ? "flex justify-center"
       : gridMedias.length === 2
-        ? 'grid grid-cols-2 gap-2'
+        ? "grid grid-cols-2 gap-2"
         : gridMedias.length <= 4
-          ? 'grid grid-cols-2 gap-2 max-w-md'
-          : 'grid grid-cols-3 gap-2 max-w-lg'
+          ? "grid grid-cols-2 gap-2 max-w-md"
+          : "grid grid-cols-3 gap-2 max-w-lg"
 
   return (
     <div
-      className={`flex gap-2 ${(Array.isArray(message?.reactions) && message.reactions.length > 0) ? 'mb-4' : 'mb-2'} ${
-        isSystemMessage ? 'justify-center' : (isOwn ? 'justify-end' : 'justify-start')
+      className={`flex gap-2 ${Array.isArray(message?.reactions) && message.reactions.length > 0 ? "mb-4" : "mb-2"} ${
+        isSystemMessage ? "justify-center" : isOwn ? "justify-end" : "justify-start"
       }`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -245,7 +303,7 @@ export function MessageBubble({
         >
           <Avatar className="w-8 h-8">
             <AvatarImage src={sender?.avatarUrl} />
-            <AvatarFallback>{senderName.charAt(0).toUpperCase()}</AvatarFallback>
+            <AvatarFallback>{(senderDisplay || "U").charAt(0).toUpperCase()}</AvatarFallback>
           </Avatar>
         </button>
       )}
@@ -253,7 +311,7 @@ export function MessageBubble({
       <div className={`relative ${isSystemMessage ? "max-w-[80%]" : "max-w-[78%]"} ${isOwn ? "order-first" : ""}`}>
         {isGroup && !isOwn && !isSystemMessage && (
           <div className="mb-1 ml-1 text-[11px] font-medium text-gray-500">
-            {sender?.fullName || sender?.username || "User"}
+            {senderDisplay}
           </div>
         )}
 
@@ -269,12 +327,13 @@ export function MessageBubble({
               className="h-6 w-6 p-0"
               onClick={() => {
                 const list = Array.isArray(message?.media) ? message.media : []
-                const ims = list.filter(m => m.type === 'image')
-                const fils = list.filter(m => m.type === 'file')
-                const auds = list.filter(m => m.type === 'audio')
+                const ims = list.filter(m => m.type === "image")
+                const fils = list.filter(m => m.type === "file")
+                const auds = list.filter(m => m.type === "audio")
                 setReplyingTo?.({
-                  sender: message?.isOwn ? 'You' : (sender?.fullName || sender?.username || 'User'),
-                  content: (fils[0]?.metadata?.filename) || (ims.length ? '[Image]' : (auds.length ? '[Audio]' : '')) || (message.text || message.body?.text || ''),
+                  sender: message?.isOwn ? "You" : (senderDisplay || "User"),                  content:
+                    (fils[0]?.metadata?.filename) || (ims.length ? "[Image]" : (auds.length ? "[Audio]" : "")) ||
+                    (message.text || message.body?.text || ""),
                   media: list.length ? list : null,
                   messageId: message.id || message._id
                 })
@@ -296,70 +355,69 @@ export function MessageBubble({
             </div>
           ) : (
             <>
-              {/* ẢNH + VIDEO */}
+              {/* MEDIA (images/videos) */}
               {gridMedias.length > 0 && (
-                <div className={gridClass}>
-                  {gridMedias.map((m, idx) => {
-                    const key = m._id || m.url || `media-${idx}`
-                    const isImage = (m.type || '').toLowerCase() === 'image'
-                    return (
+                <div className="space-y-2">
+                  <div className={gridClass}>
+                    {gridMedias.map((media, index) => (
                       <button
                         type="button"
-                        key={key}
+                        key={media._id || media.url || `media-${index}`}
                         className="relative aspect-square overflow-hidden rounded-lg cursor-pointer group"
-                        onClick={() => onOpenViewer?.(m)}
+                        onClick={() => onOpenViewer?.(media)}
                       >
                         {message.isPinned && (
                           <Pin className="absolute top-1 right-1 w-3 h-3 text-yellow-500 z-10" />
                         )}
-                        {isImage ? (
+
+                        {(media.type || "").toLowerCase() === "image" ? (
                           <img
-                            src={m.url || mediaUrl(m, message)}
-                            alt={m.metadata?.filename || 'message attachment'}
+                            src={media.url || mediaUrl(media, message)}
+                            alt={media.metadata?.filename || "message attachment"}
                             className="w-full h-full object-cover group-hover:brightness-75 transition-all"
                           />
                         ) : (
                           <video
-                            src={m.url || mediaUrl(m, message)}
+                            src={media.url || mediaUrl(media, message)}
                             className="w-full h-full object-cover group-hover:brightness-75 transition-all"
                             muted
                           />
                         )}
                       </button>
-                    )
-                  })}
+                    ))}
+                  </div>
                 </div>
               )}
 
               {/* FILES */}
               {files.length > 0 && (
-                <div className="space-y-2 mt-2">
+                <div className="space-y-1 mt-2">
                   {files.map((m, i) => {
-                    const mimetype = m?.metadata?.mimetype || ''
-                    const filename = m?.metadata?.filename || 'Unknown file'
+                    const mimetype = m?.metadata?.mimetype || ""
+                    const filename = m?.metadata?.filename || "Unknown file"
                     const sizeText = formatFileSize(m?.metadata?.size)
                     const url = mediaUrl(m, message)
                     const Icon =
-                      mimetype.includes('pdf') ? FileText
-                        : (mimetype.includes('word') || mimetype.includes('document')) ? FileText
-                          : (mimetype.includes('sheet') || mimetype.includes('excel')) ? FileSpreadsheet
-                            : (mimetype.includes('zip') || mimetype.includes('rar') || mimetype.includes('archive')) ? Archive
-                              : mimetype.includes('video') ? VideoIcon
-                                : mimetype.includes('audio') ? Music
+                      mimetype.includes("pdf") ? FileText
+                        : (mimetype.includes("word") || mimetype.includes("document")) ? FileText
+                          : (mimetype.includes("sheet") || mimetype.includes("excel")) ? FileSpreadsheet
+                            : (mimetype.includes("zip") || mimetype.includes("rar") || mimetype.includes("archive")) ? Archive
+                              : mimetype.includes("video") ? VideoIcon
+                                : mimetype.includes("audio") ? Music
                                   : File
 
                     return (
                       <div
                         key={m._id || m.url || `file-${i}`}
                         className={`flex items-center justify-between gap-3 rounded-lg border p-2 ${
-                          isOwn ? 'ml-auto bg-primary/5' : 'mr-auto bg-card'
+                          isOwn ? "ml-auto bg-primary/5" : "mr-auto bg-card"
                         }`}
                       >
                         <div className="flex items-center gap-3 min-w-0">
                           <Icon className="w-5 h-5 opacity-70" />
                           <div className="min-w-0">
                             <div className="truncate text-sm font-medium">{filename}</div>
-                            <div className="text-xs text-muted-foreground">{mimetype || 'file'} · {sizeText}</div>
+                            <div className="text-xs text-muted-foreground">{mimetype || "file"} · {sizeText}</div>
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
@@ -369,6 +427,7 @@ export function MessageBubble({
                             variant="ghost"
                             onClick={() => handleDownload(url, filename)}
                             className="h-8 w-8 p-0"
+                            aria-label="Download file"
                           >
                             <Download className="w-4 h-4" />
                           </Button>
@@ -385,13 +444,14 @@ export function MessageBubble({
                   {audios.map((m, index) => (
                     <div
                       key={m._id || m.url || `audio-${index}`}
-                      className={`flex items-center gap-2 p-2 max-w-xs rounded-sm
-                        ${isOwn ? 'ml-auto bg-primary/10 border border-primary rounded-l-lg rounded-tr-lg'
-                        : 'mr-auto bg-gray-100 text-black rounded-r-lg rounded-tl-lg'}
-                        shadow-sm`}
+                      className={`flex items-center gap-2 p-2 max-w-xs rounded-sm ${
+                        isOwn
+                          ? "ml-auto bg-primary/10 border border-primary rounded-l-lg rounded-tr-lg"
+                          : "mr-auto bg-gray-100 text-black rounded-r-lg rounded-tl-lg"
+                      } shadow-sm`}
                     >
                       <audio controls className="flex-1 min-w-0">
-                        <source src={m.url || mediaUrl(m, message)} type={m.metadata?.mimetype || 'audio/webm'} />
+                        <source src={m.url || mediaUrl(m, message)} type={m.metadata?.mimetype || "audio/webm"} />
                         Your browser does not support the audio element.
                       </audio>
                       {message.isPinned && <Pin className="w-4 h-4 text-yellow-500 shrink-0" />}
@@ -403,36 +463,40 @@ export function MessageBubble({
               {/* TEXT */}
               {gridMedias.length === 0 && files.length === 0 && audios.length === 0 && (
                 <div
-                  className={`
-                    relative p-3 rounded-sm
-                    ${isOwn
-                    ? 'bg-primary/10 border border-primary rounded-br-sm'
-                    : 'bg-secondary text-secondary-foreground rounded-bl-sm'
-                  }
-                  `}
+                  className={`relative p-3 rounded-sm ${
+                    isOwn
+                      ? "bg-primary/10 border border-primary rounded-br-sm"
+                      : "bg-secondary text-secondary-foreground rounded-bl-sm"
+                  }`}
                 >
                   {message.isPinned && <Pin className="absolute top-1 right-1 w-3 h-3 text-yellow-500" />}
 
                   {message.repliedMessage && (
                     <div
                       className={`flex-col items-center gap-2 p-2 mb-2 border-l-4 ${
-                        isOwn ? 'border-primary bg-primary/10' : 'border-secondary bg-secondary/10'
+                        isOwn ? "border-primary bg-primary/10" : "border-secondary bg-secondary/10"
                       } rounded-sm cursor-pointer`}
                     >
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 mb-1">
                           <span className="flex text-sm font-semibold items-center gap-1">
-                            {message.repliedMessage.senderId
-                              ? (message.repliedMessage.senderId.fullName || message.repliedMessage.senderId.username || 'User')
-                              : 'User'}
+                            {(() => {
+                                  const rid =
+                                      message.repliedMessage?.senderId?._id ||
+                                      message.repliedMessage?.senderId?.id ||
+                                      message.repliedMessage?.senderId
+                                    if (rid && nickById?.get?.(String(rid))) return nickById.get(String(rid))
+                                    const ru = message.repliedMessage?.senderId
+                                    return (ru?.fullName || ru?.username || "User")
+                                  })()}
                           </span>
                         </div>
                       </div>
                       <div className="text-sm text-gray-600 truncate">
-                        {message.repliedMessage.type === 'text' && (message.repliedMessage.body?.text || message.repliedMessage.text)}
-                        {message.repliedMessage.type === 'image' && '[Image]'}
-                        {message.repliedMessage.type === 'file' && '[File]'}
-                        {message.repliedMessage.type === 'audio' && '[Audio]'}
+                        {message.repliedMessage.type === "text" && (message.repliedMessage.body?.text || message.repliedMessage.text)}
+                        {message.repliedMessage.type === "image" && "[Image]"}
+                        {message.repliedMessage.type === "file" && "[File]"}
+                        {message.repliedMessage.type === "audio" && "[Audio]"}
                       </div>
                     </div>
                   )}
@@ -458,14 +522,14 @@ export function MessageBubble({
           )}
         </div>
 
-        {/* Lightbox (nếu dùng modal riêng) */}
+        {/* Lightbox */}
         <Dialog open={preview.open} onOpenChange={(o) => setPreview((p) => ({ ...p, open: o }))}>
           <DialogContent className="p-0 sm:max-w-[80vw]">
             <div className="w-full h-full max-h-[80vh] flex items-center justify-center bg-black">
               {preview.type === "video" ? (
                 <video src={preview.url} controls className="max-w-full max-h-[80vh]" autoPlay />
               ) : (
-                <img src={preview.url} alt="" className="max-w-full max-h-[80vh]" />
+                <img src={preview.url} alt="preview" className="max-w-full max-h-[80vh]" />
               )}
             </div>
           </DialogContent>
@@ -495,7 +559,7 @@ export function MessageBubble({
 }
 
 function ReactionsDialog({ open, setOpen, emojiCountMap, userEmojiMap, usersData, total }) {
-  // chuyển userEmojiMap -> per-emoji map
+  // convert userEmojiMap -> per-emoji map
   const perEmoji = useMemo(() => {
     const acc = {}
     Object.entries(userEmojiMap || {}).forEach(([uid, { emoji }]) => {
@@ -577,3 +641,5 @@ function ReactionsDialog({ open, setOpen, emojiCountMap, userEmojiMap, usersData
     </Dialog>
   )
 }
+
+export default MessageBubble

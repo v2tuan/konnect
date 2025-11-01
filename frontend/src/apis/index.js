@@ -265,6 +265,13 @@ export const addMemberToGroup = async (conversationId, memberIds) => {
   )
   return response.data
 }
+
+export const removeFriendAPI = async (friendUserId) => {
+  const { data } = await authorizeAxiosInstance.delete(
+    `${API_ROOT}/api/contacts/friends/${friendUserId}`
+  )
+  return data
+}
 // ======================== NOTIFICATION APIs ========================
 export async function listNotifications({
                                           cursor = null,
@@ -300,30 +307,45 @@ export async function unreadCount() {
   return Number(res.data?.count || 0)
 }
 
-export const removeFriendAPI = async (friendUserId) => {
-  const { data } = await authorizeAxiosInstance.delete(
-    `${API_ROOT}/api/contacts/friends/${friendUserId}`
-  )
-  return data
-}
-// ===== Group meta (đổi tên, đổi avatar) =====
-export const renameGroupAPI = async (conversationId, newName) => {
-  const { data } = await authorizeAxiosInstance.patch(
-    `${API_ROOT}/api/conversation/chats/${conversationId}/meta`,
-    { name: newName }
-  );
-  return data;
-};
+export const updateGroupMetaAPI = async (conversationId, { displayName, avatarFile }) => {
+  try {
+    const formData = new FormData();
 
-export const changeGroupAvatarAPI = async (conversationId, file) => {
-  const form = new FormData();
-  form.append("avatar", file);             // field name 'avatar' (xem BE)
-  const { data } = await authorizeAxiosInstance.patch(
-    `${API_ROOT}/api/conversation/chats/${conversationId}/meta`,
-    form,
-    { headers: { "Content-Type": "multipart/form-data" } }
-  );
-  return data;
+    // ✅ Chỉ thêm displayName nếu có và khác rỗng
+    if (displayName && displayName.trim()) {
+      formData.append('displayName', displayName.trim());
+    }
+
+    // ✅ Chỉ thêm avatar nếu có file
+    if (avatarFile instanceof File) {
+      formData.append('avatar', avatarFile);
+    }
+
+    // Debug log (xóa sau khi test xong)
+    console.log('📤 Sending to backend:', {
+      conversationId,
+      hasDisplayName: !!displayName,
+      hasAvatarFile: !!avatarFile,
+      displayName: displayName?.trim()
+    });
+
+    const response = await authorizeAxiosInstance.patch(
+      `${API_ROOT}/api/conversation/chats/${conversationId}/meta`,
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      }
+    );
+
+    console.log('✅ Backend response:', response.data);
+    return response.data;
+
+  } catch (error) {
+    console.error('❌ updateGroupMetaAPI error:', error.response?.data || error.message);
+    throw error;
+  }
 };
 
 // ===== Member management (thêm đã có addMemberToGroup; bổ sung xoá) =====
@@ -351,3 +373,7 @@ export const updateConversationMetaAPI = async (conversationId, formData) => {
   );
   return res.data;
 };
+export function updateMemberNicknameAPI(conversationId, memberId, nickname) {
+  return authorizeAxiosInstance.patch(`${API_ROOT}/api/conversation/chats/${conversationId}/members/nickname`, { memberId, nickname })
+  .then(res => res.data)
+}
