@@ -23,7 +23,7 @@ axiosClient.interceptors.response.use(
   (response) => response, // nếu thành công thì trả về luôn
   (error) => {
     // Nếu backend trả về 401 => Token hết hạn hoặc không hợp lệ
-    const router = useRouter()
+    // const router = useRouter()
     if (error.response?.status === 401) {
       console.warn("Unauthorized — logging out...")
 
@@ -34,7 +34,8 @@ axiosClient.interceptors.response.use(
       // Nếu dùng cookie httpOnly thì không cần xoá gì cả, chỉ cần chuyển hướng vì khi gặp 401 thì trình duyệt sẽ tự động xoá cookie
       
       // Chuyển hướng về trang đăng nhập
-      router.push("/")
+      window.location.href = "/"
+      // router.push("/")
     }
 
     return Promise.reject(error)

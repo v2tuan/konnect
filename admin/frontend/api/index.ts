@@ -84,3 +84,8 @@ export const restoreUser = async (id: string): Promise<User | null> => {
   const res = await axiosClient.post(`/users/${id}/restore`)
   return res.data
 }
+
+export const getUserById = async (id: string): Promise<User | null> => {
+  const res = await axiosClient.get(`/users/${id}`)
+  return res.data
+}

@@ -39,6 +39,11 @@ export class UsersController {
     return this.userService.findWWithFilter(query);
   }
 
+  @Get(':id')
+  async findById(@Param('id') id: string) {
+    return this.userService.getUserById(id);
+  }
+
   @Delete(':id')
   async deleteUser(@Param('id') id: string) {
     return this.userService.deleteUser(id);

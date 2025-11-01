@@ -182,4 +182,8 @@ export class UsersService {
       .findByIdAndUpdate(id, { _destroy: false }, { new: true })
       .exec();
   }
+
+  async getUserById(id: string): Promise<User | null> {
+    return this.userModel.findById(id).exec();
+  }
 }

@@ -74,6 +74,7 @@ import { AlertTriangle, RotateCcw } from "lucide-react"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog"
 import { de } from "zod/v4/locales"
 import { getSocket } from "@/lib/socket"
+import { Separator } from "./ui/separator"
 
 export const userSchema = z.object({
     _id: z.string(),
@@ -114,6 +115,7 @@ export function DataTable() {
     const [data, setData] = React.useState<User[]>([])
     const [loading, setLoading] = React.useState(false)
     const [open, setOpen] = React.useState(false)
+    const [profileOpen, setProfileOpen] = React.useState(false)
     const [selectedId, setSelectedId] = React.useState<string>("")
 
     // Socket.io presence updates
@@ -382,7 +384,7 @@ export function DataTable() {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-32">
                         {/* <DropdownMenuItem>Edit</DropdownMenuItem> */}
-                        <DropdownMenuItem>View Profile</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => {setProfileOpen(v => !v); setSelectedId(row.original._id)}}>View Profile</DropdownMenuItem>
                         {/* <DropdownMenuItem>Send Message</DropdownMenuItem> */}
                         <DropdownMenuSeparator />
                         {row.original._destroy ? (
@@ -466,6 +468,11 @@ export function DataTable() {
         await restoreUser(selectedId)
         // Refresh data
         handleFind()
+    }
+
+    const handleGetUserById = async (id: string) => {
+        // Just for testing
+        // const user = await getUserById(id)
     }
 
     return (
@@ -833,6 +840,12 @@ export function DataTable() {
                         }
                     }}
                 />
+
+                <UserProfileDialog
+                    user={data.find(user => user._id === selectedId)!}
+                    open={profileOpen}
+                    onOpenChange={setProfileOpen}
+                />
             </TabsContent>
             <TabsContent
                 value="past-performance"
@@ -914,4 +927,95 @@ export function ConfirmActionDialog({
             </DialogContent>
         </Dialog>
     )
+}
+
+interface UserProfileDialogProps {
+  user: {
+    _id: string
+    email: string
+    avatarUrl: string
+    fullName: string
+    username: string
+    dateOfBirth: string
+    bio: string
+    status: {
+      isOnline: boolean
+      lastActiveAt: string
+    }
+    updatedAt: string
+    createdAt: string
+  }
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}
+
+export function UserProfileDialog({ user, open, onOpenChange }: UserProfileDialogProps) {
+  if (!user) return null
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-center">User Profile</DialogTitle>
+          <DialogDescription className="text-center">
+            Detailed information about the user
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex flex-col items-center gap-3 py-4">
+          <Avatar className="h-20 w-20">
+            <AvatarImage src={user.avatarUrl} alt={user.fullName} />
+            <AvatarFallback>{user.fullName.charAt(0)}</AvatarFallback>
+          </Avatar>
+
+          <div className="text-center">
+            <h3 className="text-lg font-semibold">{user.fullName}</h3>
+            <p className="text-sm text-muted-foreground">@{user.username}</p>
+            <p className="text-sm text-muted-foreground">{user.email}</p>
+          </div>
+
+          <div className="mt-2">
+            {user.status.isOnline ? (
+              <Badge variant="outline">🟢 Online</Badge>
+            ) : (
+              <Badge variant="secondary">
+                Offline{" "}
+                {/* {user.status.lastActiveAt &&
+                  `(${formatDistanceToNow(new Date(user.status.lastActiveAt), {
+                    addSuffix: true,
+                    locale: vi,
+                  })})`} */}
+              </Badge>
+            )}
+          </div>
+        </div>
+
+        <Separator className="my-2" />
+
+        <div className="space-y-2 text-sm">
+          <p>
+            <strong>Date of Birth:</strong>{" "}
+            {new Date(user.dateOfBirth).toLocaleDateString("en-US")}
+          </p>
+          <p>
+            <strong>Bio:</strong> {user.bio || "No bio available"}
+          </p>
+          <p>
+            <strong>Created At:</strong>{" "}
+            {new Date(user.createdAt).toLocaleString("en-US")}
+          </p>
+          <p>
+            <strong>Last Updated:</strong>{" "}
+            {new Date(user.updatedAt).toLocaleString("en-US")}
+          </p>
+        </div>
+
+        <DialogFooter className="mt-4">
+          <Button onClick={() => onOpenChange(false)} className="w-full">
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
 }
