@@ -1,13 +1,22 @@
+/* eslint-disable no-empty */
 import { useEffect, useRef, useState } from 'react'
 import { getWebRTCSocket } from '@/lib/socket'
 
 const ICE = {
   iceServers: [
     { urls: ['stun:stun.l.google.com:19302'] },
-    // Replace with your TURN server
-    // { urls: 'turn:your.turn.host:3478', username: 'user', credential: 'pass' }
+    // TURN từ .env (coturn/twilio/ion-sfu…)
+    ...(import.meta.env.VITE_TURN_URL
+      ? [{
+          urls: import.meta.env.VITE_TURN_URL.split(',').map(s => s.trim()),
+          username: import.meta.env.VITE_TURN_USER || undefined,
+          credential: import.meta.env.VITE_TURN_PASS || undefined,
+        }]
+      : [])
   ],
-  iceCandidatePoolSize: 10
+  iceCandidatePoolSize: 10,
+  // đặt VITE_RTC_FORCE_TURN=1 để buộc relay khi cần test
+  iceTransportPolicy: import.meta.env.VITE_RTC_FORCE_TURN === '1' ? 'relay' : 'all',
 }
 
 export function useWebRTCGroup({ roomId, currentUserId, initialMode = 'video', callId }) {
@@ -39,13 +48,18 @@ export function useWebRTCGroup({ roomId, currentUserId, initialMode = 'video', c
     if (!localStreamRef.current) {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          audio: true,
-          video: needVideo ? { width: 640, height: 480 } : false
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+          video: needVideo ? { width: 640, height: 480 } : false,
         })
         localStreamRef.current = stream
-        console.log('[WebRTC] Created new local stream:', { hasVideo: needVideo, tracks: stream.getTracks().length })
+        console.log('[WebRTC] New local stream:',
+          { hasVideo: needVideo, audio: stream.getAudioTracks().length, video: stream.getVideoTracks().length })
       } catch (err) {
-        console.error('[WebRTC] Failed to get user media:', err)
+        console.error('[WebRTC] getUserMedia failed:', err)
         throw err
       }
     }
@@ -59,57 +73,82 @@ export function useWebRTCGroup({ roomId, currentUserId, initialMode = 'video', c
 
   const createPC = (peerId) => {
     if (pcsRef.current.has(peerId)) return pcsRef.current.get(peerId)
-
     const pc = new RTCPeerConnection(ICE)
     pcsRef.current.set(peerId, pc)
 
-    pc.onconnectionstatechange = () => {
-      console.log('[WebRTC] PC', peerId, 'connectionState:', pc.connectionState)
+    pc.onicecandidate = (e) => {
+      if (e.candidate) {
+        socketRef.current?.emit('rtc-ice', { to: peerId, candidate: e.candidate, from: socketRef.current.id })
+      }
     }
+
     pc.oniceconnectionstatechange = () => {
       console.log('[WebRTC] PC', peerId, 'iceConnectionState:', pc.iceConnectionState)
     }
 
     pc.ontrack = (e) => {
       console.log('[WebRTC] Received remote track from', peerId, 'kind:', e.track.kind)
-      const remoteStream = e.streams[0]
-      remoteStreamsRef.current.set(peerId, remoteStream)
 
-      // Force re-render
+      // Gộp mọi track (audio/video) vào cùng 1 MediaStream cho peer
+      let remoteStream = remoteStreamsRef.current.get(peerId)
+      if (!remoteStream) {
+        remoteStream = new MediaStream()
+        remoteStreamsRef.current.set(peerId, remoteStream)
+      }
+
+      // Thay thế theo kind để tránh duplicate
+      const existing = remoteStream.getTracks().find(t => t.kind === e.track.kind)
+      if (existing) {
+        try { remoteStream.removeTrack(existing) } catch {}
+      }
+      try { remoteStream.addTrack(e.track) } catch {}
+
+      // Dọn dẹp khi track kết thúc
+      e.track.onended = () => {
+        const s = remoteStreamsRef.current.get(peerId)
+        if (!s) return
+        const t = s.getTracks().find(tk => tk.id === e.track.id)
+        if (t) {
+          try { s.removeTrack(t) } catch {}
+        }
+      }
+
+      // Force re-render tiles
       setPeerIds(prev => [...prev])
     }
 
-    pc.onicecandidate = (e) => {
-      if (e.candidate) {
-        socketRef.current?.emit('rtc-ice', {
-          to: peerId,
-          candidate: e.candidate,
-          from: socketRef.current.id
-        })
-      }
-    }
-
-    // Thêm local tracks ngay khi tạo PC
+    // luôn thêm track local
     addLocalTracksTo(pc)
-
+    // debug: in 2s kiểm tra bytesSent audio
+    setTimeout(() => logOutboundAudio(peerId), 2000)
     return pc
   }
 
   const addLocalTracksTo = (pc) => {
     const stream = localStreamRef.current
     if (!stream) return
-
-    // Prefer replaceTrack to keep transceivers/mids stable
     stream.getTracks().forEach(track => {
       const sender = pc.getSenders().find(s => s.track && s.track.kind === track.kind)
-      if (sender) {
-        console.log('[WebRTC] Replacing local track on PC:', track.kind, track.label)
-        sender.replaceTrack(track)
-      } else {
-        console.log('[WebRTC] Adding local track to PC:', track.kind, track.label)
-        pc.addTrack(track, stream)
-      }
+      if (sender) sender.replaceTrack(track)
+      else pc.addTrack(track, stream)
     })
+  }
+
+  // Debug helper: xem audio có gửi ra không
+  async function logOutboundAudio(peerId) {
+    const pc = pcsRef.current.get(peerId)
+    if (!pc) return
+    try {
+      const stats = await pc.getStats()
+      stats.forEach(r => {
+        if (r.type === 'outbound-rtp' && r.kind === 'audio') {
+          console.log('[WebRTC] outbound audio to', peerId, {
+            packetsSent: r.packetsSent, bytesSent: r.bytesSent, packetsLost: r.packetsLost
+          })
+        }
+      })
+    // eslint-disable-next-line no-empty
+    } catch {}
   }
 
   const ensurePeerState = (peerId) => {
