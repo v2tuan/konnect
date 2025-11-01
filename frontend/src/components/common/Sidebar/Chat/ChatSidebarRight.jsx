@@ -165,8 +165,8 @@ export default function ChatSidebarRight({ conversation, isOpen, onClose }) {
       m?.role === "admin"
         ? "Admin"
         : m?.role === "owner"
-        ? "Owner"
-        : "Member"
+          ? "Owner"
+          : "Member"
 
     const canManage =
       amIAdmin && String(uid) !== String(currentUserId)
@@ -320,17 +320,18 @@ export default function ChatSidebarRight({ conversation, isOpen, onClose }) {
                       </button>
                     </CreateGroupDialog>
                   ) : (
-                    <AddMemberDialog asChild>
-                      <button className={buttonStyle}>
-                        <div className={contentStyle}>
-                          <UserPlus size={20} className="mb-1" />
-                          <span className={textStyle}>Add member</span>
-                        </div>
-                      </button>
-                    </AddMemberDialog>
+                    <AddMemberDialog
+                      conversationId={conversation?._id}
+                      existingMemberIds={
+                        Array.isArray(conversation?.group?.members)
+                          ? conversation.group.members.map(m => String(m._id || m.id))
+                          : []
+                      }
+                    />
                   )}
                 </div>
               </div>
+
             </div>
 
             {/* Accordions */}
@@ -432,12 +433,12 @@ export default function ChatSidebarRight({ conversation, isOpen, onClose }) {
                       {conversation?.type !== "group" ||
                       !Array.isArray(conversation?.group?.members) ||
                       !conversation.group.members.length ? (
-                        <div className="text-sm text-muted-foreground">
+                          <div className="text-sm text-muted-foreground">
                           This conversation is not a group or has no members yet.
-                        </div>
-                      ) : (
-                        conversation.group.members.map(renderMemberRow)
-                      )}
+                          </div>
+                        ) : (
+                          conversation.group.members.map(renderMemberRow)
+                        )}
                     </div>
                   </AccordionContent>
                 </AccordionItem>
