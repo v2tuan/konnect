@@ -22,7 +22,8 @@ import {
   deleteConversationAPI,
   leaveGroupAPI,
   addMemberToGroup,
-  removeMemberFromGroupAPI
+  removeMemberFromGroupAPI,
+  promoteMemberToAdminAPI
 } from "@/apis"
 import { toast } from "react-toastify"
 import { useNavigate, useParams } from "react-router-dom"
@@ -108,6 +109,27 @@ export default function ChatSidebarRight({ conversation, isOpen, onClose }) {
     }
   }
 
+  const handlePromoteToAdmin = async (memberId) => {
+  try {
+    const confirmed = window.confirm("Promote this member to admin?")
+    if (!confirmed) return
+
+    await promoteMemberToAdminAPI(conversation?._id, memberId)
+
+    toast.success("Promoted to admin")
+
+    // không set state trực tiếp ở đây,
+    // vì ChatArea sẽ nghe socket 'member:promoted' và update localConversation
+  } catch (err) {
+    console.error("promote member error:", err)
+    toast.error(
+      err?.response?.data?.message ||
+      err.message ||
+      "Failed to promote member"
+    )
+  }
+}
+
   const handleLeaveGroup = async (conversationId) => {
     try {
       const confirmed = window.confirm("Are you sure you want to leave this group?")
@@ -136,12 +158,6 @@ export default function ChatSidebarRight({ conversation, isOpen, onClose }) {
       console.error("remove member error:", err)
       toast.error(err?.response?.data?.message || err.message || "Failed to remove member")
     }
-  }
-
-  const handlePromoteToAdmin = async (memberId) => {
-    // Chưa có API promote riêng trong BE (mới chỉ có kick/remove, hoặc transfer admin khi admin leave)
-    toast.info("Promote to admin is not implemented yet.")
-    // TODO: promoteMemberToAdminAPI(conversationId, memberId)
   }
 
   // helper: check current user's role in this conversation

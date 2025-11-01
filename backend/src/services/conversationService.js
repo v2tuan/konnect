@@ -941,6 +941,184 @@ const leaveGroup = async (userId, conversationId, io, nextAdminId) => {
   }
 }
 
+async function promoteMemberToAdmin({ actorId, conversationId, targetUserId, io }) {
+  // 0) Validate
+  if (!mongoose.isValidObjectId(conversationId)) {
+    const err = new Error("Invalid conversationId")
+    err.status = 400
+    throw err
+  }
+  if (!mongoose.isValidObjectId(targetUserId)) {
+    const err = new Error("Invalid target user id")
+    err.status = 400
+    throw err
+  }
+
+  // 1) Lấy conversation
+  const convo = await Conversation.findById(conversationId).lean()
+  if (!convo) {
+    const err = new Error("Conversation not found")
+    err.status = 404
+    throw err
+  }
+  if (convo.type !== "group") {
+    const err = new Error("Only group conversations support promoting admin")
+    err.status = 400
+    throw err
+  }
+
+  // 2) Kiểm tra actor có phải admin không
+  const actorMembership = await ConversationMember.findOne({
+    conversation: conversationId,
+    userId: actorId,
+    deletedAt: null
+  }).lean()
+
+  if (!actorMembership) {
+    const err = new Error("You are not a member of this group")
+    err.status = 403
+    throw err
+  }
+  if (actorMembership.role !== "admin") {
+    const err = new Error("Only admin can promote another member")
+    err.status = 403
+    throw err
+  }
+
+  // 3) Lấy target membership
+  const targetMembership = await ConversationMember.findOne({
+    conversation: conversationId,
+    userId: targetUserId,
+    deletedAt: null
+  }).lean()
+
+  if (!targetMembership) {
+    const err = new Error("Target user is not in this group")
+    err.status = 404
+    throw err
+  }
+
+  if (targetMembership.role === "admin") {
+    const err = new Error("This user is already an admin")
+    err.status = 400
+    throw err
+  }
+
+  // 4) Cập nhật role -> 'admin'
+  await ConversationMember.updateOne(
+    {
+      conversation: conversationId,
+      userId: targetUserId
+    },
+    {
+      $set: { role: "admin" }
+    }
+  )
+
+  // 5) Lấy info actor & target để tạo message hệ thống
+  const [actorUser, targetUser] = await Promise.all([
+    User.findById(actorId).select("fullName username").lean(),
+    User.findById(targetUserId).select("fullName username").lean()
+  ])
+
+  const actorName = actorUser?.fullName || actorUser?.username || "Ai đó"
+  const targetName = targetUser?.fullName || targetUser?.username || "người dùng"
+
+  const now = new Date()
+  const nextSeq = (convo.messageSeq || 0) + 1
+
+  const bodyText = `${actorName} đã chuyển quyền ${targetName} lên quản trị viên`
+
+  const notificationMessage = await Message.create({
+    conversationId: new mongoose.Types.ObjectId(conversationId),
+    seq: nextSeq,
+    senderId: SYSTEM_USER_ID,
+    type: "notification",
+    body: { text: bodyText },
+    createdAt: now
+  })
+
+  await Conversation.updateOne(
+    { _id: conversationId },
+    {
+      $inc: { messageSeq: 1 },
+      $set: {
+        lastMessage: {
+          seq: nextSeq,
+          messageId: notificationMessage._id,
+          type: "notification",
+          textPreview: bodyText,
+          senderId: SYSTEM_USER_ID,
+          createdAt: now
+        },
+        updatedAt: now
+      }
+    }
+  )
+
+  // 6) Chuẩn bị payload realtime
+  const payloadMessage = {
+    _id: notificationMessage._id,
+    conversationId,
+    seq: nextSeq,
+    type: "notification",
+    body: { text: bodyText },
+    senderId: SYSTEM_USER_ID,
+    sender: SYSTEM_SENDER,
+    createdAt: now
+  }
+
+  // profile mới của target sau khi lên admin (để FE update role ngay)
+  const promotedProfile = await User.findById(targetUserId)
+    .select("fullName username avatarUrl status")
+    .lean()
+
+  const promotedMemberObj = {
+    id: promotedProfile?._id,
+    _id: promotedProfile?._id,
+    fullName: promotedProfile?.fullName || null,
+    username: promotedProfile?.username || null,
+    avatarUrl: promotedProfile?.avatarUrl || null,
+    status: promotedProfile?.status || null,
+    role: "admin"
+  }
+
+  // 7) Emit socket cho tất cả thành viên còn trong nhóm
+  if (io) {
+    // lấy list ai còn trong nhóm
+    const stillMembers = await ConversationMember.find({
+      conversation: conversationId,
+      deletedAt: null
+    })
+      .select("userId")
+      .lean()
+
+    for (const m of stillMembers) {
+      const room = `user:${m.userId}`
+
+      // a) thông báo có message hệ thống
+      io.to(room).emit("message:new", {
+        conversationId,
+        message: payloadMessage
+      })
+
+      // b) thông báo role thay đổi
+      io.to(room).emit("member:promoted", {
+        conversationId,
+        userId: String(targetUserId),
+        newRole: "admin",
+        member: promotedMemberObj // gửi kèm object member đã nâng cấp
+      })
+    }
+  }
+
+  return {
+    ok: true,
+    message: "Promoted to admin successfully",
+    promotedUserId: targetUserId
+  }
+}
+
 async function assertIsMember(userId, conversationId) {
   const cm = await ConversationMember.findOne({ userId, conversation: conversationId, deletedAt: null }).lean();
   if (!cm) {
@@ -1539,5 +1717,6 @@ export const conversationService = {
   updateNotificationSettings,
   isMemberMutedNow,
   addMembersToGroup,
-  removeMemberFromGroup
+  removeMemberFromGroup,
+  promoteMemberToAdmin
 }

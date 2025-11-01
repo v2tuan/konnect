@@ -148,7 +148,7 @@ const handleConversationActions = async (req, res, next) => {
   try {
     const userId = req.userId
     const conversationId = req.params.conversationId
-    const { action } = req.body // "delete" | "leave" | "add" | "remove"
+    const { action } = req.body // "delete" | "leave" | "add" | "remove" | "promote"
 
     if (!userId) {
       return res.status(StatusCodes.UNAUTHORIZED).json({
@@ -158,23 +158,21 @@ const handleConversationActions = async (req, res, next) => {
 
     if (!action) {
       return res.status(StatusCodes.BAD_REQUEST).json({
-        message: 'action is required. Use "delete", "leave", "add" or "remove"'
+        message: 'action is required. Use "delete", "leave", "add", "remove" or "promote"'
       })
     }
 
-    // 1) user xoá cuộc trò chuyện cho riêng họ (soft delete)
     if (action === "delete") {
       const result = await conversationService.deleteConversation(userId, conversationId)
       return res.status(StatusCodes.OK).json(result)
     }
 
-    // 2) user rời group
     if (action === "leave") {
-      const result = await conversationService.leaveGroup(userId, conversationId, req.io)
+      const { nextAdminId } = req.body
+      const result = await conversationService.leaveGroup(userId, conversationId, req.io, nextAdminId)
       return res.status(StatusCodes.OK).json(result)
     }
 
-    // 3) admin thêm thành viên vào group
     if (action === "add") {
       const { memberIds } = req.body
       if (!memberIds) {
@@ -191,9 +189,8 @@ const handleConversationActions = async (req, res, next) => {
       return res.status(StatusCodes.OK).json(result)
     }
 
-    // 4) admin kick 1 thành viên ra khỏi group
     if (action === "remove") {
-      const { memberId } = req.body // id của user bị kick
+      const { memberId } = req.body
       if (!memberId) {
         return res.status(StatusCodes.BAD_REQUEST).json({ message: 'memberId is required' })
       }
@@ -208,15 +205,30 @@ const handleConversationActions = async (req, res, next) => {
       return res.status(StatusCodes.OK).json(result)
     }
 
-    // fallback
-    return res.status(StatusCodes.BAD_REQUEST).json({
-      message: 'Invalid action. Use "delete", "leave", "add" or "remove"'
-    })
+    if (action === "promote") {
+      const { memberId } = req.body
+      if (!memberId) {
+        return res.status(StatusCodes.BAD_REQUEST).json({ message: 'memberId is required' })
+      }
 
+      const result = await conversationService.promoteMemberToAdmin({
+        actorId: userId,
+        conversationId,
+        targetUserId: memberId,
+        io: req.io
+      })
+
+      return res.status(StatusCodes.OK).json(result)
+    }
+
+    return res.status(StatusCodes.BAD_REQUEST).json({
+      message: 'Invalid action. Use "delete", "leave", "add", "remove" or "promote"'
+    })
   } catch (error) {
     next(error)
   }
 }
+
 
 const updateNotifications = async (req, res, next) => {
   try {
