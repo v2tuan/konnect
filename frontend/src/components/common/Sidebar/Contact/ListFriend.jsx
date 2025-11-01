@@ -29,8 +29,8 @@ function relativeFromNow(iso) {
 const getStatusColor = (status) => (status === 'online' ? 'bg-status-online' : 'bg-status-offline')
 
 const getStatusText = (contact /** @type {FriendUI} */) => {
-  if (contact.status === 'online') return 'Online'
-  return contact.lastActiveAt ? `Hoạt động ${relativeFromNow(contact.lastActiveAt)}` : 'Offline'
+  if (contact.status === 'online') return 'Đang hoạt động'
+  return contact.lastActiveAt ? `Hoạt động ${relativeFromNow(contact.lastActiveAt)}` : 'Ngoại tuyến'
 }
 
 // Chuẩn hóa dữ liệu cho UserProfilePanel
@@ -276,17 +276,6 @@ export function ListFriend({ onFriendSelect }) {
           </div>
         </div>
 
-        {/* Search */}
-        <div className="relative mb-4">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-          <Input
-            placeholder="Tìm kiếm bạn bè..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10 bg-input border-input-border focus:border-input-focus"
-          />
-        </div>
-
         {/* Filters */}
         <div className="flex gap-2">
           <Button
@@ -302,15 +291,13 @@ export function ListFriend({ onFriendSelect }) {
             size="sm"
             onClick={() => setFilterStatus('online')}
           >
-            <div className="w-2 h-2 bg-success rounded-full mr-2"></div>
-            Đang online
+            Online
           </Button>
           <Button
             variant={filterStatus === 'offline' ? 'default' : 'outline'}
             size="sm"
             onClick={() => setFilterStatus('offline')}
           >
-            <Filter className="w-4 h-4 mr-2" />
             Offline
           </Button>
         </div>
