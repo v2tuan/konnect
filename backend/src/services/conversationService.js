@@ -547,16 +547,24 @@ const fetchConversationDetail = async (userId, conversationId, limit = 30, befor
   // ===== Group members =====
   let groupMembers = []
   let memberIds = []
+  let roleMap = new Map()
+
   if (convo.type === 'group') {
+    // Lấy tất cả member trong nhóm KÈM role
     const cms = await ConversationMember.find(
-      { conversation: convo._id },
-      { userId: 1 }
+      { conversation: convo._id, deletedAt: null },
+      { userId: 1, role: 1 }
     ).lean()
 
+    // tách ra list id và map role
     memberIds = (cms || [])
       .map(cm => cm?.userId)
       .filter(Boolean)
       .map(id => String(id))
+
+    roleMap = new Map(
+      (cms || []).map(cm => [ String(cm.userId), cm.role || 'member' ])
+    )
   }
 
   // ===== Load users =====
@@ -581,19 +589,25 @@ const fetchConversationDetail = async (userId, conversationId, limit = 30, befor
   }
 
   if (convo.type === 'group') {
-    // Lấy toàn bộ profile giàu field cho các member trong group
+    // lấy profile giàu field cho từng member
     const users = await User.find(
       { _id: { $in: memberIds.map(id => new mongoose.Types.ObjectId(id)) } },
       { fullName: 1, username: 1, avatarUrl: 1, status: 1, phone: 1, dateOfBirth: 1, bio: 1 }
-    ).lean();
+    ).lean()
 
-    const richById = new Map(users.map(u => [String(u._id), u]));
+    const richById = new Map(users.map(u => [String(u._id), u]))
 
-    // Tính mutualGroups cho từng thành viên (so với userId hiện tại)
+    // build object member cuối cùng (kèm role)
     const enriched = await Promise.all(
       memberIds.map(async (uid) => {
-        const k = String(uid);
-        const u = richById.get(k);
+        const key = String(uid)
+        const u = richById.get(key)
+
+        // mutualGroups chỉ để hiển thị info thêm, giữ nguyên logic cũ
+        const mg = String(uid) === String(userId)
+          ? 0
+          : await countMutualGroups(userId, uid)
+
         if (!u) {
           return {
             id: uid,
@@ -604,10 +618,11 @@ const fetchConversationDetail = async (userId, conversationId, limit = 30, befor
             phone: null,
             dateOfBirth: null,
             bio: "",
-            mutualGroups: 0
-          };
+            mutualGroups: 0,
+            role: roleMap.get(key) || 'member'
+          }
         }
-        const mg = String(uid) === String(userId) ? 0 : await countMutualGroups(userId, u._id);
+
         return {
           id: u._id,
           fullName: u.fullName || null,
@@ -617,14 +632,14 @@ const fetchConversationDetail = async (userId, conversationId, limit = 30, befor
           phone: u.phone || null,
           dateOfBirth: u.dateOfBirth || null,
           bio: u.bio || "",
-          mutualGroups: mg
-        };
+          mutualGroups: mg,
+          role: roleMap.get(key) || 'member'
+        }
       })
-    );
+    )
 
-    groupMembers = enriched;
+    groupMembers = enriched
   }
-
 
   // Enrich messages.sender cho group
   const messagesWithSender =

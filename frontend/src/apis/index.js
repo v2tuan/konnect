@@ -249,6 +249,14 @@ export const addMemberToGroup = async (conversationId, memberIds) => {
   return response.data
 }
 
+export const removeMemberFromGroupAPI = async (conversationId, memberId) => {
+  const response = await authorizeAxiosInstance.delete(
+    `${API_ROOT}/api/conversation/chats/${conversationId}`,
+    { data: { action: 'remove', memberId } }
+  )
+  return response.data
+}
+
 export const removeFriendAPI = async (friendUserId) => {
   const { data } = await authorizeAxiosInstance.delete(
     `${API_ROOT}/api/contacts/friends/${friendUserId}`
