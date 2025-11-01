@@ -1,5 +1,6 @@
+/* eslint-disable no-empty */
 /* eslint-disable no-undef */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Search, UserPlus, Users, Filter, Phone, Video, MessageCircle, Loader2 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -8,7 +9,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { getFriendsAPI } from '@/apis'
 import UserProfilePanel from '@/components/common/Modal/UserProfilePanel'
 import { useNavigate } from 'react-router-dom'
-import { getConversationByUserId, getConversations } from '@/apis'
+import { getConversationByUserId, getConversations, findUserById, submitFriendRequestAPI, removeFriendAPI } from '@/apis'
 import { useSelector } from 'react-redux'
 import { selectCurrentUser } from '@/redux/user/userSlice'
 import { useCallInvite } from '@/hooks/useCallInvite'
@@ -36,14 +37,17 @@ const getStatusText = (contact /** @type {FriendUI} */) => {
 function mapToUserProfile(contact) {
   if (!contact) return {}
   return {
-    id: contact.id,
-    fullName: contact.name || contact.username || 'Người dùng',
-    avatarUrl: contact.avatar || '',
-    coverUrl: '',
+    id: contact.id || contact._id,
+    fullName: contact.fullName || contact.name || contact.username || 'Người dùng',
+    username: contact.username || '',
+    avatarUrl: contact.avatarUrl || contact.avatar || '',
+    coverUrl: contact.coverUrl || '',
     bio: contact.bio || '',
-    dateOfBirth: contact.dateOfBirth || '',
+    dateOfBirth: contact.dateOfBirth || contact.birthday || '',
     phone: contact.phone || '',
-    photos: contact.photos || []
+    photos: contact.photos || [],
+    mutualGroups: typeof contact.mutualGroups === 'number' ? contact.mutualGroups : 0,
+    friendship: contact.friendship || null
   }
 }
 
@@ -69,19 +73,44 @@ export function ListFriend({ onFriendSelect }) {
 
   // Current user + call hook
   const currentUser = useSelector(selectCurrentUser)
-  const { startCall } = useCallInvite(currentUser?._id)
+  const { startCall, ringing, cancelCaller } = useCallInvite(currentUser?._id)
+
+  // Keep last dial targets for cancel
+  const lastDialIdsRef = useRef([])
 
   const openProfile = async (contact, e) => {
     e?.stopPropagation?.()
-    setProfileUser(contact)
+    setProfileUser(mapToUserProfile(contact))
     setProfileOpen(true)
 
-    // Tính số nhóm chung (dựa trên danh sách hội thoại nhóm của bạn)
+    // 1) Load full profile
+    try {
+      const detail = await findUserById(contact.id)
+      const raw = detail?.data || detail?.user || detail || {}
+      const merged = mapToUserProfile({
+        ...contact,
+        id: raw._id || raw.id || contact.id,
+        fullName: raw.fullName || raw.name || contact.name,
+        username: raw.username || contact.username,
+        avatarUrl: raw.avatarUrl || contact.avatar,
+        coverUrl: raw.coverUrl || '',
+        bio: raw.bio || '',
+        dateOfBirth: raw.dateOfBirth || raw.birthday || '',
+        phone: raw.phone || '',
+        photos: raw.photos || [],
+        friendship: raw.friendship || null
+      })
+      setProfileUser(merged)
+    } catch {
+      // fallback đã set ở trên
+    }
+
+    // 2) Tính số nhóm chung
     try {
       let page = 1
       const limit = 50
       let total = 0
-      while (page <= 5) { // tránh tải vô hạn, tối đa 5 trang
+      while (page <= 5) {
         const res = await getConversations(page, limit)
         const list = res?.data || []
         const groups = list.filter(c => c?.type === 'group')
@@ -99,6 +128,36 @@ export function ListFriend({ onFriendSelect }) {
     }
   }
   const closeProfile = () => setProfileOpen(false)
+
+  // Add/Remove friend handlers for ProfilePanel
+  const handleAddFriend = async (u) => {
+    const uid = u?.id || u?._id
+    if (!uid) return
+    try {
+      await submitFriendRequestAPI(uid)
+      // Optionally update local profile friendship
+      setProfileUser(p => ({ ...(p || {}), friendship: { status: 'pending', direction: 'outgoing' } }))
+    } catch (e) {}
+  }
+
+  const handleUnfriend = async (u) => {
+    const uid = u?.id || u?._id
+    if (!uid) return
+    try {
+      await removeFriendAPI(uid)
+      // Remove from current list
+      setFriends(prev => prev.filter(f => String(f.id) !== String(uid)))
+      setProfileOpen(false)
+    } catch (e) {}
+  }
+
+  // Derived: isFriend for panel
+  const isFriendForPanel = useMemo(() => {
+    if (!profileUser) return false
+    const inList = friends.some(f => String(f.id) === String(profileUser.id || profileUser._id))
+    const accepted = profileUser?.friendship?.status === 'accepted'
+    return accepted || inList
+  }, [friends, profileUser])
 
   const openChat = async (contact, e) => {
     e?.stopPropagation?.()
@@ -128,10 +187,13 @@ export function ListFriend({ onFriendSelect }) {
       const conversationId = res?.data?._id || res?.data?.id || res?.id || res?._id
       if (!conversationId) return
 
+      const toIds = [contact.id]
+      lastDialIdsRef.current = toIds
+
       startCall({
         conversationId,
         mode,
-        toUserIds: [contact.id],
+        toUserIds: toIds,
         me: {
           id: currentUser._id,
           name: currentUser.fullName || currentUser.username || currentUser.email,
@@ -142,7 +204,7 @@ export function ListFriend({ onFriendSelect }) {
           avatarUrl: contact.avatar
         }
       })
-      // Không navigate — GlobalCallModal sẽ tự mở khi phía bên kia Accept
+      // GlobalCallModal will handle modal after accept; show ringing banner below meanwhile
     } finally {
       setNavLoadingId(null)
     }
@@ -387,10 +449,28 @@ export function ListFriend({ onFriendSelect }) {
           open={profileOpen}
           onClose={closeProfile}
           user={{ ...mapToUserProfile(profileUser), mutualGroups: profileMutualCount }}
-          isFriend
+          isFriend={isFriendForPanel}
           onChat={() => openChat(profileUser)}
           onCall={() => startDirectCall(profileUser, 'audio')}
+          onAddFriend={() => handleAddFriend(profileUser)}
+          onUnfriend={() => handleUnfriend(profileUser)}
         />
+      )}
+
+      {/* Outgoing ringing banner (30s countdown, same logic as ChatArea) */}
+      {ringing && (
+        <div className="fixed left-1/2 -translate-x-1/2 bottom-4 z-50 bg-card border rounded-xl shadow-lg px-4 py-3 flex items-center gap-3">
+          <img src={ringing.peer?.avatarUrl} alt="" className="w-10 h-10 rounded-full object-cover" />
+          <div className="mr-4">
+            <div className="text-sm font-semibold">{ringing.peer?.name}</div>
+            <div className="text-xs text-muted-foreground">
+              Đang gọi… còn {Math.ceil((ringing.leftMs || 0) / 1000)}s
+            </div>
+          </div>
+          <Button size="sm" variant="destructive" onClick={() => cancelCaller(lastDialIdsRef.current)}>
+            Hủy
+          </Button>
+        </div>
       )}
     </div>
   )
