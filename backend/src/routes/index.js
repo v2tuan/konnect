@@ -7,6 +7,7 @@ import {userRoute} from './userRoute'
 import {conversationRoutes} from './conversationRoute'
 import {contactRoutes} from './contactRoute'
 import notificationRoute from "~/routes/notificationRoute";
+import { storyRoute } from './storyRoute'
 
 const Router = express.Router()
 
@@ -26,6 +27,8 @@ Router.use('/conversation', conversationRoutes)
 Router.use('/contacts', contactRoutes)
 
 Router.use('/notification', notificationRoute)
+
+Router.use('/stories', storyRoute)
 
 
 export const APIs_V1 = Router

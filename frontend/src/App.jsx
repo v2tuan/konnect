@@ -16,6 +16,8 @@ import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import GlobalCallModal from "./components/common/Modal/GlobalCallModal"
 import NotificationsPage from "@/components/common/Notification/NotificationsPage.jsx";
+import StoryCreator from "./pages/StoryCreate/StoryCreator";
+import StoryViewer from "./pages/StoryCreate/StoryViewer";
 
 const ProtectedRoute = () => {
   const currentUser = useSelector(selectCurrentUser);
@@ -42,6 +44,9 @@ export default function App() {
         <Route element={<ProtectedRoute />}>
           <Route path="settings/account" element={<ProfilePage />} />
           <Route path="settings/security" element={<ProfilePage />} />
+
+          <Route path="stories/create" element={<StoryCreator />} />
+          <Route path="stories/view" element={<StoryViewer />} />
 
           {/* App shell + nested pages */}
           <Route element={<MainLayout />}>

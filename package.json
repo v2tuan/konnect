@@ -23,6 +23,7 @@
   "description": "",
   "dependencies": {
     "lucide-react": "^0.546.0",
-    "prop-types": "^15.8.1"
+    "prop-types": "^15.8.1",
+    "react-insta-stories": "^2.8.0"
   }
 }

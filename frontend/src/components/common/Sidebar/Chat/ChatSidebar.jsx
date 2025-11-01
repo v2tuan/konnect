@@ -19,6 +19,7 @@ import { useUnreadStore } from '@/store/useUnreadStore'
 import { connectSocket, getSocket } from '@/lib/socket'
 import { toast } from 'react-toastify'
 import ConversationMenu from './ConversationMenu'
+import { StoryList } from '../Stories/StoryList'
 
 /* ========================= Helpers ========================= */
 
@@ -719,6 +720,8 @@ export function ChatSidebar({ currentView, onViewChange }) {
           />
         </div>
       </div>
+
+      <StoryList/>
 
       {/* Tabs */}
       <div className="px-4 py-2 border-b border-border">
