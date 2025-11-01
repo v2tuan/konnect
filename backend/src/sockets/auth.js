@@ -22,6 +22,7 @@ export function socketAuth({ jwtSecret }) {
       if (!token) return next(new Error('Unauthorized'))
 
       const decoded = jwt.verify(token, jwtSecret)
+      console.log('Socket authenticated userId=', decoded.userId)
       socket.user = { id: decoded.userId }
       return next()
     } catch (err) {

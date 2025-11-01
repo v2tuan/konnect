@@ -11,18 +11,21 @@ import { initSockets } from './sockets/index.js'
 
 const app = express()
 const server = http.createServer(app)
-const PORT =env.LOCAL_DEV_APP_PORT || 3000
+const PORT = env.LOCAL_DEV_APP_PORT || 3000
 
 //socket + http server
 const io = initSockets(server, {
-  corsOrigin: env.WEBSITE_DOMAIN_DEVELOPMENT,
+  corsOrigin: [
+    env.WEBSITE_DOMAIN_DEVELOPMENT,
+    env.WEBSITE_DOMAIN_DEVELOPMENT_ADMIN
+  ],
   jwtSecret: env.JWT_SECRET,
   userService
 })
 
-app.use((req, _res, next) => { 
-    req.io = io
-    next() 
+app.use((req, _res, next) => {
+  req.io = io
+  next()
 })
 
 
@@ -36,10 +39,10 @@ app.use(cookieParser()) // Middleware to parse cookies
 
 //CORS
 app.use(cors(
-    {
-        origin: env.WEBSITE_DOMAIN_DEVELOPMENT,
-        credentials: true
-    }
+  {
+    origin: env.WEBSITE_DOMAIN_DEVELOPMENT,
+    credentials: true
+  }
 ))
 
 app.use('/api', APIs_V1)
@@ -67,8 +70,8 @@ app.use((err, req, res, next) => {
   res.status(status).json({ message })
 })
 server.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`)
-    console.log(`http://${env.LOCAL_DEV_APP_HOST}:${PORT}`)
-    connectDB()
-    // seedUsers() // Call the seed function to populate the database
+  console.log(`Server is running on port ${PORT}`)
+  console.log(`http://${env.LOCAL_DEV_APP_HOST}:${PORT}`)
+  connectDB()
+  // seedUsers() // Call the seed function to populate the database
 })

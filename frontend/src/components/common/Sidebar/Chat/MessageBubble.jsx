@@ -20,7 +20,7 @@ import { Badge } from "@/components/ui/badge"
 import ReactionButton from "./ReactionButton"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { getDisplayUsers } from "@/apis"
+import { deleteMessageForMeAPI, getDisplayUsers, recallMessageAPI } from "@/apis"
 
 /** Helpers */
 const mediaUrl = (m, message) => m?.secure_url || m?.url || message?.body?.media?.url || ""
@@ -212,6 +212,7 @@ export function MessageBubble({
       console.error("Download failed", err)
     }
   }
+  const [menuPos, setMenuPos] = useState({ x: 0, y: 0 })
   const senderDisplay = useMemo(
     () => getDisplayName({ message, conversation, currentUser, nickById }),
     [message, conversation, currentUser, nickById]
@@ -259,6 +260,7 @@ export function MessageBubble({
     return "User";
   }
 
+
   const { images, videos, files, audios } = useMemo(() => {
     const list = Array.isArray(message?.media) ? message.media : []
     return {
@@ -274,6 +276,9 @@ export function MessageBubble({
   if ((!mentions || mentions.length === 0) && isGroup) {
     mentions = findMentionsFromMembers(text, conversation)
   }
+  // trong MessageBubble component, trước `return (`
+  const [showMenu, setShowMenu] = useState(false)
+  const [showDetail, setShowDetail] = useState(false)
 
   // Grid class for image+video
   const gridMedias = [...images, ...videos]
@@ -286,13 +291,68 @@ export function MessageBubble({
           ? "grid grid-cols-2 gap-2 max-w-md"
           : "grid grid-cols-3 gap-2 max-w-lg"
 
+  // gửi request delete/recall
+  async function handleAction(action) {
+    try {
+      const messageId = message._id || message.id
+      const conversationId = message.conversationId || conversation?._id
+
+      if (!messageId || !conversationId) {
+        console.warn("Missing ids for message action", { messageId, conversationId })
+        return
+      }
+
+      if (action === "delete") {
+        await deleteMessageForMeAPI({ messageId, conversationId })
+        // Ẩn tin nhắn đối với mình
+        setLocallyDeleted(true)
+      }
+
+      if (action === "recall") {
+        await recallMessageAPI({ messageId, conversationId })
+        // cập nhật UI local ngay
+        optimisticSetRecalled({
+          id: messageId,
+          text: "Message was recalled"
+        })
+      }
+    } catch (err) {
+      console.error("Delete/Recall failed", err)
+    } finally {
+      setShowMenu(false)
+    }
+  }
+
+  // local state cho việc ẩn tin nhắn khi "Delete"
+  const [locallyDeleted, setLocallyDeleted] = useState(false)
+
+  // local optimistic recall helper
+  function optimisticSetRecalled({ id, text }) {
+  // nếu message hiện tại trùng id thì mutate tạm
+  // ta không mutate prop trực tiếp, nên tạo 1 state wrapper cho "recallView"
+    if (String(id) === String(message._id || message.id)) {
+      setRecallView({
+        recalled: true,
+        text: text || "Message was recalled"
+      })
+    }
+  }
+
+  const [recallView, setRecallView] = useState(
+    message?.recalled
+      ? { recalled: true, text: "Message was recalled" }
+      : { recalled: false, text: "" }
+  )
+
+  if (locallyDeleted) return null
+
   return (
     <div
       className={`flex gap-2 ${Array.isArray(message?.reactions) && message.reactions.length > 0 ? "mb-4" : "mb-2"} ${
         isSystemMessage ? "justify-center" : isOwn ? "justify-end" : "justify-start"
       }`}
       onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      onMouseLeave={() => { setHovered(false) }}
     >
       {!isSystemMessage && !isOwn && showAvatar && (
         <button
@@ -317,34 +377,53 @@ export function MessageBubble({
 
         {!isSystemMessage && (
           <div
-            className={`pointer-events-auto absolute top-1/2 -translate-y-1/2 ${isOwn ? "-left-22" : "-right-22"} opacity-0 transition-opacity duration-150 ${
+            className={`pointer-events-auto absolute top-1/2 -translate-y-1/2 ${
+              isOwn ? "-left-22" : "-right-22"
+            } opacity-0 transition-opacity duration-150 ${
               hovered ? "opacity-100" : "opacity-0"
-            } flex items-center gap-1`}
+            } flex items-center gap-1 z-[100]`}
           >
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-6 w-6 p-0"
-              onClick={() => {
-                const list = Array.isArray(message?.media) ? message.media : []
-                const ims = list.filter(m => m.type === "image")
-                const fils = list.filter(m => m.type === "file")
-                const auds = list.filter(m => m.type === "audio")
-                setReplyingTo?.({
-                  sender: message?.isOwn ? "You" : (senderDisplay || "User"),                  content:
-                    (fils[0]?.metadata?.filename) || (ims.length ? "[Image]" : (auds.length ? "[Audio]" : "")) ||
-                    (message.text || message.body?.text || ""),
-                  media: list.length ? list : null,
-                  messageId: message.id || message._id
-                })
-              }}
-            >
+
+            <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => {
+              const images = message.media.filter(m => m.type === 'image')
+              const files = message.media.filter(m => m.type === 'file')
+              const audios = message.media.filter(m => m.type === 'audio')
+              setReplyingTo({
+                sender: message?.isOwn ? 'You' : (sender?.fullName || sender?.username || 'User'),
+
+                content: (files.length > 0
+                  ? files[0]?.metadata?.filename
+                  : (images.length > 0 ? '[Image]' : (audios.length > 0 ? '[Audio]' : '')))
+                  || message.text
+                  || message.body?.text,
+                media: message.media.length > 0 ? message.media : null,
+                messageId: message.id
+              })
+            }}>
               <Reply className="w-3 h-3" />
             </Button>
             <ReactionButton messageId={message.id || message._id} />
-            <Button size="sm" variant="ghost" className="h-6 w-6 p-0">
-              <MoreHorizontal className="w-3 h-3" />
-            </Button>
+            <div className="relative">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-6 w-6 p-0"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  const rect = e.currentTarget.getBoundingClientRect()
+                  // đặt menu ngay dưới nút
+                  setMenuPos({
+                    x: rect.right,
+                    y: rect.bottom + 4
+                  })
+                  setShowMenu(prev => !prev)
+                }}
+              >
+                <MoreHorizontal className="w-3 h-3" />
+              </Button>
+
+            </div>
+
           </div>
         )}
 
@@ -502,8 +581,12 @@ export function MessageBubble({
                   )}
 
                   <p className="text-sm whitespace-pre-wrap break-words">
-                    {renderMessageWithMentions(text, mentions)}
+                    {recallView.recalled
+                      ? <span className="italic text-gray-500">Message was recalled</span>
+                      : renderMessageWithMentions(text, mentions)
+                    }
                   </p>
+
                 </div>
               )}
 
@@ -546,6 +629,104 @@ export function MessageBubble({
             total={(message?.reactions || []).length}
           />
         )}
+
+        {showMenu && (
+          <>
+            {/* backdrop trong suốt để click ra ngoài đóng menu */}
+            <div
+              className="fixed inset-0 z-[9998]"
+              onClick={() => setShowMenu(false)}
+            />
+
+            {/* menu nổi */}
+            <div
+              className="fixed z-[9999] min-w-[180px] bg-white border border-gray-200 rounded-md shadow-xl text-sm py-1"
+              style={{
+                top: `${menuPos.y}px`,
+                left: `${menuPos.x - 180}px` // pop sang trái của nút để khỏi tràn màn hình
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Delete */}
+              <button
+                className="w-full text-left px-3 py-2 hover:bg-gray-100"
+                onClick={() => handleAction("delete")}
+              >
+        Delete
+                <span className="block text-[11px] text-gray-500">Chỉ xoá tin nhắn với bạn</span>
+              </button>
+
+              {/* Thu hồi: chỉ nếu là tin của mình */}
+              {isOwn && (
+                <button
+                  className="w-full text-left px-3 py-2 hover:bg-gray-100 text-red-600"
+                  onClick={() => handleAction("recall")}
+                >
+          Recall
+                  <span className="block text-[11px] text-gray-500 text-red-500">
+            Thu hồi tin nhắn với tất cả mọi người
+                  </span>
+                </button>
+              )}
+
+              {/* View Detail */}
+              <button
+                className="w-full text-left px-3 py-2 hover:bg-gray-100"
+                onClick={() => {
+                  setShowDetail(true)
+                  // đóng menu sau khi mở detail
+                  setShowMenu(false)
+                }}
+              >
+        View detail
+                <span className="block text-[11px] text-gray-500">
+          Xem chi tiết
+                </span>
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* View Detail Dialog */}
+        <Dialog open={showDetail} onOpenChange={setShowDetail}>
+          <DialogContent className="sm:max-w-[320px]">
+            <div className="text-sm space-y-3">
+              <div>
+                <div className="text-xs text-gray-500">Người gửi</div>
+                <div className="font-medium">
+                  {sender?.fullName || sender?.username || "User"}
+                  {isOwn && " (You)"}
+                </div>
+              </div>
+
+              <div>
+                <div className="text-xs text-gray-500">Thời gian</div>
+                <div className="font-medium">
+                  {(() => {
+                    const d = message?.createdAt ? new Date(message.createdAt) : null
+                    if (!d) return "—"
+                    // ví dụ: 31/10/2025 20:15:44
+                    const day = String(d.getDate()).padStart(2, "0")
+                    const mon = String(d.getMonth() + 1).padStart(2, "0")
+                    const yr = d.getFullYear()
+                    const hh = String(d.getHours()).padStart(2, "0")
+                    const mm = String(d.getMinutes()).padStart(2, "0")
+                    const ss = String(d.getSeconds()).padStart(2, "0")
+                    return `${day}/${mon}/${yr} ${hh}:${mm}:${ss}`
+                  })()}
+                </div>
+              </div>
+
+              <div>
+                <div className="text-xs text-gray-500">ID tin nhắn</div>
+                <div className="text-[11px] break-all text-gray-600">
+                  {message._id || message.id || "(local)"}
+                </div>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
 
         {showMeta && !isSystemMessage && (
           <div className={`flex items-center gap-1 mt-2 text-xs text-gray-500 ${isOwn ? "justify-end" : "justify-start"}`}>

@@ -184,7 +184,12 @@ export const setReaction = async (messageId, emoji) => {
   })
   return response.data
 }
-
+export const removeReaction = async (messageId) => {
+  const response = await authorizeAxiosInstance.delete(`${API_ROOT}/api/messages/reaction`, {
+    data: { messageId }
+  })
+  return response.data
+}
 export const fetchConversationDetail = async (conversationId, params = {}) => {
   console.log('🌐 API call: fetchConversationDetail', conversationId, params) // Debug log
   const response = await authorizeAxiosInstance.get(`${API_ROOT}/api/conversation/chats/${conversationId}`, { params })
@@ -266,6 +271,22 @@ export const addMemberToGroup = async (conversationId, memberIds) => {
   return response.data
 }
 
+export const removeMemberFromGroupAPI = async (conversationId, memberId) => {
+  const response = await authorizeAxiosInstance.delete(
+    `${API_ROOT}/api/conversation/chats/${conversationId}`,
+    { data: { action: 'remove', memberId } }
+  )
+  return response.data
+}
+
+export const promoteMemberToAdminAPI = async (conversationId, memberId) => {
+  const response = await authorizeAxiosInstance.delete(
+    `${API_ROOT}/api/conversation/chats/${conversationId}`,
+    { data: { action: 'promote', memberId } }
+  )
+  return response.data
+}
+
 export const removeFriendAPI = async (friendUserId) => {
   const { data } = await authorizeAxiosInstance.delete(
     `${API_ROOT}/api/contacts/friends/${friendUserId}`
@@ -274,20 +295,20 @@ export const removeFriendAPI = async (friendUserId) => {
 }
 // ======================== NOTIFICATION APIs ========================
 export async function listNotifications({
-                                          cursor = null,
-                                          limit = 20,
-                                          onlyUnread = false,
-                                          type = null // ⬅️ THÊM VÀO
-                                        } = {}) {
-  const params = {};
-  if (cursor) params.cursor = cursor;
-  if (limit) params.limit = limit;
-  if (onlyUnread) params.onlyUnread = true;
-  if (type) params.type = type; // ⬅️ THÊM DÒNG NÀY
+  cursor = null,
+  limit = 20,
+  onlyUnread = false,
+  type = null // ⬅️ THÊM VÀO
+} = {}) {
+  const params = {}
+  if (cursor) params.cursor = cursor
+  if (limit) params.limit = limit
+  if (onlyUnread) params.onlyUnread = true
+  if (type) params.type = type // ⬅️ THÊM DÒNG NÀY
 
-  const { data } = await authorizeAxiosInstance.get(`${API_ROOT}/api/notification`, { params });
+  const { data } = await authorizeAxiosInstance.get(`${API_ROOT}/api/notification`, { params })
   // Chuẩn hoá: support cả array hoặc {items:[...]}
-  return Array.isArray(data) ? data : (data?.items || []);
+  return Array.isArray(data) ? data : (data?.items || [])
 }
 export async function markAllNotificationsRead({ type = null, conversationId = null } = {}) {
   const body = {}
@@ -376,4 +397,34 @@ export const updateConversationMetaAPI = async (conversationId, formData) => {
 export function updateMemberNicknameAPI(conversationId, memberId, nickname) {
   return authorizeAxiosInstance.patch(`${API_ROOT}/api/conversation/chats/${conversationId}/members/nickname`, { memberId, nickname })
   .then(res => res.data)
+}
+
+// Xoá tin nhắn chỉ cho riêng mình (ẩn với bản thân)
+export async function deleteMessageForMeAPI({ messageId, conversationId }) {
+  if (!messageId || !conversationId) throw new Error("Missing messageId or conversationId")
+
+  return authorizeAxiosInstance.delete(
+    `${API_ROOT}/api/messages/${conversationId}`,
+    {
+      data: {
+        messageId,
+        action: "delete",
+      },
+    }
+  )
+}
+
+// Thu hồi tin nhắn (mọi người sẽ thấy 'Tin nhắn đã bị thu hồi')
+export async function recallMessageAPI({ messageId, conversationId }) {
+  if (!messageId || !conversationId) throw new Error("Missing messageId or conversationId")
+
+  return authorizeAxiosInstance.delete(
+    `${API_ROOT}/api/messages/${conversationId}`,
+    {
+      data: {
+        messageId,
+        action: "recall",
+      },
+    }
+  )
 }

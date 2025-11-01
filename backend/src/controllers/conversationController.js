@@ -1,6 +1,6 @@
-import {notificationService as NotificationService} from "~/services/notificationService";
-import ConversationMember from "~/models/conversation_members";
-import Message from "~/models/messages";
+import {notificationService as NotificationService} from "~/services/notificationService"
+import ConversationMember from "~/models/conversation_members"
+import Message from "~/models/messages"
 import Conversation from "~/models/conversations";
 
 const {StatusCodes} = require("http-status-codes")
@@ -122,13 +122,13 @@ const getUnreadSummary = async (req, res, next) => {
 
 const listConversationMedia = async (req, res, next) => {
   try {
-    const userId = req.userId;
-    if (!userId) return res.status(401).json({message: "Unauthorized"});
+    const userId = req.userId
+    if (!userId) return res.status(401).json({message: "Unauthorized"})
 
-    const conversationId = req.params.id;
+    const conversationId = req.params.id
 
     // CHANGED: Lấy thêm senderId, startDate, endDate từ query
-    const {type, page, limit, senderId, startDate, endDate} = req.query;
+    const {type, page, limit, senderId, startDate, endDate} = req.query
 
     const result = await conversationService.listConversationMedia({
       userId,
@@ -140,19 +140,19 @@ const listConversationMedia = async (req, res, next) => {
       senderId,
       startDate,
       endDate
-    });
+    })
 
-    return res.status(StatusCodes.OK).json(result);
+    return res.status(StatusCodes.OK).json(result)
   } catch (e) {
-    next(e);
+    next(e)
   }
-};
+}
 
 const handleConversationActions = async (req, res, next) => {
   try {
     const userId = req.userId
     const conversationId = req.params.conversationId
-    const { action } = req.body // "delete" hoặc "leave"
+    const { action } = req.body // "delete" | "leave" | "add" | "remove" | "promote"
 
     if (!userId) {
       return res.status(StatusCodes.UNAUTHORIZED).json({
@@ -162,56 +162,89 @@ const handleConversationActions = async (req, res, next) => {
 
     if (!action) {
       return res.status(StatusCodes.BAD_REQUEST).json({
-        message: 'action is required. Use "delete" or "leave"'
+        message: 'action is required. Use "delete", "leave", "add", "remove" or "promote"'
       })
     }
 
-    // Handle delete conversation
     if (action === "delete") {
       const result = await conversationService.deleteConversation(userId, conversationId)
       return res.status(StatusCodes.OK).json(result)
     }
 
-    // Handle leave group
     if (action === "leave") {
-      const result = await conversationService.leaveGroup(userId, conversationId, req.io)
+      const { nextAdminId } = req.body
+      const result = await conversationService.leaveGroup(userId, conversationId, req.io, nextAdminId)
       return res.status(StatusCodes.OK).json(result)
     }
 
-    //handle add memeber to group
     if (action === "add") {
       const { memberIds } = req.body
       if (!memberIds) {
         return res.status(StatusCodes.BAD_REQUEST).json({ message: 'memberIds is required' })
       }
+
       const result = await conversationService.addMembersToGroup({
         actorId: userId,
         conversationId,
         memberIds,
         io: req.io
       })
+
+      return res.status(StatusCodes.OK).json(result)
+    }
+
+    if (action === "remove") {
+      const { memberId } = req.body
+      if (!memberId) {
+        return res.status(StatusCodes.BAD_REQUEST).json({ message: 'memberId is required' })
+      }
+
+      const result = await conversationService.removeMemberFromGroup({
+        actorId: userId,
+        conversationId,
+        targetUserId: memberId,
+        io: req.io
+      })
+
+      return res.status(StatusCodes.OK).json(result)
+    }
+
+    if (action === "promote") {
+      const { memberId } = req.body
+      if (!memberId) {
+        return res.status(StatusCodes.BAD_REQUEST).json({ message: 'memberId is required' })
+      }
+
+      const result = await conversationService.promoteMemberToAdmin({
+        actorId: userId,
+        conversationId,
+        targetUserId: memberId,
+        io: req.io
+      })
+
       return res.status(StatusCodes.OK).json(result)
     }
 
     return res.status(StatusCodes.BAD_REQUEST).json({
-      message: 'Invalid action. Use "delete" or "leave"'
+      message: 'Invalid action. Use "delete", "leave", "add", "remove" or "promote"'
     })
-
   } catch (error) {
     next(error)
   }
 }
+
+
 const updateNotifications = async (req, res, next) => {
   try {
-    const userId = req.userId;
-    if (!userId) return res.status(StatusCodes.UNAUTHORIZED).json({ message: "Unauthorized" });
+    const userId = req.userId
+    if (!userId) return res.status(StatusCodes.UNAUTHORIZED).json({ message: "Unauthorized" })
 
-    const conversationId = req.params.id;
-    const { muted, duration } = req.body || {};
-    // muted: boolean; duration: 2|4|8|12|24|"forever" (required khi muted=true)
+    const conversationId = req.params.id
+    const { muted, duration } = req.body || {}
+    // muted: boolean duration: 2|4|8|12|24|"forever" (required khi muted=true)
 
     if (muted === true && !duration) {
-      return res.status(StatusCodes.BAD_REQUEST).json({ message: "duration is required when muted=true" });
+      return res.status(StatusCodes.BAD_REQUEST).json({ message: "duration is required when muted=true" })
     }
 
     const result = await conversationService.updateNotificationSettings({
@@ -219,16 +252,16 @@ const updateNotifications = async (req, res, next) => {
       conversationId,
       muted: !!muted,
       duration: muted ? duration : null
-    });
+    })
 
     // Sync realtime cho các tab của chính user
-    req.io?.to?.(`user:${userId}`)?.emit("conversation:mute-changed", result);
+    req.io?.to?.(`user:${userId}`)?.emit("conversation:mute-changed", result)
 
-    return res.status(StatusCodes.OK).json({ ok: true, ...result });
+    return res.status(StatusCodes.OK).json({ ok: true, ...result })
   } catch (e) {
-    next(e);
+    next(e)
   }
-};
+}
 // Đổi tên / Đổi avatar nhóm
 const updateGroupMeta = async (req, res, next) => {
   try {

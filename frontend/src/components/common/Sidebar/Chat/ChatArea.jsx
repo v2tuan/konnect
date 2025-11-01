@@ -393,17 +393,29 @@ export function ChatArea({
     setReplyingTo(null)
   }
 
+  // trạng thái bạn bè của user đang xem profile (không phải luôn là otherUser)
+  const [profileFriendStatus, setProfileFriendStatus] = useState({
+    status: "none",
+    direction: null,
+    requestId: null,
+    targetUserId: null // ai là người đang xem
+  })
+
   const handleOpenProfile = (u) => {
     if (!u) return
+
     const uid = String(u._id || u.id || "")
+
+    // lấy bản ghi đầy đủ nhất cho user đó (ví dụ từ group.members có thêm role, friendship,...)
     const rich =
-      (conversation?.group?.members || []).find(
-        m => String(m._id || m.id) === uid
-      ) || null
+    (conversation?.group?.members || []).find(
+      m => String(m._id || m.id) === uid
+    ) || null
 
     const src = { ...(u || {}), ...(rich || {}) }
 
-    setProfileUser({
+    // chuẩn hoá dữ liệu user cho panel
+    const finalUserObj = {
       _id: src._id || src.id,
       fullName: src.fullName || src.username || "User",
       username: src.username || "",
@@ -413,8 +425,20 @@ export function ChatArea({
       dateOfBirth: src.dateOfBirth || src.birthday || "",
       phone: src.phone || "",
       photos: src.photos || [],
-      mutualGroups: typeof src.mutualGroups === "number" ? src.mutualGroups : 0,
-      friendship: src.friendship || u.friendship || { status: "none" }
+      mutualGroups: typeof src.mutualGroups === "number" ? src.mutualGroups : 0
+    }
+
+    setProfileUser(finalUserObj)
+
+    // lấy friendship của user được click
+    const f = src.friendship || u.friendship || { status: "none", direction: null, requestId: null }
+
+    // lưu riêng trạng thái bạn bè ứng với user này
+    setProfileFriendStatus({
+      status: f.status ?? "none",
+      direction: f.direction ?? null,
+      requestId: f.requestId ?? null,
+      targetUserId: finalUserObj._id || null
     })
 
     setProfileOpen(true)
@@ -740,6 +764,40 @@ export function ChatArea({
     }
   }, [])
 
+  function syncFriendshipAfterAdd(requestIdMaybe) {
+    if (!otherUserId) return
+    if (profileFriendStatus.targetUserId !== otherUserId) return
+
+    // cập nhật uiFriendship và friendReq để banner biết "pending/outgoing"
+    setUiFriendship({
+      status: 'pending',
+      direction: 'outgoing',
+      requestId: requestIdMaybe || null
+    })
+    setFriendReq({
+      sent: true,
+      requestId: requestIdMaybe || null,
+      loading: false
+    })
+  }
+
+  function syncFriendshipAfterUnfriend() {
+    if (!otherUserId) return
+    if (profileFriendStatus.targetUserId !== otherUserId) return
+
+    // quay lại trạng thái 'none'
+    setUiFriendship({
+      status: 'none',
+      direction: null,
+      requestId: null
+    })
+    setFriendReq({
+      sent: false,
+      requestId: null,
+      loading: false
+    })
+  }
+
   return (
     <>
       <div className="flex flex-col h-full bg-background">
@@ -748,15 +806,28 @@ export function ChatArea({
           {/* Header */}
           <div className="flex items-center justify-between p-4 bg-sidebar backdrop-blur-sm border-b border-border shadow-soft">
             <div className="flex items-center gap-3">
-              <div className="relative">
+              <div
+                className={`relative ${isDirect ? "cursor-pointer" : ""}`}
+                onClick={() => {
+                  if (isDirect) {
+                    // otherUser đã có sẵn trong ChatArea từ conversation.direct.otherUser
+                    handleOpenProfile(otherUser)
+                  }
+                }}
+              >
                 <Avatar className="w-10 h-10">
                   <AvatarImage src={localAvatarUrl} />
                   <AvatarFallback>{initialChar}</AvatarFallback>
                 </Avatar>
+
                 {isDirect && (
-                  <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-background" style={dotStyle} />
+                  <div
+                    className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-background"
+                    style={dotStyle}
+                  />
                 )}
               </div>
+
               <div>
                 <h2 className="font-semibold text-foreground">{safeName}</h2>
                 {!isCloud && !isGroup && (
@@ -1276,6 +1347,7 @@ export function ChatArea({
           }}
           isOpen={isOpen}
           onClose={() => setIsOpen(false)}
+          onOpenProfile={handleOpenProfile}
         />
 
         {/* Call Ringing Banner */}
@@ -1311,16 +1383,65 @@ export function ChatArea({
         open={profileOpen}
         onClose={() => setProfileOpen(false)}
         user={profileUser || {}}
-        isFriend={uiFriendship.status === 'accepted'}
+        isFriend={profileFriendStatus.status === "accepted"}
         onAddFriend={async () => {
-          await handleSendFriendRequest()
-          setProfileOpen(false)
+          const targetId = profileFriendStatus.targetUserId || otherUserId
+          if (!targetId) return
+
+          try {
+            const res = await submitFriendRequestAPI(targetId)
+            const requestId =
+      res?.requestId ||
+      res?.data?.requestId ||
+      res?.data?._id ||
+      res?._id ||
+      null
+
+            // 1) cập nhật trạng thái riêng của panel
+            setProfileFriendStatus(s => ({
+              ...s,
+              status: "pending",
+              direction: "outgoing",
+              requestId
+            }))
+
+            // 2) đồng bộ banner nếu đây đúng là otherUser của khung chat direct
+            syncFriendshipAfterAdd(requestId)
+
+            // 3) đóng panel
+            setProfileOpen(false)
+          } catch (err) {
+            console.error("send friend request failed:", err)
+          }
         }}
+
         onUnfriend={async () => {
-          await handleUnfriend()
-          setProfileOpen(false)
+          const targetId = profileFriendStatus.targetUserId || otherUserId
+          if (!targetId) return
+
+          try {
+            await removeFriendAPI(targetId)
+
+            // 1) update local cho panel
+            setProfileFriendStatus(s => ({
+              ...s,
+              status: "none",
+              direction: null,
+              requestId: null
+            }))
+
+            // 2) sync banner nếu đang chat với chính người này
+            syncFriendshipAfterUnfriend()
+
+            // 3) đóng panel
+            setProfileOpen(false)
+          } catch (err) {
+            console.error("unfriend failed:", err)
+          }
         }}
+
       />
+
     </>
   )
 }

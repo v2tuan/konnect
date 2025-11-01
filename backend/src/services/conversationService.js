@@ -465,12 +465,14 @@ const getConversation = async (page = 1, limit = 20, userId) => {
 }
 
 const fetchConversationDetail = async (userId, conversationId, limit = 30, beforeSeq) => {
+  // Validate conversationId
   if (!mongoose.isValidObjectId(conversationId)) {
     const err = new Error('Invalid conversationId')
     err.status = 400
     throw err
   }
 
+  // Load conversation
   const convo = await Conversation.findById(conversationId).lean()
   if (!convo) {
     const err = new Error('Conversation not found')
@@ -478,6 +480,7 @@ const fetchConversationDetail = async (userId, conversationId, limit = 30, befor
     throw err
   }
 
+  // Quyền truy cập
   await messageService.assertCanAccessConversation(userId, convo)
 
   // ===== Lấy map nickname/role CHUNG cho cả conversation =====
@@ -486,11 +489,15 @@ const fetchConversationDetail = async (userId, conversationId, limit = 30, befor
     { userId: 1, role: 1, nickname: 1 }
   ).lean()
 
-  const nickById = new Map((cmsAll || []).map(cm => [ String(cm.userId), cm.nickname || "" ]))
-  const roleMap  = new Map((cmsAll || []).map(cm => [ String(cm.userId), cm.role || "member" ]))
+  const nickById = new Map(
+    (cmsAll || []).map(cm => [ String(cm.userId), cm.nickname || "" ])
+  )
+  const roleMap  = new Map(
+    (cmsAll || []).map(cm => [ String(cm.userId), cm.role || "member" ])
+  )
   const memberIds = (cmsAll || []).map(cm => String(cm.userId))
 
-  // ===== Header =====
+  // ===== Header (displayName, avatar, direct info) =====
   let displayName = null
   let conversationAvatarUrl = null
   let enrichedDirect = convo.direct || null
@@ -527,7 +534,7 @@ const fetchConversationDetail = async (userId, conversationId, limit = 30, befor
           dateOfBirth: other.dateOfBirth || null,
           bio: other.bio || "",
           mutualGroups: mutualCount,
-          nickname: otherNick                       // ✅ nickname cho DIRECT
+          nickname: otherNick
         }
       }
     } else {
@@ -583,10 +590,8 @@ const fetchConversationDetail = async (userId, conversationId, limit = 30, befor
         phone: u?.phone || null,
         dateOfBirth: u?.dateOfBirth || null,
         bio: u?.bio || "",
-        // mutualGroups có thể tính thêm nếu cần (tốn query); để 0/undefined cho nhẹ
-        mutualGroups: String(uid) === String(userId) ? 0 : undefined,
         role: roleMap.get(String(uid)) || 'member',
-        nickname: nickById.get(String(uid)) || ""       // ✅ nickname cho GROUP
+        nickname: nickById.get(String(uid)) || ""
       }
     })
   }
@@ -594,6 +599,23 @@ const fetchConversationDetail = async (userId, conversationId, limit = 30, befor
   // ===== Enrich messages.sender + displayName (ưu tiên nickname) =====
   const messagesWithSender = messages.map(m => {
     const key = m?.senderId ? String(m.senderId) : null
+
+    // System message
+    if (key && String(key) === String(SYSTEM_USER_ID)) {
+      return {
+        ...m,
+        sender: {
+          id: SYSTEM_USER_ID,
+          fullName: SYSTEM_SENDER?.fullName || 'System',
+          username: SYSTEM_SENDER?.username || 'system',
+          avatarUrl: SYSTEM_SENDER?.avatarUrl || null,
+          status: null,
+          displayName: SYSTEM_SENDER?.fullName || 'System',
+          role: null
+        }
+      }
+    }
+
     const u = key ? usersById.get(key) : null
     const displayName =
       (key && nickById.get(key)) ||
@@ -601,19 +623,20 @@ const fetchConversationDetail = async (userId, conversationId, limit = 30, befor
       u?.username ||
       null
 
-    return {
-      ...m,
-      sender: u
+    const sender =
+      u
         ? {
           id: u._id,
           fullName: u.fullName || null,
           username: u.username || null,
           avatarUrl: u.avatarUrl || null,
           status: u.status || null,
-          displayName                         // ✅ FE read this
+          displayName,
+          role: roleMap.get(key) || 'member'
         }
-        : (displayName ? { id: key, displayName } : null)
-    }
+        : null
+
+    return { ...m, sender }
   })
 
   const result = {
@@ -640,11 +663,12 @@ const fetchConversationDetail = async (userId, conversationId, limit = 30, befor
     }
   }
 
-  // Mark friendship info
+  // Gắn trạng thái friendship để FE render banner/thao tác
   await markFriendshipOnConversation(userId, result.conversation)
 
   return result
 }
+
 
 
 const getUnreadSummary = async (userId) => {
@@ -727,14 +751,14 @@ const deleteConversation = async (userId, conversationId) => {
   }
 }
 
-const leaveGroup = async (userId, conversationId, io) => {
+const leaveGroup = async (userId, conversationId, io, nextAdminId) => {
   if (!mongoose.isValidObjectId(conversationId)) {
     const err = new Error('Invalid conversationId')
     err.status = 400
     throw err
   }
 
-  // Tìm conversation
+  // 1) Lấy conversation
   const conversation = await Conversation.findById(conversationId).lean()
   if (!conversation) {
     const err = new Error('Conversation not found')
@@ -742,47 +766,90 @@ const leaveGroup = async (userId, conversationId, io) => {
     throw err
   }
 
-  // Chỉ cho phép leave group
   if (conversation.type !== 'group') {
     const err = new Error('You can only leave group conversations')
     err.status = 400
     throw err
   }
 
-  // Tìm member record
-  const member = await ConversationMember.findOne({
+  // 2) Lấy record membership của người rời
+  const leavingMember = await ConversationMember.findOne({
     conversation: conversationId,
     userId: userId
   })
 
-  if (!member) {
+  if (!leavingMember) {
     const err = new Error('You are not a member of this group')
     err.status = 403
     throw err
   }
 
-  // Lấy thông tin user để thông báo
-  const user = await User.findById(userId).select('fullName username avatarUrl').lean()
+  // 3) Lấy danh sách thành viên còn lại (ngoại trừ người rời)
+  const otherMembers = await ConversationMember.find({
+    conversation: conversationId,
+    userId: { $ne: userId }
+  })
+    .sort({ joinedAt: 1 }) // để biết ai vào sớm
+    .lean()
+
+  // 4) Nếu người rời là admin:
+  //    - Nếu còn thành viên khác trong nhóm => bắt buộc phải chỉ định admin mới (từ FE).
+  //    - Nếu không còn ai khác thì cho phép out, nhóm sẽ không còn ai.
+  if (leavingMember.role === 'admin') {
+    if (otherMembers.length > 0) {
+      // còn người khác -> cần nextAdminId hợp lệ
+      if (!nextAdminId || !mongoose.isValidObjectId(nextAdminId)) {
+        const err = new Error('Admin must assign next admin before leaving')
+        err.status = 400
+        throw err
+      }
+
+      // nextAdminId có nằm trong nhóm (otherMembers) không
+      const picked = otherMembers.find(m => String(m.userId) === String(nextAdminId))
+      if (!picked) {
+        const err = new Error('Selected nextAdminId is not a member of this group')
+        err.status = 400
+        throw err
+      }
+
+      // Promote người đó thành admin
+      await ConversationMember.updateOne(
+        {
+          conversation: conversationId,
+          userId: nextAdminId
+        },
+        { $set: { role: 'admin' } }
+      )
+    }
+    // nếu otherMembers.length === 0 thì người này là last member -> không cần promote ai
+  }
+
+  // 5) Lấy info người rời để build thông báo
+  const user = await User.findById(userId)
+    .select('fullName username avatarUrl')
+    .lean()
   const userName = user?.fullName || user?.username || 'Someone'
 
-  // Hard delete khỏi conversation_members
+  // 6) Xoá người rời khỏi conversation_members
   await ConversationMember.deleteOne({
     conversation: conversationId,
     userId: userId
   })
 
-  // Tạo tin nhắn thông báo
-  const nextSeq = (conversation.messageSeq || 0) + 1;
+  // 7) Tạo system message "<Tên> đã rời khỏi nhóm"
+  const now = new Date()
+  const nextSeq = (conversation.messageSeq || 0) + 1
+
   const notificationMessage = await Message.create({
     conversationId: new mongoose.Types.ObjectId(conversationId),
     seq: nextSeq,
     senderId: SYSTEM_USER_ID,
     type: 'notification',
     body: { text: `${userName} đã rời khỏi nhóm` },
-    createdAt: new Date()
+    createdAt: now
   })
 
-  // Cập nhật messageSeq của conversation
+  // 8) Update conversation.lastMessage + messageSeq
   await Conversation.updateOne(
     { _id: conversationId },
     {
@@ -793,15 +860,16 @@ const leaveGroup = async (userId, conversationId, io) => {
           messageId: notificationMessage._id,
           type: 'notification',
           textPreview: `${userName} đã rời khỏi nhóm`,
-          senderId: SYSTEM_USER_ID, // <<-- system sender cho preview
-          createdAt: notificationMessage.createdAt
+          senderId: SYSTEM_USER_ID,
+          createdAt: now
         },
-        updatedAt: new Date()
+        updatedAt: now
       }
     }
   )
 
-  const payload = {
+  // 9) Payload broadcast cho các thành viên CÒN LẠI, không gửi cho userId vừa out
+  const broadcastPayload = {
     conversationId,
     message: {
       _id: notificationMessage._id,
@@ -811,26 +879,225 @@ const leaveGroup = async (userId, conversationId, io) => {
       body: { text: `${userName} đã rời khỏi nhóm` },
       senderId: SYSTEM_USER_ID,
       sender: SYSTEM_SENDER,
-      createdAt: notificationMessage.createdAt
-    }
+      createdAt: now
+    },
+    kickedUserId: userId // ai rời
   }
 
-  // Emit cho các thành viên còn lại
   if (io) {
-    io.to(`conversation:${conversationId}`).emit('member:left', {
-      conversationId,
-      userId,      // ai đã rời nhóm (để UI khác nếu cần)
-      userName,
-      message: payload.message
+    // lấy danh sách userId còn ở trong group SAU KHI xoá
+    const stillMembers = await ConversationMember.find({
+      conversation: conversationId
     })
-    io.to(`conversation:${conversationId}`).emit('message:new', payload)
+      .select('userId')
+      .lean()
+
+    // emit riêng cho từng user còn trong nhóm
+    for (const m of stillMembers) {
+      io.to(`user:${m.userId}`).emit('member:left', {
+        conversationId,
+        userId, // ai rời nhóm
+        userName,
+        message: broadcastPayload.message
+      })
+      io.to(`user:${m.userId}`).emit('message:new', broadcastPayload)
+    }
+
+    // tuỳ app của bạn: có thể gửi riêng cho người rời để FE đóng khung chat,
+    // KHÔNG gửi message:new cho họ nữa.
+    io.to(`user:${userId}`).emit('group:left:self', {
+      conversationId,
+      message: 'You left the group'
+    })
   }
 
   return {
     ok: true,
-    message: 'Left group successfully'
+    message: 'Left group successfully',
+    transferredAdminTo: leavingMember.role === 'admin'
+      ? (otherMembers.length > 0 ? String(nextAdminId || '') : null)
+      : null
   }
 }
+
+async function promoteMemberToAdmin({ actorId, conversationId, targetUserId, io }) {
+  // 0) Validate
+  if (!mongoose.isValidObjectId(conversationId)) {
+    const err = new Error("Invalid conversationId")
+    err.status = 400
+    throw err
+  }
+  if (!mongoose.isValidObjectId(targetUserId)) {
+    const err = new Error("Invalid target user id")
+    err.status = 400
+    throw err
+  }
+
+  // 1) Lấy conversation
+  const convo = await Conversation.findById(conversationId).lean()
+  if (!convo) {
+    const err = new Error("Conversation not found")
+    err.status = 404
+    throw err
+  }
+  if (convo.type !== "group") {
+    const err = new Error("Only group conversations support promoting admin")
+    err.status = 400
+    throw err
+  }
+
+  // 2) Kiểm tra actor có phải admin không
+  const actorMembership = await ConversationMember.findOne({
+    conversation: conversationId,
+    userId: actorId,
+    deletedAt: null
+  }).lean()
+
+  if (!actorMembership) {
+    const err = new Error("You are not a member of this group")
+    err.status = 403
+    throw err
+  }
+  if (actorMembership.role !== "admin") {
+    const err = new Error("Only admin can promote another member")
+    err.status = 403
+    throw err
+  }
+
+  // 3) Lấy target membership
+  const targetMembership = await ConversationMember.findOne({
+    conversation: conversationId,
+    userId: targetUserId,
+    deletedAt: null
+  }).lean()
+
+  if (!targetMembership) {
+    const err = new Error("Target user is not in this group")
+    err.status = 404
+    throw err
+  }
+
+  if (targetMembership.role === "admin") {
+    const err = new Error("This user is already an admin")
+    err.status = 400
+    throw err
+  }
+
+  // 4) Cập nhật role -> 'admin'
+  await ConversationMember.updateOne(
+    {
+      conversation: conversationId,
+      userId: targetUserId
+    },
+    {
+      $set: { role: "admin" }
+    }
+  )
+
+  // 5) Lấy info actor & target để tạo message hệ thống
+  const [actorUser, targetUser] = await Promise.all([
+    User.findById(actorId).select("fullName username").lean(),
+    User.findById(targetUserId).select("fullName username").lean()
+  ])
+
+  const actorName = actorUser?.fullName || actorUser?.username || "Ai đó"
+  const targetName = targetUser?.fullName || targetUser?.username || "người dùng"
+
+  const now = new Date()
+  const nextSeq = (convo.messageSeq || 0) + 1
+
+  const bodyText = `${actorName} đã chuyển quyền ${targetName} lên quản trị viên`
+
+  const notificationMessage = await Message.create({
+    conversationId: new mongoose.Types.ObjectId(conversationId),
+    seq: nextSeq,
+    senderId: SYSTEM_USER_ID,
+    type: "notification",
+    body: { text: bodyText },
+    createdAt: now
+  })
+
+  await Conversation.updateOne(
+    { _id: conversationId },
+    {
+      $inc: { messageSeq: 1 },
+      $set: {
+        lastMessage: {
+          seq: nextSeq,
+          messageId: notificationMessage._id,
+          type: "notification",
+          textPreview: bodyText,
+          senderId: SYSTEM_USER_ID,
+          createdAt: now
+        },
+        updatedAt: now
+      }
+    }
+  )
+
+  // 6) Chuẩn bị payload realtime
+  const payloadMessage = {
+    _id: notificationMessage._id,
+    conversationId,
+    seq: nextSeq,
+    type: "notification",
+    body: { text: bodyText },
+    senderId: SYSTEM_USER_ID,
+    sender: SYSTEM_SENDER,
+    createdAt: now
+  }
+
+  // profile mới của target sau khi lên admin (để FE update role ngay)
+  const promotedProfile = await User.findById(targetUserId)
+    .select("fullName username avatarUrl status")
+    .lean()
+
+  const promotedMemberObj = {
+    id: promotedProfile?._id,
+    _id: promotedProfile?._id,
+    fullName: promotedProfile?.fullName || null,
+    username: promotedProfile?.username || null,
+    avatarUrl: promotedProfile?.avatarUrl || null,
+    status: promotedProfile?.status || null,
+    role: "admin"
+  }
+
+  // 7) Emit socket cho tất cả thành viên còn trong nhóm
+  if (io) {
+    // lấy list ai còn trong nhóm
+    const stillMembers = await ConversationMember.find({
+      conversation: conversationId,
+      deletedAt: null
+    })
+      .select("userId")
+      .lean()
+
+    for (const m of stillMembers) {
+      const room = `user:${m.userId}`
+
+      // a) thông báo có message hệ thống
+      io.to(room).emit("message:new", {
+        conversationId,
+        message: payloadMessage
+      })
+
+      // b) thông báo role thay đổi
+      io.to(room).emit("member:promoted", {
+        conversationId,
+        userId: String(targetUserId),
+        newRole: "admin",
+        member: promotedMemberObj // gửi kèm object member đã nâng cấp
+      })
+    }
+  }
+
+  return {
+    ok: true,
+    message: "Promoted to admin successfully",
+    promotedUserId: targetUserId
+  }
+}
+
 async function assertIsMember(userId, conversationId) {
   const cm = await ConversationMember.findOne({ userId, conversation: conversationId, deletedAt: null }).lean();
   if (!cm) {
@@ -1268,6 +1535,156 @@ async function addMembersToGroup({ actorId, conversationId, memberIds, io }) {
   return { ok: true, added: toAdd, message: payload.message }
 }
 
+async function removeMemberFromGroup({ actorId, conversationId, targetUserId, io }) {
+  // 0) Validate input
+  if (!mongoose.isValidObjectId(conversationId)) {
+    const err = new Error('Invalid conversationId');
+    err.status = 400;
+    throw err;
+  }
+  if (!mongoose.isValidObjectId(targetUserId)) {
+    const err = new Error('Invalid target user id');
+    err.status = 400;
+    throw err;
+  }
+
+  // 1) Lấy conversation
+  const convo = await Conversation.findById(conversationId).lean();
+  if (!convo) {
+    const err = new Error('Conversation not found');
+    err.status = 404;
+    throw err;
+  }
+  if (convo.type !== 'group') {
+    const err = new Error('Only group conversations support removing members');
+    err.status = 400;
+    throw err;
+  }
+
+  // 2) Kiểm tra actor có trong nhóm và có phải admin không
+  const actorMembership = await ConversationMember.findOne({
+    conversation: conversationId,
+    userId: actorId
+  }).lean();
+
+  if (!actorMembership) {
+    const err = new Error('You are not a member of this group');
+    err.status = 403;
+    throw err;
+  }
+
+  if (actorMembership.role !== 'admin') {
+    const err = new Error('Only admin can remove members');
+    err.status = 403;
+    throw err;
+  }
+
+  // Chặn admin tự kick chính mình qua API này (admin muốn ra nhóm thì gọi action "leave")
+  if (String(actorId) === String(targetUserId)) {
+    const err = new Error('Admin cannot remove themselves. Use "leave" instead');
+    err.status = 400;
+    throw err;
+  }
+
+  // 3) Kiểm tra target có đang trong nhóm không
+  const targetMembership = await ConversationMember.findOne({
+    conversation: conversationId,
+    userId: targetUserId
+  }).lean();
+
+  if (!targetMembership) {
+    const err = new Error('Target user is not in this group');
+    err.status = 404;
+    throw err;
+  }
+
+  // Nếu sau này nhóm cho phép nhiều admin, không cho kick admin khác
+  if (targetMembership.role === 'admin') {
+    const err = new Error('Cannot remove another admin');
+    err.status = 403;
+    throw err;
+  }
+
+  // 4) Lấy tên actor & target để ghi log
+  const [actorUser, targetUser] = await Promise.all([
+    User.findById(actorId).select('fullName username').lean(),
+    User.findById(targetUserId).select('fullName username').lean()
+  ]);
+
+  const actorName = actorUser?.fullName || actorUser?.username || 'Ai đó';
+  const targetName = targetUser?.fullName || targetUser?.username || 'Người dùng';
+
+  // 5) Xoá target khỏi conversation_members (kick)
+  await ConversationMember.deleteOne({
+    conversation: conversationId,
+    userId: targetUserId
+  });
+
+  // 6) Tạo system message: "A đã xoá B khỏi nhóm"
+  const nextSeq = (convo.messageSeq || 0) + 1;
+  const now = new Date();
+
+  const notificationMessage = await Message.create({
+    conversationId: new mongoose.Types.ObjectId(conversationId),
+    seq: nextSeq,
+    senderId: SYSTEM_USER_ID,
+    type: 'notification',
+    body: { text: `${actorName} đã xoá ${targetName} khỏi nhóm` },
+    createdAt: now
+  });
+
+  // 7) Cập nhật messageSeq + lastMessage cho conversation
+  await Conversation.updateOne(
+    { _id: conversationId },
+    {
+      $inc: { messageSeq: 1 },
+      $set: {
+        lastMessage: {
+          seq: nextSeq,
+          messageId: notificationMessage._id,
+          type: 'notification',
+          textPreview: `${actorName} đã xoá ${targetName} khỏi nhóm`,
+          senderId: SYSTEM_USER_ID,
+          createdAt: now
+        },
+        updatedAt: now
+      }
+    }
+  );
+
+  // 8) Payload realtime
+  const payload = {
+    conversationId,
+    message: {
+      _id: notificationMessage._id,
+      conversationId,
+      seq: nextSeq,
+      type: 'notification',
+      body: { text: `${actorName} đã xoá ${targetName} khỏi nhóm` },
+      senderId: SYSTEM_USER_ID,
+      sender: SYSTEM_SENDER,
+      createdAt: now
+    }
+  };
+
+  // 9) Bắn socket cho room (mọi client đang join cuộc trò chuyện sẽ update UI)
+  if (io) {
+    io.to(`conversation:${conversationId}`).emit('member:left', {
+      conversationId,
+      userId: targetUserId, // ai bị kick
+      userName: targetName,
+      message: payload.message
+    });
+    io.to(`conversation:${conversationId}`).emit('message:new', payload);
+  }
+
+  return {
+    ok: true,
+    removedUserId: targetUserId,
+    message: 'Member removed successfully'
+  };
+}
+
 export const conversationService = {
   listConversationMedia,
   createConversation,
@@ -1278,5 +1695,7 @@ export const conversationService = {
   leaveGroup,
   updateNotificationSettings,
   isMemberMutedNow,
-  addMembersToGroup
+  addMembersToGroup,
+  removeMemberFromGroup,
+  promoteMemberToAdmin
 }

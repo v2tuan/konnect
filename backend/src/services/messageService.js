@@ -445,11 +445,55 @@ async function deleteMessage({ userId, messageId, io }) {
   }
 }
 
+async function removeReaction({ userId, messageId, io }) {
+  if (!mongoose.isValidObjectId(messageId)) throw new Error("Invalid messageId");
+
+  // Tìm message và populate
+  const message = await Message.findById(messageId)
+    .populate("conversationId")
+    .populate("media");
+
+  if (!message) throw new Error("Message not found");
+
+  // Lấy conversationId
+  const convoId = message.conversationId?._id || message.conversationId;
+  const convo = await Conversation.findById(convoId).lean();
+  if (!convo) throw new Error("Conversation not found");
+
+  // Kiểm tra quyền truy cập
+  await assertCanAccessConversation(userId, convo);
+
+  // Xóa reaction tương ứng
+  const beforeCount = message.reactions.length;
+  message.reactions = message.reactions.filter(
+    r => !(r.userId.toString() === userId.toString())
+  );
+
+  // Nếu không có thay đổi (người dùng chưa từng reaction emoji đó)
+  if (message.reactions.length === beforeCount) {
+    throw new Error("Reaction not found");
+  }
+
+  // Lưu lại
+  await message.save();
+
+  // Gửi event real-time qua socket (nếu có)
+  const payload = {
+    conversationId: convoId,
+    message: toPublicMessage(message)
+  };
+
+  if (io) io.to(`conversation:${convoId}`).emit('message:new', payload)
+
+  return { ok: true, messageId, reactions: message.reactions };
+}
+
 export const messageService = {
   sendMessage,
   listMessages,
   assertCanAccessConversation,
   setReaction,
   recallMessage,
-  deleteMessage
+  deleteMessage,
+  removeReaction
 }

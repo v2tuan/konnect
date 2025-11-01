@@ -152,9 +152,21 @@ const deleteMessages = async (req, res, next) => {
   }
 }
 
+const removeReaction = async (req, res, next) => {
+  try {
+    const userId = req.userId
+    const { messageId } = req.body
+    const result = await messageService.removeReaction({ userId, messageId, io: req.io })
+    return res.status(StatusCodes.OK).json(result)
+  } catch (error) {
+    next(error)
+  }
+}
+
 export const messageController = {
   sendMessage,
   listMessages,
   setReaction,
-  deleteMessages
+  deleteMessages,
+  removeReaction
 }
