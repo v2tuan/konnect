@@ -1,3 +1,4 @@
+/* eslint-disable no-undef */
 import { useEffect, useMemo, useState } from 'react'
 import { Search, UserPlus, Users, Filter, Phone, Video, MessageCircle, Loader2 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
@@ -5,6 +6,12 @@ import { Button } from '@/components/ui/button'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { Card, CardContent } from '@/components/ui/card'
 import { getFriendsAPI } from '@/apis'
+import UserProfilePanel from '@/components/common/Modal/UserProfilePanel'
+import { useNavigate } from 'react-router-dom'
+import { getConversationByUserId, getConversations } from '@/apis'
+import { useSelector } from 'react-redux'
+import { selectCurrentUser } from '@/redux/user/userSlice'
+import { useCallInvite } from '@/hooks/useCallInvite'
 
 function relativeFromNow(iso) {
   if (!iso) return ''
@@ -25,6 +32,21 @@ const getStatusText = (contact /** @type {FriendUI} */) => {
   return contact.lastActiveAt ? `Hoạt động ${relativeFromNow(contact.lastActiveAt)}` : 'Offline'
 }
 
+// Chuẩn hóa dữ liệu cho UserProfilePanel
+function mapToUserProfile(contact) {
+  if (!contact) return {}
+  return {
+    id: contact.id,
+    fullName: contact.name || contact.username || 'Người dùng',
+    avatarUrl: contact.avatar || '',
+    coverUrl: '',
+    bio: contact.bio || '',
+    dateOfBirth: contact.dateOfBirth || '',
+    phone: contact.phone || '',
+    photos: contact.photos || []
+  }
+}
+
 export function ListFriend({ onFriendSelect }) {
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedQ, setDebouncedQ] = useState('')
@@ -35,6 +57,96 @@ export function ListFriend({ onFriendSelect }) {
   const [hasNext, setHasNext] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+
+  // Profile panel state
+  const [profileOpen, setProfileOpen] = useState(false)
+  const [profileUser, setProfileUser] = useState(null)
+  const [profileMutualCount, setProfileMutualCount] = useState(0)
+
+  // Navigation state
+  const navigate = useNavigate()
+  const [navLoadingId, setNavLoadingId] = useState(null)
+
+  // Current user + call hook
+  const currentUser = useSelector(selectCurrentUser)
+  const { startCall } = useCallInvite(currentUser?._id)
+
+  const openProfile = async (contact, e) => {
+    e?.stopPropagation?.()
+    setProfileUser(contact)
+    setProfileOpen(true)
+
+    // Tính số nhóm chung (dựa trên danh sách hội thoại nhóm của bạn)
+    try {
+      let page = 1
+      const limit = 50
+      let total = 0
+      while (page <= 5) { // tránh tải vô hạn, tối đa 5 trang
+        const res = await getConversations(page, limit)
+        const list = res?.data || []
+        const groups = list.filter(c => c?.type === 'group')
+        for (const g of groups) {
+          const members = g?.group?.members || g?.members || []
+          const hasFriend = members.some(m => String(m._id || m.id) === String(contact.id))
+          if (hasFriend) total += 1
+        }
+        if (list.length < limit) break
+        page += 1
+      }
+      setProfileMutualCount(total)
+    } catch {
+      setProfileMutualCount(0)
+    }
+  }
+  const closeProfile = () => setProfileOpen(false)
+
+  const openChat = async (contact, e) => {
+    e?.stopPropagation?.()
+    // Ưu tiên prop nếu parent muốn tự xử lý
+    if (onFriendSelect) {
+      onFriendSelect(contact)
+      return
+    }
+    try {
+      setNavLoadingId(contact.id)
+      const res = await getConversationByUserId(contact.id)
+      const id =
+        res?.data?._id || res?.data?.id || res?.id || res?._id
+      if (id) navigate(`/chats/${id}`)
+    } finally {
+      setNavLoadingId(null)
+    }
+  }
+
+  // Call trực tiếp không mở ChatArea
+  const startDirectCall = async (contact, mode = 'audio', e) => {
+    e?.stopPropagation?.()
+    if (!currentUser?._id) return
+    try {
+      setNavLoadingId(contact.id)
+      const res = await getConversationByUserId(contact.id)
+      const conversationId = res?.data?._id || res?.data?.id || res?.id || res?._id
+      if (!conversationId) return
+
+      startCall({
+        conversationId,
+        mode,
+        toUserIds: [contact.id],
+        me: {
+          id: currentUser._id,
+          name: currentUser.fullName || currentUser.username || currentUser.email,
+          avatarUrl: currentUser.avatarUrl
+        },
+        peer: {
+          name: contact.name,
+          avatarUrl: contact.avatar
+        }
+      })
+      // Không navigate — GlobalCallModal sẽ tự mở khi phía bên kia Accept
+    } finally {
+      setNavLoadingId(null)
+    }
+  }
 
   // Debounce search 400ms
   useEffect(() => {
@@ -163,10 +275,10 @@ export function ListFriend({ onFriendSelect }) {
               .map((contact) => (
                 <div
                   key={contact.id}
-                  onClick={() => onFriendSelect?.(contact)}
+                  onClick={(e) => openChat(contact, e)}
                   className="flex flex-col items-center p-2 rounded-lg cursor-pointer hover:bg-card-hover transition-colors"
                 >
-                  <div className="relative">
+                  <div className="relative" onClick={(e) => openProfile(contact, e)}>
                     <Avatar className="w-12 h-12">
                       <AvatarImage src={contact.avatar} />
                       <AvatarFallback>{(contact.name || '?')[0]}</AvatarFallback>
@@ -191,11 +303,11 @@ export function ListFriend({ onFriendSelect }) {
             <Card
               key={contact.id}
               className="hover:shadow-soft transition-shadow cursor-pointer"
-              onClick={() => onFriendSelect?.(contact)}
+              onClick={(e) => openChat(contact, e)}
             >
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
-                  <div className="relative">
+                  <div className="relative" onClick={(e) => openProfile(contact, e)}>
                     <Avatar className="w-12 h-12">
                       <AvatarImage src={contact.avatar} />
                       <AvatarFallback>{(contact.name || '?')[0]}</AvatarFallback>
@@ -215,13 +327,28 @@ export function ListFriend({ onFriendSelect }) {
                   </div>
 
                   <div className="flex items-center gap-1">
-                    <Button variant="ghost" size="sm" onClick={(e) => e.stopPropagation()}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={(e) => openChat(contact, e)}
+                      disabled={navLoadingId === contact.id}
+                    >
                       <MessageCircle className="w-4 h-4" />
                     </Button>
-                    <Button variant="ghost" size="sm" onClick={(e) => e.stopPropagation()}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={(e) => startDirectCall(contact, 'audio', e)}
+                      disabled={navLoadingId === contact.id}
+                    >
                       <Phone className="w-4 h-4" />
                     </Button>
-                    <Button variant="ghost" size="sm" onClick={(e) => e.stopPropagation()}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={(e) => startDirectCall(contact, 'video', e)}
+                      disabled={navLoadingId === contact.id}
+                    >
                       <Video className="w-4 h-4" />
                     </Button>
                   </div>
@@ -253,6 +380,18 @@ export function ListFriend({ onFriendSelect }) {
           ) : null}
         </div>
       </div>
+
+      {/* User Profile Panel */}
+      {profileOpen && (
+        <UserProfilePanel
+          open={profileOpen}
+          onClose={closeProfile}
+          user={{ ...mapToUserProfile(profileUser), mutualGroups: profileMutualCount }}
+          isFriend
+          onChat={() => openChat(profileUser)}
+          onCall={() => startDirectCall(profileUser, 'audio')}
+        />
+      )}
     </div>
   )
 }
