@@ -313,8 +313,8 @@ export function ListFriend({ onFriendSelect }) {
       {/* Online Friends */}
       {!error && onlineCount > 0 && (
         <div className="p-4 border-b border-border">
-          <h3 className="text-sm font-semibold text-success mb-3 flex items-center gap-2">
-            <div className="w-2 h-2 bg-success rounded-full"></div>
+          <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+            <div className={`w-2 h-2 rounded-full ${getStatusColor('online')}`}></div>
             Online ({onlineCount})
           </h3>
           <div className="grid grid-cols-4 gap-3">
@@ -332,7 +332,7 @@ export function ListFriend({ onFriendSelect }) {
                       <AvatarImage src={contact.avatar} />
                       <AvatarFallback>{(contact.name || '?')[0]}</AvatarFallback>
                     </Avatar>
-                    <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-success rounded-full border-2 border-white"></div>
+                    <div className={`absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full border-2 border-white ${getStatusColor('online')}`}></div>
                   </div>
                   <span className="text-xs text-center mt-1 font-medium truncate w-full">{contact.name}</span>
                 </div>

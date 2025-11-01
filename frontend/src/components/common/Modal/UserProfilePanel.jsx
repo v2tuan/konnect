@@ -4,6 +4,8 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Image, MessageCircle, Phone, Trash, UserPlus, Users, X } from "lucide-react"
 import { useEffect } from "react"
+import { useSelector } from "react-redux"
+import { selectCurrentUser } from "@/redux/user/userSlice"
 
 export default function UserProfilePanel({
   open = false,
@@ -16,6 +18,10 @@ export default function UserProfilePanel({
   onUnfriend = () => {}
 }) {
   if (!open) return null
+
+  const currentUser = useSelector(selectCurrentUser)
+  const targetId = user?._id || user?.id
+  const isSelf = currentUser?._id && targetId && String(currentUser._id) === String(targetId)
 
   const {
     fullName = "Người dùng",
@@ -88,29 +94,33 @@ export default function UserProfilePanel({
         </div>
 
         {/* Actions */}
-        <div className="flex justify-center gap-2 px-4 mb-4">
-          <Button
-            type="button"
-            variant="outline"
-            className="flex-1 justify-center h-9 py-0"
-            onClick={(e) => { 
-              e.stopPropagation()
-              onCall()
-            }}
-          >
-            <Phone size={16} className="mr-2" /> Call
-          </Button>
-          <Button
-            type="button"
-            className="flex-1 justify-center h-9 py-0 bg-blue-50 hover:bg-blue-100 text-blue-600"
-            onClick={(e) => { 
-              e.stopPropagation()
-              onChat()
-            }}
-          >
-            <MessageCircle size={16} className="mr-2" /> Chat
-          </Button>
-        </div>
+        {!isSelf && (
+          <div className="flex justify-center gap-2 px-4 mb-4">
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1 justify-center h-9 py-0"
+              onClick={(e) => { 
+                e.stopPropagation()
+                if (isSelf) return
+                onCall()
+              }}
+            >
+              <Phone size={16} className="mr-2" /> Call
+            </Button>
+            <Button
+              type="button"
+              className="flex-1 justify-center h-9 py-0 bg-blue-50 hover:bg-blue-100 text-blue-600"
+              onClick={(e) => { 
+                e.stopPropagation()
+                if (isSelf) return
+                onChat()
+              }}
+            >
+              <MessageCircle size={16} className="mr-2" /> Chat
+            </Button>
+          </div>
+        )}
 
         <hr className="mb-3" />
 
@@ -167,21 +177,21 @@ export default function UserProfilePanel({
             <Badge variant="secondary">{mutualGroups || 0}</Badge>
           </button>
 
-          {isFriend ? (
+          {!isSelf && (isFriend ? (
             <button
-              onClick={onUnfriend}
+              onClick={(e) => { e.stopPropagation(); if (!isSelf) onUnfriend() }}
               className="w-full flex items-center gap-3 p-2.5 rounded hover:bg-gray-50 text-red-600"
             >
               <Trash size={18} /> <span className="flex-1 text-left">Remove Friend</span>
             </button>
           ) : (
             <button
-              onClick={onAddFriend}
+              onClick={(e) => { e.stopPropagation(); if (!isSelf) onAddFriend() }}
               className="w-full flex items-center gap-3 p-2.5 rounded hover:bg-gray-50 text-blue-600"
             >
               <UserPlus size={18} /> <span className="flex-1 text-left">Add Friend</span>
             </button>
-          )}
+          ))}
         </div>
       </div>
     </div>
