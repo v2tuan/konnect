@@ -40,7 +40,7 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 
-export default function ChatSidebarRight({ conversation, isOpen, onClose }) {
+export default function ChatSidebarRight({ conversation, isOpen, onClose, onOpenProfile }) {
   const navigate = useNavigate()
   const { conversationId: activeIdFromURL } = useParams()
   const panelRef = useRef(null)
@@ -110,25 +110,25 @@ export default function ChatSidebarRight({ conversation, isOpen, onClose }) {
   }
 
   const handlePromoteToAdmin = async (memberId) => {
-  try {
-    const confirmed = window.confirm("Promote this member to admin?")
-    if (!confirmed) return
+    try {
+      const confirmed = window.confirm("Promote this member to admin?")
+      if (!confirmed) return
 
-    await promoteMemberToAdminAPI(conversation?._id, memberId)
+      await promoteMemberToAdminAPI(conversation?._id, memberId)
 
-    toast.success("Promoted to admin")
+      toast.success("Promoted to admin")
 
     // không set state trực tiếp ở đây,
     // vì ChatArea sẽ nghe socket 'member:promoted' và update localConversation
-  } catch (err) {
-    console.error("promote member error:", err)
-    toast.error(
-      err?.response?.data?.message ||
+    } catch (err) {
+      console.error("promote member error:", err)
+      toast.error(
+        err?.response?.data?.message ||
       err.message ||
       "Failed to promote member"
-    )
+      )
+    }
   }
-}
 
   const handleLeaveGroup = async (conversationId) => {
     try {
@@ -178,28 +178,35 @@ export default function ChatSidebarRight({ conversation, isOpen, onClose }) {
     const initial = (name?.[0] || "U").toUpperCase()
 
     const roleLabel =
-      m?.role === "admin"
-        ? "Admin"
-        : m?.role === "owner"
-          ? "Owner"
-          : "Member"
+    m?.role === "admin"
+      ? "Admin"
+      : m?.role === "owner"
+        ? "Owner"
+        : "Member"
 
-    const canManage =
-      amIAdmin && String(uid) !== String(currentUserId)
+    const canManage = amIAdmin && String(uid) !== String(currentUserId)
 
     return (
       <div
         key={uid}
         className="group flex items-start gap-3 p-2 rounded-lg hover:bg-muted/60 relative"
       >
-        <Avatar className="w-8 h-8 shrink-0">
+        {/* Avatar click mở profile */}
+        <Avatar
+          className="w-8 h-8 shrink-0 cursor-pointer"
+          onClick={() => onOpenProfile?.(m)}
+        >
           <AvatarImage src={m?.avatarUrl || ""} />
           <AvatarFallback>{initial}</AvatarFallback>
         </Avatar>
 
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between">
-            <div className="min-w-0">
+            {/* Khối tên click mở profile */}
+            <div
+              className="min-w-0 cursor-pointer"
+              onClick={() => onOpenProfile?.(m)}
+            >
               <div className="text-sm font-medium truncate flex items-center gap-2">
                 <span className="truncate">{name}</span>
                 <span className="text-[11px] text-muted-foreground font-normal">
@@ -214,6 +221,7 @@ export default function ChatSidebarRight({ conversation, isOpen, onClose }) {
               )}
             </div>
 
+            {/* Dropdown menu (Remove / Promote...) giữ nguyên */}
             {canManage && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -230,7 +238,7 @@ export default function ChatSidebarRight({ conversation, isOpen, onClose }) {
                     onClick={() => handleRemoveUser(uid)}
                     className="text-red-600 cursor-pointer"
                   >
-                    Remove user
+                  Remove user
                   </DropdownMenuItem>
 
                   {m.role !== "admin" && (
@@ -238,7 +246,7 @@ export default function ChatSidebarRight({ conversation, isOpen, onClose }) {
                       onClick={() => handlePromoteToAdmin(uid)}
                       className="cursor-pointer"
                     >
-                      Promote to admin
+                    Promote to admin
                     </DropdownMenuItem>
                   )}
                 </DropdownMenuContent>
@@ -249,6 +257,7 @@ export default function ChatSidebarRight({ conversation, isOpen, onClose }) {
       </div>
     )
   }
+
 
   // styles
   const buttonStyle =
