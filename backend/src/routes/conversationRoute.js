@@ -41,4 +41,6 @@ route.patch(
   authMiddleware,
   conversationController.updateMemberNickname
 );
+route.post('/join/:conversationId', authMiddleware, conversationController.joinGroupViaLink);
+route.get('/group-preview/:conversationId', authMiddleware, conversationController.getGroupPreview);
 export const conversationRoutes = route

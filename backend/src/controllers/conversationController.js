@@ -262,44 +262,50 @@ const updateNotifications = async (req, res, next) => {
     next(e)
   }
 }
-// Đổi tên / Đổi avatar nhóm
 const updateGroupMeta = async (req, res, next) => {
   try {
-    const userId = req.userId;
+    const userId = req.userId; // actorId
     const conversationId = req.params.conversationId;
 
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
-    // load conversation
-    const convo = await Conversation.findById(conversationId).lean();
-    if (!convo) return res.status(404).json({ message: "Conversation not found" });
+    // 1. Load conversation và kiểm tra quyền
+    const [convo, cm] = await Promise.all([
+      Conversation.findById(conversationId).lean(),
+      ConversationMember.findOne({
+        conversation: conversationId,
+        userId,
+        deletedAt: null
+      }).lean()
+    ]);
 
-    // chỉ group mới đổi tên / avatar
+    if (!convo) return res.status(404).json({ message: "Conversation not found" });
     if (convo.type !== "group") {
       return res.status(400).json({ message: "Only group conversations support meta update" });
     }
-
-    // kiểm tra quyền: admin mới được sửa
-    const cm = await ConversationMember.findOne({
-      conversation: conversationId,
-      userId,
-      deletedAt: null
-    }).lean();
-
-    if (!cm) return res.status(403).json({ message: "Not a member of this conversation" });
+    if (!cm) return res.status(403).json({ message: "Not a member" });
     if (!["admin"].includes(cm.role)) {
       return res.status(403).json({ message: "Only admin can update group meta" });
     }
 
-    // build update
+    // 2. Lấy tên người thực hiện (admin)
+    const actorUser = await User.findById(userId).select("fullName username").lean();
+    const actorName = actorUser?.fullName || actorUser?.username || "Ai đó";
+
+    // 3. Build update
     const $set = {};
     const now = new Date();
+    let nameChanged = false;
+    let avatarChanged = false;
 
-    // tên nhóm
+    // Tên nhóm
     const displayName = (req.body?.displayName || "").trim();
-    if (displayName) $set["group.name"] = displayName;
+    if (displayName && displayName !== convo.group?.name) {
+      $set["group.name"] = displayName;
+      nameChanged = true;
+    }
 
-    // avatar (multer đặt file vào req.file)
+    // Avatar
     let uploadedUrl = null;
     if (req.file) {
       const up = await cloudinaryProvider.uploadSingle(req.file, {
@@ -307,18 +313,20 @@ const updateGroupMeta = async (req, res, next) => {
         resource_type: "auto"
       });
       uploadedUrl = up?.secure_url || null;
-      if (uploadedUrl) $set["group.avatarUrl"] = uploadedUrl;
+      if (uploadedUrl) {
+        $set["group.avatarUrl"] = uploadedUrl;
+        avatarChanged = true;
+      }
     }
 
-    if (Object.keys($set).length === 0) {
+    if (!nameChanged && !avatarChanged) {
       return res.status(400).json({ message: "Nothing to update" });
     }
 
     $set.updatedAt = now;
-
     await Conversation.updateOne({ _id: conversationId }, { $set });
 
-    // payload trả về cho FE
+    // 4. Payload trả về cho FE (để update UI header)
     const out = {
       conversationId,
       displayName: displayName || convo.group?.name || "Group",
@@ -326,15 +334,86 @@ const updateGroupMeta = async (req, res, next) => {
       updatedAt: now
     };
 
-    // realtime cho các member
+    // 5. Gửi socket CŨ (để FE cập nhật header/sidebar ngay)
     req.io?.to?.(`conversation:${conversationId}`)?.emit("conversation:meta-updated", out);
 
-    return res.status(200).json(out); // ✅ PHẢI CÓ DÒNG NÀY ĐỂ TRẢ VỀ CHO CLIENT
+    // 6. === TẠO TIN NHẮN HỆ THỐNG (PHẦN BẠN BỊ THIẾU) ===
+    let actionText = "";
+    if (nameChanged && avatarChanged) {
+      actionText = `${actorName} đã thay đổi tên và ảnh đại diện của nhóm`;
+    } else if (nameChanged) {
+      actionText = `${actorName} đã đổi tên nhóm thành "${displayName}"`;
+    } else if (avatarChanged) {
+      actionText = `${actorName} đã thay đổi ảnh đại diện của nhóm`;
+    }
+
+    if (actionText) {
+      // Lấy seq mới
+      const updated = await Conversation.findOneAndUpdate(
+        { _id: conversationId },
+        { $inc: { messageSeq: 1 }, $set: { updatedAt: now } },
+        { new: true, lean: true }
+      );
+      const seq = updated.messageSeq;
+
+      const sysBody = {
+        text: actionText,
+        subtype: "group_meta_changed",
+        // (Tùy chọn) Gửi thêm data để FE xử lý
+        meta: {
+          newName: nameChanged ? displayName : undefined,
+          newAvatar: avatarChanged ? uploadedUrl : undefined
+        }
+      };
+
+      const sysMsg = await Message.create({
+        conversationId,
+        seq,
+        senderId: SYSTEM_USER_ID,
+        type: "notification",
+        body: sysBody,
+        createdAt: now
+      });
+
+      // Cập nhật lastMessage
+      await Conversation.updateOne(
+        { _id: conversationId },
+        {
+          $set: {
+            lastMessage: {
+              seq,
+              messageId: sysMsg._id,
+              type: "notification",
+              textPreview: actionText,
+              senderId: SYSTEM_USER_ID,
+              createdAt: now
+            }
+          }
+        }
+      );
+
+      // 7. Gửi socket MỚI (để tin nhắn hệ thống xuất hiện)
+      req.io?.to?.(`conversation:${conversationId}`)?.emit("message:new", {
+        conversationId,
+        message: {
+          _id: sysMsg._id,
+          conversationId,
+          seq,
+          type: "notification",
+          body: sysBody,
+          senderId: SYSTEM_USER_ID,
+          sender: SYSTEM_SENDER,
+          createdAt: now
+        }
+      });
+    }
+    // === KẾT THÚC PHẦN THÊM MỚI ===
+
+    return res.status(200).json(out); // Trả về thông tin meta đã cập nhật
   } catch (e) {
     next(e);
   }
 };
-
 // Xoá thành viên khỏi nhóm
 const removeMembers = async (req, res, next) => {
   try {
@@ -542,8 +621,38 @@ const updateMemberNickname = async (req, res, next) => {
     next(e)
   }
 };
+const joinGroupViaLink = async (req, res, next) => {
+  try {
+    const userId = req.userId;
+    const conversationId = req.params.conversationId;
 
+    const conversation = await conversationService.joinGroupViaLink({
+      userId,
+      conversationId,
+      io: req.io
+    });
 
+    // Trả về thông tin nhóm đã tham gia
+    res.status(StatusCodes.OK).json(conversation);
+  } catch (e) {
+    next(e);
+  }
+};
+const getGroupPreview = async (req, res, next) => {
+  try {
+    const userId = req.userId;
+    const conversationId = req.params.conversationId;
+
+    const groupInfo = await conversationService.getGroupPreview({
+      conversationId,
+      userId
+    });
+
+    res.status(StatusCodes.OK).json(groupInfo);
+  } catch (e) {
+    next(e);
+  }
+};
 export const conversationController = {
   createConversation,
   getConversation,
@@ -556,5 +665,7 @@ export const conversationController = {
   updateGroupMeta,
   removeMembers,
   updateMemberRole,
-  updateMemberNickname
+  updateMemberNickname,
+  joinGroupViaLink,
+  getGroupPreview
 }

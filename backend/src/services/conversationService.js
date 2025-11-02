@@ -205,6 +205,16 @@ const createConversation = async (conversationData, file, userId, io) => {
 
     // Build nhẹ members (để FE xác thực membership)
     const groupMemberIds = membersToAdd.map(m => m.userId)
+    const memberUsers = await User.find(
+      { _id: { $in: groupMemberIds } }
+    ).select('_id fullName username avatarUrl').lean()
+    const membersWithInfo = memberUsers.map(u => ({
+      id: u._id,
+      _id: u._id,
+      fullName: u.fullName || null,
+      username: u.username || null,
+      avatarUrl: u.avatarUrl || null
+    }))
     const convoPayload = {
       _id: newConversation._id,
       id: newConversation._id,
@@ -212,7 +222,7 @@ const createConversation = async (conversationData, file, userId, io) => {
       group: {
         name: conversationDataToCreate.group.name,
         avatarUrl: conversationDataToCreate.group.avatarUrl,
-        members: groupMemberIds.map(uid => ({ id: uid })) // tối giản
+        members: membersWithInfo // ✅ ĐÃ CÓ ĐẦY ĐỦ THÔNG TIN
       },
       displayName: conversationDataToCreate.group.name,
       conversationAvatarUrl: conversationDataToCreate.group.avatarUrl,
@@ -283,9 +293,9 @@ const getConversation = async (page = 1, limit = 20, userId) => {
   const skipVal = (p - 1) * l
   const uid = toOid(userId)
 
-  const total = await ConversationMember.countDocuments({  
+  const total = await ConversationMember.countDocuments({
     userId: uid,
-    deletedAt: null  
+    deletedAt: null
   })
 
   const pipeline = [
@@ -1319,7 +1329,110 @@ async function isMemberMutedNow({ userId, conversationId }) {
   const until = cm.notifications.mutedUntil;
   return !until || new Date(until) > new Date();
 }
+async function joinGroupViaLink({ userId, conversationId, io }) {
+  // 1. Validate
+  if (!mongoose.isValidObjectId(conversationId)) {
+    throw new ApiError(StatusCodes.BAD_REQUEST, "Invalid conversationId");
+  }
 
+  // 2. Lấy conversation
+  const convo = await Conversation.findById(conversationId).lean();
+  if (!convo) throw new ApiError(StatusCodes.NOT_FOUND, "Nhóm không tồn tại");
+  if (convo.type !== "group") {
+    throw new ApiError(StatusCodes.BAD_REQUEST, "Chỉ có thể tham gia nhóm");
+  }
+
+  // 3. Kiểm tra xem đã là thành viên chưa
+  const isMember = await ConversationMember.findOne({
+    conversation: conversationId,
+    userId: userId,
+    deletedAt: null
+  }).lean();
+
+  if (isMember) {
+    console.log(`[joinGroupViaLink] User ${userId} is already a member.`);
+    return convo; // Trả về thông tin nhóm luôn
+  }
+
+  // 4. Thêm thành viên mới
+  const now = new Date();
+  await ConversationMember.create({
+    conversation: new mongoose.Types.ObjectId(conversationId),
+    userId: new mongoose.Types.ObjectId(userId),
+    role: "member",
+    joinedAt: now,
+    lastReadMessageSeq: 0 // Bắt đầu đọc từ 0
+  });
+
+  // 5. Tạo tin nhắn hệ thống ("User A joined the group")
+  const user = await User.findById(userId).select("fullName username").lean();
+  const userName = user?.fullName || user?.username || "Thành viên mới";
+
+  const updatedConvo = await Conversation.findOneAndUpdate(
+    { _id: conversationId },
+    { $inc: { messageSeq: 1 }, $set: { updatedAt: now } },
+    { new: true, lean: true }
+  );
+  const seq = updatedConvo.messageSeq;
+
+  const text = `${userName} đã tham gia nhóm qua link`;
+  const sysBody = {
+    text: text,
+    subtype: "member_joined_link",
+    targetId: String(userId)
+  };
+
+  const sysMsg = await Message.create({
+    conversationId: new mongoose.Types.ObjectId(conversationId),
+    seq,
+    senderId: SYSTEM_USER_ID,
+    type: "notification",
+    body: sysBody,
+    createdAt: now
+  });
+
+  // 6. Cập nhật lastMessage
+  await Conversation.updateOne(
+    { _id: conversationId },
+    {
+      $set: {
+        lastMessage: {
+          seq,
+          messageId: sysMsg._id,
+          type: "notification",
+          textPreview: text,
+          senderId: SYSTEM_USER_ID,
+          createdAt: now
+        }
+      }
+    }
+  );
+
+  // 7. Emit Socket
+  const messagePayload = {
+    conversationId,
+    message: {
+      _id: sysMsg._id,
+      conversationId,
+      seq,
+      type: "notification",
+      body: sysBody,
+      senderId: SYSTEM_USER_ID,
+      sender: SYSTEM_SENDER,
+      createdAt: now
+    }
+  };
+
+  // Gửi cho các thành viên cũ (để họ thấy tin nhắn "A đã tham gia")
+  io?.to(`conversation:${conversationId}`)?.emit("message:new", messagePayload);
+
+  // Gửi cho chính user vừa join (để FE thêm nhóm này vào danh sách)
+  io?.to(`user:${userId}`)?.emit("conversation:created", {
+    conversation: updatedConvo // Gửi đầy đủ thông tin nhóm
+  });
+
+  return updatedConvo;
+}
 async function addMembersToGroup({ actorId, conversationId, memberIds, io }) {
   if (!mongoose.isValidObjectId(conversationId)) {
     const err = new Error("Invalid conversationId")
@@ -1684,7 +1797,104 @@ async function removeMemberFromGroup({ actorId, conversationId, targetUserId, io
     message: 'Member removed successfully'
   };
 }
+async function getGroupPreview({ conversationId, userId }) {
+  if (!mongoose.isValidObjectId(conversationId)) {
+    throw new ApiError(StatusCodes.BAD_REQUEST, "Invalid conversationId");
+  }
 
+  // 1. Tìm nhóm
+  const convo = await Conversation.findOne({
+    _id: conversationId,
+    type: "group"
+  }).lean();
+
+  if (!convo) {
+    throw new ApiError(StatusCodes.NOT_FOUND, "Nhóm không tồn tại hoặc không phải là nhóm");
+  }
+
+  // 2. Chạy 3 query song song
+  const [memberCount, existingMember, inviterMember, admins] = await Promise.all([
+    // Query 1: Đếm tổng số thành viên
+    ConversationMember.countDocuments({ conversation: conversationId, deletedAt: null }),
+
+    // Query 2: Kiểm tra user này đã ở trong nhóm chưa
+    ConversationMember.findOne({ conversation: conversationId, userId: userId, deletedAt: null }).lean(),
+
+    // Query 3: Lấy thông tin người tạo nhóm (Admin đầu tiên)
+    ConversationMember.aggregate([
+      {
+        $match: {
+          conversation: new mongoose.Types.ObjectId(conversationId),
+          role: 'admin',
+          deletedAt: null
+        }
+      },
+      { $sort: { joinedAt: 1 } }, // Ưu tiên admin lâu nhất
+      { $limit: 1 },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'userId',
+          foreignField: '_id',
+          as: 'user'
+        }
+      },
+      { $unwind: '$user' },
+      {
+        $project: {
+          _id: '$user._id',
+          name: '$user.fullName', // Map fullName sang name
+          avatar: '$user.avatarUrl' // Map avatarUrl sang avatar
+        }
+      }
+    ]),
+
+    // Query 4: Lấy thông tin các admin khác
+    ConversationMember.aggregate([
+      {
+        $match: {
+          conversation: new mongoose.Types.ObjectId(conversationId),
+          role: 'admin',
+          deletedAt: null
+        }
+      },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'userId',
+          foreignField: '_id',
+          as: 'user'
+        }
+      },
+      { $unwind: '$user' },
+      {
+        $project: {
+          _id: '$user._id',
+          name: '$user.fullName', // Map fullName sang name
+          avatar: '$user.avatarUrl' // Map avatarUrl sang avatar
+        }
+      }
+    ])
+  ]);
+
+  const inviter = inviterMember && inviterMember.length > 0 ? inviterMember[0] : null;
+
+  return {
+    _id: convo._id,
+    displayName: convo.group?.name || "Group",
+    conversationAvatarUrl: convo.group?.avatarUrl || null,
+    memberCount: memberCount || 0,
+    isAlreadyMember: !!existingMember,
+    description: convo.group?.description || null, // Lấy mô tả nhóm
+
+    // Trả về trường mà Frontend (bố cục đẹp) mong đợi
+    inviterName: inviter?.name || null,
+    inviterAvatar: inviter?.avatar || null,
+
+    // Lọc ra các admin khác (tránh trùng lặp với inviter)
+    admins: admins.filter(admin => admin._id !== inviter?._id) || []
+  };
+}
 export const conversationService = {
   listConversationMedia,
   createConversation,
@@ -1697,5 +1907,7 @@ export const conversationService = {
   isMemberMutedNow,
   addMembersToGroup,
   removeMemberFromGroup,
-  promoteMemberToAdmin
+  promoteMemberToAdmin,
+  joinGroupViaLink,
+  getGroupPreview
 }

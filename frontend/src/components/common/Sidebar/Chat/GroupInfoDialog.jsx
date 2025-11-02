@@ -463,16 +463,6 @@ function GroupInfoDialog({
                 <div className="text-sm font-medium">
                   Thành viên ({conversation?.group?.members?.length || 0})
                 </div>
-                {isGroup && (
-                  <div className="flex items-center gap-1">
-                    <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => onOpenAddMember?.()}>
-                      <UserPlus className="w-4 h-4 mr-1" /> Thêm
-                    </Button>
-                    <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => setMembersOpen(true)}>
-                      <Users className="w-4 h-4 mr-1" /> Xem tất cả
-                    </Button>
-                  </div>
-                )}
               </div>
 
               {/* 👉 Bấm vào dãy avatar cũng mở */}
@@ -571,7 +561,8 @@ function GroupInfoDialog({
                   <div className="relative">
                     <Input
                       readOnly
-                      value={`https://yourapp.com/join/${(conversation?._id || "").slice(-8)}`}
+                      // SỬA DÒNG NÀY: Dùng window.location.origin và conversation._id đầy đủ
+                      value={`${window.location.origin}/join/${conversation?._id || ""}`}
                       className="h-9 pr-24"
                       onClick={(e) => e.currentTarget.select()}
                     />
@@ -582,8 +573,9 @@ function GroupInfoDialog({
                       className="absolute right-1 top-1/2 -translate-y-1/2"
                       onClick={async () => {
                         try {
+                          // SỬA LẠI LOGIC COPY:
                           await navigator.clipboard.writeText(
-                            `https://yourapp.com/join/${(conversation?._id || "").slice(-8)}`
+                            `${window.location.origin}/join/${conversation?._id || ""}`
                           );
                           toast.success("Đã sao chép link");
                         } catch {
@@ -595,18 +587,6 @@ function GroupInfoDialog({
                     </Button>
                   </div>
                 </div>
-
-                <Button variant="outline" className="w-full h-9 justify-start text-muted-foreground">
-                  Quản lý nhóm (Nâng cao)
-                </Button>
-
-                <Button
-                  variant="outline"
-                  className="w-full h-9 justify-start text-destructive hover:text-destructive hover:bg-destructive/10"
-                  onClick={() => onOpenChange?.(false)}
-                >
-                  Rời nhóm
-                </Button>
               </div>
             )}
           </div>

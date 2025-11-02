@@ -464,3 +464,11 @@ export const getStoriesByFriends = async ({ page, limit }) => {
   )
   return response.data
 }
+export function joinGroupViaLinkAPI(conversationId) {
+  return authorizeAxiosInstance.post(`${API_ROOT}/api/conversation/join/${conversationId}`)
+    .then(res => res.data); // Trả về data (thông tin cuộc trò chuyện)
+}
+export function getGroupPreviewAPI(conversationId) {
+  return authorizeAxiosInstance.get(`${API_ROOT}/api/conversation/group-preview/${conversationId}`)
+    .then(res => res.data); // Trả về thông tin nhóm
+}
