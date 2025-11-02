@@ -21,5 +21,6 @@ router.post('/reset-password', authController.resetPassword);
 router.post('/verify-otp', authController.verifyOtp);
 
 router.get('/check', authMiddleware, authController.check);
+router.post('/register/resend-otp', authController.resendSignupOtp); // 👈 mới
 
 export const authRoutes = router

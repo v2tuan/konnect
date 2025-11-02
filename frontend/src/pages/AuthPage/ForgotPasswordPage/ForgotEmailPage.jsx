@@ -28,7 +28,7 @@ export default function ForgotEmailPage() {
         forgotPasswordAPI({ email }), // ⬅️ GỌI TRỰC TIẾP, KHÔNG dispatch
         { pending: "Sending OTP...", success: "OTP sent!" }
       )
-      navigate(`/auth/forgot/otp?email=${encodeURIComponent(email)}`, { state: { email } })
+      navigate(`/auth/otp?email=${encodeURIComponent(email)}&purpose=forgot`, { state: { email, purpose: 'forgot' } })
     } catch (err) {
       const status = err?.response?.status
       const backendMessage = err?.response?.data?.message || err?.message || "Failed to send OTP"

@@ -19,6 +19,16 @@ let signup = async (req, res, next) => {
     }
 }
 
+const resendSignupOtp = async (req, res) => {
+  try {
+    const { email } = req.body ?? {}
+    await authService.requestSignupVerification(email)
+    return res.status(200).json({ message: 'OTP resent for signup' })
+  } catch (err) {
+    const status = err.status || 500
+    return res.status(status).json({ message: err.message || 'Internal server error' })
+  }
+}
 // POST /auth/login
 let login = async (req, res) => {
   const { email, password } = req.body
@@ -81,15 +91,15 @@ const requestPasswordReset = async (req, res) => {
     }
 };
 const verifyOtp = async (req, res) => {
-    try {
-        const { email, otp } = req.body ?? {};
-        await authService.verifyOtp(email, otp);
-        return res.status(200).json({ message: 'OTP verified' });
-    } catch (err) {
-        const status = err.status || 500;
-        return res.status(status).json({ message: err.message || 'Internal server error' });
-    }
-};
+  try {
+    const { email, otp, purpose } = req.body ?? {}   // 👈 lấy thêm purpose
+    await authService.verifyOtp(email, otp, purpose)
+    return res.status(200).json({ message: 'OTP verified' })
+  } catch (err) {
+    const status = err.status || 500
+    return res.status(status).json({ message: err.message || 'Internal server error' })
+  }
+}
 // POST /auth/reset-password
 const resetPassword = async (req, res) => {
     try {
@@ -126,5 +136,6 @@ export const authController = {
     resetPassword,
     requestPasswordReset,
     check,
-    verifyOtp
+    verifyOtp,
+    resendSignupOtp
 }

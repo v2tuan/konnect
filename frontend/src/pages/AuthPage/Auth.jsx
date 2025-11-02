@@ -1,19 +1,19 @@
+// /src/pages/AuthPage/Auth.jsx
 import { useLocation, Navigate } from "react-router-dom"
 import { useSelector } from "react-redux"
 import { selectCurrentUser } from "@/redux/user/userSlice"
+
 import LoginPage from "./LoginPage"
 import SignUpPage from "./SignUpPage"
-import ForgotEmailPage from "@/pages/AuthPage/ForgotPasswordPage/ForgotEmailPage.jsx"
-import ForgotOtpPage from "@/pages/AuthPage/ForgotPasswordPage/ForgotOtpPage.jsx"
-import ForgotResetPage from "@/pages/AuthPage/ForgotPasswordPage/ForgotResetPage.jsx"
+import ForgotPasswordPage from "@/pages/AuthPage/ForgotPasswordPage.jsx"
 
 
 function Auth() {
   const location = useLocation()
-  const isLogin = location.pathname === "/login"
-  const isSignup = location.pathname === "/signup"
+  const isLogin       = location.pathname === "/login"
+  const isSignup      = location.pathname === "/signup"
   const isForgotEmail = location.pathname === "/auth/forgot"
-  const isForgotOtp = location.pathname === "/auth/forgot/otp"
+  const isForgotOtp   = location.pathname === "/auth/forgot/otp"
   const isForgotReset = location.pathname === "/auth/forgot/reset"
 
   const currentUser = useSelector(selectCurrentUser)
@@ -23,11 +23,8 @@ function Auth() {
     <>
       {isLogin && <LoginPage/>}
       {isSignup && <SignUpPage/>}
-      {isForgotEmail && <ForgotEmailPage/>}
-      {isForgotOtp && <ForgotOtpPage/>}
-      {isForgotReset && <ForgotResetPage/>}
+      {(isForgotEmail || isForgotOtp || isForgotReset) && <ForgotPasswordPage/>}
     </>
   )
 }
-
 export default Auth

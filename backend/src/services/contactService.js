@@ -141,20 +141,6 @@ const submitRequest = async ({ requesterUserId, receiveUserId }) => {
       throw new Error("User not found or deactivated")
     }
 
-    // Đã là bạn bè?
-    const existingAccepted = await FriendShip.findOne({
-      status: "accepted",
-      $or: [
-        { profileRequest: from, profileReceive: to },
-        { profileRequest: to, profileReceive: from }
-      ]
-    }).lean()
-
-    if (existingAccepted) {
-      return { ok: true, message: "Already friends" }
-    }
-
-    // Đã có pending theo 2 chiều?
     const existingPending = await FriendShip.findOne({
       status: "pending",
       $or: [
@@ -164,7 +150,18 @@ const submitRequest = async ({ requesterUserId, receiveUserId }) => {
     }).lean()
 
     if (existingPending) {
-      return { ok: true, message: "Request already exists", requestId: String(existingPending._id) }
+      // ⬇️ BUMP updatedAt để FE thấy "vừa xong"
+      await FriendShip.updateOne(
+        { _id: existingPending._id },
+        { $set: { updatedAt: new Date() } }
+      )
+
+      return {
+        ok: true,
+        message: "Request already exists",
+        requestId: String(existingPending._id),
+        action: 'bumped' // ⬅️ THÊM CỜ NÀY
+      }
     }
 
     // Tạo mới
@@ -177,7 +174,8 @@ const submitRequest = async ({ requesterUserId, receiveUserId }) => {
     return {
       ok: true,
       message: "Friend request sent",
-      requestId: String(doc._id)
+      requestId: String(doc._id),
+      action: 'created' // ⬅️ THÊM CỜ NÀY
     }
   } catch (error) {
     throw new Error(error)
