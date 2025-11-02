@@ -211,13 +211,35 @@ export const submitFriendRequestAPI = async (toUserId) => {
 }
 
 export const updateFriendRequestStatusAPI = async ({ requestId, action }) => {
+  try {
+    // 1. Gọi API gốc
+    const response = await _originalUpdateFriendRequestStatusAPI({ requestId, action });
+
+    // 2. Nếu thành công, phát tín hiệu (event) toàn cục
+    window.dispatchEvent(new CustomEvent('friendship:action', {
+      detail: {
+        requestId: requestId,
+        action: action
+      }
+    }));
+
+    // 3. Trả về kết quả
+    return response;
+
+  } catch (error) {
+    // Nếu API lỗi, ném lỗi ra để component tự .catch()
+    console.error("updateFriendRequestStatusAPI failed, event not dispatched:", error);
+    throw error;
+  }
+}
+// Đổi tên hàm gốc (hoặc không export)
+const _originalUpdateFriendRequestStatusAPI = async ({ requestId, action }) => {
   const response = await authorizeAxiosInstance.put(
     `${API_ROOT}/api/contacts/friends/requests`,
     { requestId, action }
   )
   return response.data
 }
-
 export const getFriendsAPI = async (params = {}) => {
   const response = await authorizeAxiosInstance.get(
     `${API_ROOT}/api/contacts/friends`,
@@ -233,10 +255,13 @@ export const deleteConversationAPI = async (conversationId) => {
   return response.data
 }
 
-export const leaveGroupAPI = async (conversationId) => {
-  const response = await authorizeAxiosInstance.delete(`${API_ROOT}/api/conversation/chats/${conversationId}`, {
-    data: { action: 'leave' }
-  })
+export const leaveGroupAPI = async (conversationId, nextAdminId = null) => {
+  const payload = { action: 'leave' }
+  if (nextAdminId) payload.nextAdminId = nextAdminId
+  const response = await authorizeAxiosInstance.delete(
+    `${API_ROOT}/api/conversation/chats/${conversationId}`,
+    { data: payload }
+  )
   return response.data
 }
 
@@ -306,6 +331,77 @@ export async function unreadCount() {
   return Number(res.data?.count || 0)
 }
 
+export const updateGroupMetaAPI = async (conversationId, { displayName, avatarFile }) => {
+  try {
+    const formData = new FormData();
+
+    // ✅ Chỉ thêm displayName nếu có và khác rỗng
+    if (displayName && displayName.trim()) {
+      formData.append('displayName', displayName.trim());
+    }
+
+    // ✅ Chỉ thêm avatar nếu có file
+    if (avatarFile instanceof File) {
+      formData.append('avatar', avatarFile);
+    }
+
+    // Debug log (xóa sau khi test xong)
+    console.log('📤 Sending to backend:', {
+      conversationId,
+      hasDisplayName: !!displayName,
+      hasAvatarFile: !!avatarFile,
+      displayName: displayName?.trim()
+    });
+
+    const response = await authorizeAxiosInstance.patch(
+      `${API_ROOT}/api/conversation/chats/${conversationId}/meta`,
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      }
+    );
+
+    console.log('✅ Backend response:', response.data);
+    return response.data;
+
+  } catch (error) {
+    console.error('❌ updateGroupMetaAPI error:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+// ===== Member management (thêm đã có addMemberToGroup; bổ sung xoá) =====
+export const removeMembersFromGroupAPI = async (conversationId, memberIds = []) => {
+  const { data } = await authorizeAxiosInstance.delete(
+    `${API_ROOT}/api/conversation/chats/${conversationId}/members`,
+    { data: { memberIds } }
+  );
+  return data;
+};
+
+// (tuỳ chọn) đổi vai trò
+export const updateMemberRoleAPI = async (conversationId, memberId, role /* 'admin' | 'member' */) => {
+  const { data } = await authorizeAxiosInstance.patch(
+    `${API_ROOT}/api/conversation/chats/${conversationId}/members`,
+    { memberId, role }
+  );
+  return data;
+};
+export const updateConversationMetaAPI = async (conversationId, formData) => {
+  const res = await authorizeAxiosInstance.patch(
+    `${API_ROOT}/api/conversation/chats/${conversationId}/meta`,
+    formData,
+    { headers: { "Content-Type": "multipart/form-data" } }
+  );
+  return res.data;
+};
+export function updateMemberNicknameAPI(conversationId, memberId, nickname) {
+  return authorizeAxiosInstance.patch(`${API_ROOT}/api/conversation/chats/${conversationId}/members/nickname`, { memberId, nickname })
+  .then(res => res.data)
+}
+
 // Xoá tin nhắn chỉ cho riêng mình (ẩn với bản thân)
 export async function deleteMessageForMeAPI({ messageId, conversationId }) {
   if (!messageId || !conversationId) throw new Error("Missing messageId or conversationId")
@@ -370,4 +466,12 @@ export const getStoriesByFriends = async ({ page, limit }) => {
     }
   )
   return response.data
+}
+export function joinGroupViaLinkAPI(conversationId) {
+  return authorizeAxiosInstance.post(`${API_ROOT}/api/conversation/join/${conversationId}`)
+    .then(res => res.data); // Trả về data (thông tin cuộc trò chuyện)
+}
+export function getGroupPreviewAPI(conversationId) {
+  return authorizeAxiosInstance.get(`${API_ROOT}/api/conversation/group-preview/${conversationId}`)
+    .then(res => res.data); // Trả về thông tin nhóm
 }

@@ -1,122 +1,163 @@
 // src/components/chat/MediaWindowViewer.jsx
-import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
-import ReactDOM from "react-dom";
-import PropTypes from "prop-types";
-import { Button } from "@/components/ui/button";
+import React, { useEffect, useRef, useState, useCallback, useMemo } from "react"
+import ReactDOM from "react-dom"
+import PropTypes from "prop-types"
+import { Button } from "@/components/ui/button"
 import {
   X, ChevronUp, ChevronDown, Share2, Download, RotateCw,
   ExternalLink, ZoomIn, ZoomOut, Maximize2, Minimize2
-} from "lucide-react";
+} from "lucide-react"
 
 function formatTime(ts) {
   try {
-    const d = new Date(ts);
-    if (Number.isNaN(d.getTime())) return "";
-    return d.toLocaleString();
-  } catch { return ""; }
+    const d = new Date(ts)
+    if (Number.isNaN(d.getTime())) return ""
+    return d.toLocaleString()
+  } catch { return "" }
 }
 
 function ViewerContent({
-                         items,
-                         startIndex = 0,
-                         onClose,
-                         onLoadMore,
-                         hasMore = false,
-                         title = "Xem ảnh",
-                       }) {
-  const [active, setActive] = useState(startIndex);
-  const rightPaneRef = useRef(null);
-  const activeThumbRef = useRef(null);
+  items,
+  startIndex = 0,
+  onClose,
+  onLoadMore,
+  hasMore = false,
+  title = "Xem ảnh"
+}) {
+  const [active, setActive] = useState(startIndex)
+  const rightPaneRef = useRef(null)
+  const activeThumbRef = useRef(null)
 
   // canvas state cho ảnh
-  const [rotation, setRotation] = useState(0); // 0/90/180/270
-  const [scale, setScale] = useState(1);
-  const [fit, setFit] = useState(true); // true: fit (contain); false: 1:1 (theo scale)
+  const [rotation, setRotation] = useState(0) // 0/90/180/270
+  const [scale, setScale] = useState(1)
+  const [fit, setFit] = useState(true) // true: fit (contain); false: 1:1 (theo scale)
 
-  const current = items[active];
-  const isImage = current?.type === "image";
-  const isVideo = current?.type === "video";
+  const current = items[active]
+  const isImage = current?.type === "image"
+  const isVideo = current?.type === "video"
 
   // Scroll thumb đang chọn
   useEffect(() => {
     if (activeThumbRef.current) {
-      activeThumbRef.current.scrollIntoView({ block: "center", behavior: "smooth" });
+      activeThumbRef.current.scrollIntoView({ block: "center", behavior: "smooth" })
     }
-  }, [active]);
+  }, [active])
 
   // Reset state khi đổi ảnh
-  useEffect(() => { setRotation(0); setScale(1); setFit(true); }, [active]);
+  useEffect(() => { setRotation(0); setScale(1); setFit(true) }, [active])
+
+  // Keyboard
+
 
   // Keyboard
   useEffect(() => {
     const onKey = (e) => {
-      if (e.key === "Escape") onClose?.();
-      if (e.key === "ArrowDown" || e.key.toLowerCase() === "j") setActive((i) => Math.min(i + 1, items.length - 1));
-      if (e.key === "ArrowUp" || e.key.toLowerCase() === "k") setActive((i) => Math.max(i - 1, 0));
-      if (isImage && (e.key === "+" || e.key === "=")) setScale((s) => Math.min(s + 0.1, 5));
-      if (isImage && e.key === "-") setScale((s) => Math.max(s - 0.1, 0.2));
-      if (isImage && e.key.toLowerCase() === "r") setRotation((r) => (r + 90) % 360);
-      if (isImage && e.key.toLowerCase() === "f") setFit((f) => !f);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [items.length, onClose, isImage]);
+      // ✅ Ngăn chặn Escape lan ra ngoài Dialog
+      if (e.key === "Escape") {
+        e.preventDefault() // Ngăn hành vi mặc định (nếu có)
+        e.stopPropagation() // Ngăn không cho Dialog bắt được event này
+        onClose?.()
+        return // Dừng xử lý
+      }
 
+      // Bỏ qua nếu đang gõ chữ
+      const tag = (e.target?.tagName || "").toLowerCase()
+      const typing = tag === "input" || tag === "textarea" || e.target?.isContentEditable
+      if (typing) return
+
+      // Các phím tắt khác (ArrowUp/Down, J/K, +, -, R, F)
+      if (e.key === "ArrowDown" || e.key.toLowerCase() === "j") {
+        setActive((i) => Math.min(i + 1, items.length - 1)); return
+      }
+      if (e.key === "ArrowUp" || e.key.toLowerCase() === "k") {
+        setActive((i) => Math.max(i - 1, 0)); return
+      }
+      const withMod = e.ctrlKey || e.metaKey || e.altKey
+      if (isImage && (e.key === "+" || e.key === "=") && !withMod) {
+        e.preventDefault(); setScale((s) => Math.min(5, s + 0.1)); return
+      }
+      if (isImage && e.key === "-" && !withMod) {
+        e.preventDefault(); setScale((s) => Math.max(0.2, s - 0.1)); return
+      }
+      if (isImage && e.key.toLowerCase() === "r" && !withMod) {
+        e.preventDefault(); setRotation((r) => (r + 90) % 360); return
+      }
+      if (isImage && e.key.toLowerCase() === "f" && !withMod) {
+        e.preventDefault(); setFit((f) => !f)
+      }
+    }
+
+    // Dùng capture: true để bắt sự kiện Esc trước Dialog
+    window.addEventListener("keydown", onKey, { capture: true })
+    return () => window.removeEventListener("keydown", onKey, { capture: true })
+  }, [items.length, isImage, onClose]) // Dependencies giữ nguyên
   // Load-more khi gần cuối cột phải
   const onRightScroll = useCallback(() => {
-    if (!rightPaneRef.current || !hasMore || !onLoadMore) return;
-    const el = rightPaneRef.current;
-    const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 500;
-    if (nearBottom) onLoadMore();
-  }, [hasMore, onLoadMore]);
+    if (!rightPaneRef.current || !hasMore || !onLoadMore) return
+    const el = rightPaneRef.current
+    const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 500
+    if (nearBottom) onLoadMore()
+  }, [hasMore, onLoadMore])
 
   // Actions
   const handleShare = async () => {
-    const url = current?.url;
-    if (!url) return;
+    const url = current?.url
+    if (!url) return
     try {
       if (navigator.share) {
-        await navigator.share({ url, title: current?.metadata?.originalName || "media" });
+        await navigator.share({ url, title: current?.metadata?.originalName || "media" })
       } else if (navigator.clipboard) {
-        await navigator.clipboard.writeText(url);
-        alert("Đã copy link vào clipboard!");
+        await navigator.clipboard.writeText(url)
+        alert("Đã copy link vào clipboard!")
       }
     } catch { /* ignore */ }
-  };
+  }
 
   const handleDownload = () => {
-    const a = document.createElement("a");
-    a.href = current?.url;
-    a.download = current?.metadata?.originalName || "download";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  };
+    const a = document.createElement("a")
+    a.href = current?.url
+    a.download = current?.metadata?.originalName || "download"
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+  }
 
   const handleOpenNewTab = () => {
-    window.open(current?.url, "_blank", "noopener,noreferrer");
-  };
+    window.open(current?.url, "_blank", "noopener,noreferrer")
+  }
 
-  const canZoom = isImage;
-  const scaleText = useMemo(() => `${Math.round(scale * 100)}%`, [scale]);
+  const canZoom = isImage
+  const scaleText = useMemo(() => `${Math.round(scale * 100)}%`, [scale])
 
   return (
-    <div className="fixed inset-0 z-[1000] bg-black/90 text-white">
-      {/* Top bar */}
+    <div
+      className="fixed inset-0 z-[1000] bg-black/90 text-white"
+      onClick={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()} // ✅ HÃY THAY THẾ/THÊM DÒNG NÀY
+    >
       <div className="h-12 px-4 border-b border-white/10 flex items-center justify-between">
         <div className="truncate">{title}</div>
         <div className="flex items-center gap-3">
           <div className="text-xs opacity-80">{items.length ? `${active + 1}/${items.length}` : "0/0"}</div>
-          <Button size="sm" variant="secondary" onClick={onClose} className="h-8 px-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            // ✅ Ngăn click nút Đóng lan ra ngoài Dialog
+            onClick={(e) => {
+              e.stopPropagation()
+              onClose?.()
+            }}
+            className="h-8 px-2"
+          >
             <X className="w-4 h-4 mr-1" /> Đóng
           </Button>
         </div>
       </div>
-
       {/* Body */}
       <div className="h-[calc(100vh-6.5rem)] w-full flex">
         {/* Main */}
-        <div className="flex-1 flex items-center justify-center p-4 relative overflow-hidden">
+        <div className="flex-1 flex items-center justify-center p-4 relative overflow-hidden">y
           {/* media */}
           <div className="max-w-[96%] max-h-[96%]">
             {isVideo ? (
@@ -165,7 +206,7 @@ function ViewerContent({
           className="w-36 md:w-44 lg:w-52 border-l border-white/10 overflow-y-auto p-2 space-y-2"
         >
           {items.map((m, idx) => {
-            const isActive = idx === active;
+            const isActive = idx === active
             return (
               <button
                 key={(m._id || m.id || m.url) + idx}
@@ -183,7 +224,7 @@ function ViewerContent({
                   <video src={m.url} className="w-full h-full object-cover" muted />
                 )}
               </button>
-            );
+            )
           })}
           {hasMore && <div className="py-3 text-center text-xs text-white/70">Đang tải thêm…</div>}
           {!items.length && <div className="py-10 text-center text-sm text-white/70">Chưa có ảnh/video.</div>}
@@ -202,7 +243,7 @@ function ViewerContent({
         <span className="mx-2 w-px h-6 bg-white/20" />
 
         <Button variant="ghost" size="sm" onClick={() => setRotation((r) => (r + 90) % 360)} disabled={!isImage}
-                className="text-white/90 hover:text-white">
+          className="text-white/90 hover:text-white">
           <RotateCw className="w-4 h-4 mr-2" /> Xoay
         </Button>
 
@@ -213,12 +254,12 @@ function ViewerContent({
         <span className="mx-2 w-px h-6 bg-white/20" />
 
         <Button variant="ghost" size="sm" disabled={!canZoom} onClick={() => setScale((s) => Math.max(0.2, +(s - 0.1).toFixed(2)))}
-                className="text-white/90 hover:text-white">
+          className="text-white/90 hover:text-white">
           <ZoomOut className="w-4 h-4" />
         </Button>
         <div className="text-xs w-14 text-center opacity-80">{canZoom ? scaleText : "-"}</div>
         <Button variant="ghost" size="sm" disabled={!canZoom} onClick={() => setScale((s) => Math.min(5, +(s + 0.1).toFixed(2)))}
-                className="text-white/90 hover:text-white">
+          className="text-white/90 hover:text-white">
           <ZoomIn className="w-4 h-4" />
         </Button>
         <Button
@@ -234,27 +275,27 @@ function ViewerContent({
         </Button>
       </div>
     </div>
-  );
+  )
 }
 
 export default function MediaWindowViewer(props) {
   const [portalEl] = useState(() => {
-    const el = document.createElement("div");
-    el.setAttribute("id", "media-window-portal");
-    return el;
-  });
+    const el = document.createElement("div")
+    el.setAttribute("id", "media-window-portal")
+    return el
+  })
 
   useEffect(() => {
-    document.body.appendChild(portalEl);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    document.body.appendChild(portalEl)
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = "hidden"
     return () => {
-      document.body.style.overflow = prevOverflow;
-      document.body.removeChild(portalEl);
-    };
-  }, [portalEl]);
+      document.body.style.overflow = prevOverflow
+      document.body.removeChild(portalEl)
+    }
+  }, [portalEl])
 
-  return ReactDOM.createPortal(<ViewerContent {...props} />, portalEl);
+  return ReactDOM.createPortal(<ViewerContent {...props} />, portalEl)
 }
 
 MediaWindowViewer.propTypes = {
@@ -263,5 +304,5 @@ MediaWindowViewer.propTypes = {
   onClose: PropTypes.func,
   onLoadMore: PropTypes.func,
   hasMore: PropTypes.bool,
-  title: PropTypes.string,
-};
+  title: PropTypes.string
+}

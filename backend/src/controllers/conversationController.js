@@ -1,10 +1,14 @@
 import {notificationService as NotificationService} from "~/services/notificationService"
 import ConversationMember from "~/models/conversation_members"
 import Message from "~/models/messages"
+import Conversation from "~/models/conversations";
 
 const {StatusCodes} = require("http-status-codes")
 const {conversationService} = require("~/services/conversationService")
-
+import { SYSTEM_SENDER, SYSTEM_USER_ID } from "~/utils/constant";
+import User from "~/models/user";
+import { cloudinaryProvider } from "~/providers/CloudinaryProvider_v2";
+import {emitToConvoAndUsers} from "~/utils/realtime";
 export const createConversation = async (req, res, next) => {
   try {
     const convo = await conversationService.createConversation(req.body, req.file, req.userId, req.io)
@@ -30,16 +34,16 @@ const fetchConversationDetail = async (req, res, next) => {
   try {
     const userId = req.userId
     const conversationId = req.params.conversationId
-    
+
     const { beforeSeq, limit = 30 } = req.query
 
     const result = await conversationService.fetchConversationDetail(
-      userId, 
-      conversationId, 
-      parseInt(limit), 
+      userId,
+      conversationId,
+      parseInt(limit),
       beforeSeq ? parseInt(beforeSeq) : undefined
     )
-    
+
     return res.status(StatusCodes.OK).json(result)
   } catch (error) {
     next(error)
@@ -258,7 +262,397 @@ const updateNotifications = async (req, res, next) => {
     next(e)
   }
 }
+const updateGroupMeta = async (req, res, next) => {
+  try {
+    const userId = req.userId; // actorId
+    const conversationId = req.params.conversationId;
 
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    // 1. Load conversation và kiểm tra quyền
+    const [convo, cm] = await Promise.all([
+      Conversation.findById(conversationId).lean(),
+      ConversationMember.findOne({
+        conversation: conversationId,
+        userId,
+        deletedAt: null
+      }).lean()
+    ]);
+
+    if (!convo) return res.status(404).json({ message: "Conversation not found" });
+    if (convo.type !== "group") {
+      return res.status(400).json({ message: "Only group conversations support meta update" });
+    }
+    if (!cm) return res.status(403).json({ message: "Not a member" });
+    if (!["admin"].includes(cm.role)) {
+      return res.status(403).json({ message: "Only admin can update group meta" });
+    }
+
+    // 2. Lấy tên người thực hiện (admin)
+    const actorUser = await User.findById(userId).select("fullName username").lean();
+    const actorName = actorUser?.fullName || actorUser?.username || "Ai đó";
+
+    // 3. Build update
+    const $set = {};
+    const now = new Date();
+    let nameChanged = false;
+    let avatarChanged = false;
+
+    // Tên nhóm
+    const displayName = (req.body?.displayName || "").trim();
+    if (displayName && displayName !== convo.group?.name) {
+      $set["group.name"] = displayName;
+      nameChanged = true;
+    }
+
+    // Avatar
+    let uploadedUrl = null;
+    if (req.file) {
+      const up = await cloudinaryProvider.uploadSingle(req.file, {
+        folder: `konnect/${conversationId}/group_avatars`,
+        resource_type: "auto"
+      });
+      uploadedUrl = up?.secure_url || null;
+      if (uploadedUrl) {
+        $set["group.avatarUrl"] = uploadedUrl;
+        avatarChanged = true;
+      }
+    }
+
+    if (!nameChanged && !avatarChanged) {
+      return res.status(400).json({ message: "Nothing to update" });
+    }
+
+    $set.updatedAt = now;
+    await Conversation.updateOne({ _id: conversationId }, { $set });
+
+    // 4. Payload trả về cho FE (để update UI header)
+    const out = {
+      conversationId,
+      displayName: displayName || convo.group?.name || "Group",
+      conversationAvatarUrl: uploadedUrl || convo.group?.avatarUrl || null,
+      updatedAt: now
+    };
+
+    // 5. Gửi socket CŨ (để FE cập nhật header/sidebar ngay)
+    req.io?.to?.(`conversation:${conversationId}`)?.emit("conversation:meta-updated", out);
+
+    // 6. === TẠO TIN NHẮN HỆ THỐNG (PHẦN BẠN BỊ THIẾU) ===
+    let actionText = "";
+    if (nameChanged && avatarChanged) {
+      actionText = `${actorName} đã thay đổi tên và ảnh đại diện của nhóm`;
+    } else if (nameChanged) {
+      actionText = `${actorName} đã đổi tên nhóm thành "${displayName}"`;
+    } else if (avatarChanged) {
+      actionText = `${actorName} đã thay đổi ảnh đại diện của nhóm`;
+    }
+
+    if (actionText) {
+      // Lấy seq mới
+      const updated = await Conversation.findOneAndUpdate(
+        { _id: conversationId },
+        { $inc: { messageSeq: 1 }, $set: { updatedAt: now } },
+        { new: true, lean: true }
+      );
+      const seq = updated.messageSeq;
+
+      const sysBody = {
+        text: actionText,
+        subtype: "group_meta_changed",
+        // (Tùy chọn) Gửi thêm data để FE xử lý
+        meta: {
+          newName: nameChanged ? displayName : undefined,
+          newAvatar: avatarChanged ? uploadedUrl : undefined
+        }
+      };
+
+      const sysMsg = await Message.create({
+        conversationId,
+        seq,
+        senderId: SYSTEM_USER_ID,
+        type: "notification",
+        body: sysBody,
+        createdAt: now
+      });
+
+      // Cập nhật lastMessage
+      await Conversation.updateOne(
+        { _id: conversationId },
+        {
+          $set: {
+            lastMessage: {
+              seq,
+              messageId: sysMsg._id,
+              type: "notification",
+              textPreview: actionText,
+              senderId: SYSTEM_USER_ID,
+              createdAt: now
+            }
+          }
+        }
+      );
+
+      // 7. Gửi socket MỚI (để tin nhắn hệ thống xuất hiện)
+      req.io?.to?.(`conversation:${conversationId}`)?.emit("message:new", {
+        conversationId,
+        message: {
+          _id: sysMsg._id,
+          conversationId,
+          seq,
+          type: "notification",
+          body: sysBody,
+          senderId: SYSTEM_USER_ID,
+          sender: SYSTEM_SENDER,
+          createdAt: now
+        }
+      });
+    }
+    // === KẾT THÚC PHẦN THÊM MỚI ===
+
+    return res.status(200).json(out); // Trả về thông tin meta đã cập nhật
+  } catch (e) {
+    next(e);
+  }
+};
+// Xoá thành viên khỏi nhóm
+const removeMembers = async (req, res, next) => {
+  try {
+    const actorId = req.userId;
+    const conversationId = req.params.conversationId;
+    const { memberIds = [] } = req.body || {};
+
+    const convo = await Conversation.findById(conversationId).lean();
+    if (!convo || convo.type !== 'group') return res.status(404).json({ message: 'Group not found' });
+
+    const actor = await ConversationMember.findOne({ conversation: conversationId, userId: actorId, deletedAt: null }).lean();
+    if (!actor || actor.role !== 'admin') return res.status(403).json({ message: 'Only admin can remove members' });
+
+    const ids = [...new Set(memberIds.map(String))].filter(id => id !== String(actorId));
+    if (!ids.length) return res.json({ ok: true, removed: [] });
+
+    await ConversationMember.deleteMany({ conversation: conversationId, userId: { $in: ids } });
+
+    // system message
+    const now = new Date();
+    const actorUser = await User.findById(actorId).select('fullName username').lean();
+    const users = await User.find({ _id: { $in: ids } }).select('fullName username').lean();
+    const actorName = actorUser?.fullName || actorUser?.username || 'Ai đó';
+    const removedNames = users.map(u => u.fullName || u.username || 'Người dùng').join(', ');
+
+    const updated = await Conversation.findOneAndUpdate(
+      { _id: conversationId },
+      { $inc: { messageSeq: 1 }, $set: { updatedAt: now } },
+      { new: true, lean: true }
+    );
+    const seq = updated.messageSeq;
+
+    const text = `${actorName} đã xoá ${removedNames} khỏi nhóm`;
+    const sysMsg = await Message.create({
+      conversationId, seq, senderId: SYSTEM_USER_ID,
+      type: 'notification', body: { text }, createdAt: now
+    });
+
+    await Conversation.updateOne(
+      { _id: conversationId },
+      { $set: { lastMessage: { seq, messageId: sysMsg._id, type: 'notification', textPreview: text, senderId: SYSTEM_USER_ID, createdAt: now } } }
+    );
+
+    // realtime
+    req.io?.to?.(`conversation:${conversationId}`)?.emit('member:removed', { conversationId, removedIds: ids });
+    req.io?.to?.(`conversation:${conversationId}`)?.emit('message:new', {
+      conversationId,
+      message: {
+        _id: sysMsg._id, conversationId, seq,
+        type: 'notification', body: { text },
+        senderId: SYSTEM_USER_ID, sender: SYSTEM_SENDER, createdAt: now
+      }
+    });
+
+    // đẩy badge update cho người còn lại (tuỳ chọn)
+    return res.json({ ok: true, removed: ids });
+  } catch (e) {
+    next(e);
+  }
+};
+
+// Đổi role thành viên
+const updateMemberRole = async (req, res, next) => {
+  try {
+    const actorId = req.userId;
+    const conversationId = req.params.conversationId;
+    const { memberId, role } = req.body || {}; // 'admin' | 'member'
+
+    if (!['admin', 'member'].includes(role)) return res.status(400).json({ message: 'Invalid role' });
+
+    const convo = await Conversation.findById(conversationId).lean();
+    if (!convo || convo.type !== 'group') return res.status(404).json({ message: 'Group not found' });
+
+    const actor = await ConversationMember.findOne({ conversation: conversationId, userId: actorId, deletedAt: null }).lean();
+    if (!actor || actor.role !== 'admin') return res.status(403).json({ message: 'Only admin can change roles' });
+
+    await ConversationMember.updateOne({ conversation: conversationId, userId: memberId }, { $set: { role } });
+
+    req.io?.to?.(`conversation:${conversationId}`)?.emit('member:role-changed', { conversationId, memberId, role });
+    return res.json({ ok: true, memberId, role });
+  } catch (e) {
+    next(e);
+  }
+};
+const updateMemberNickname = async (req, res, next) => {
+  try {
+    const actorId = req.userId;
+    const conversationId = req.params.conversationId;
+    const { memberId, nickname } = req.body || {};
+
+    const nick = (nickname ?? "").trim();
+    if (nick.length > 50) return res.status(StatusCodes.BAD_REQUEST).json({ message: "Nickname is too long (<= 50 chars)" });
+
+    // Chỉ group mới có nickname
+    const convo = await Conversation.findById(conversationId).lean();
+    if (!convo) return res.status(404).json({ message: "Conversation not found" });
+    if (convo.type !== "group") return res.status(400).json({ message: "Only group conversations support nicknames" });
+
+    // Cả actor và target đều phải là member
+    const [actorCM, targetCM] = await Promise.all([
+      ConversationMember.findOne({ conversation: conversationId, userId: actorId, deletedAt: null }).lean(),
+      ConversationMember.findOne({ conversation: conversationId, userId: memberId, deletedAt: null }).lean(),
+    ]);
+    if (!actorCM) return res.status(StatusCodes.FORBIDDEN).json({ message: "You are not a member of this conversation" });
+    if (!targetCM) return res.status(StatusCodes.NOT_FOUND).json({ message: "Target member not found in this conversation" });
+
+    // Lấy info user để render text
+    const [actorUser, targetUser] = await Promise.all([
+      User.findById(actorId).select("fullName username").lean(),
+      User.findById(memberId).select("fullName username").lean()
+    ]);
+    const actorName = actorUser?.fullName || actorUser?.username || "Ai đó";
+    const targetName = targetUser?.fullName || targetUser?.username || "Người dùng";
+
+    // Cập nhật nickname (null nếu xoá)
+    const newNick = nick || null;
+    await ConversationMember.updateOne(
+      { conversation: conversationId, userId: memberId, deletedAt: null },
+      { $set: { nickname: newNick, updatedAt: new Date() } }
+    );
+
+    // === Tạo system message giống logic removeMembers ===
+    const now = new Date();
+    const updated = await Conversation.findOneAndUpdate(
+      { _id: conversationId },
+      { $inc: { messageSeq: 1 }, $set: { updatedAt: now } },
+      { new: true, lean: true }
+    );
+    const seq = updated.messageSeq;
+
+    const actionText = newNick
+      ? `${actorName} đã đặt biệt danh cho ${targetName} là "${newNick}"`
+      : `${actorName} đã xóa biệt danh của ${targetName}`;
+    const sysBody = {
+      text: actionText,
+      subtype: "nickname_changed",
+      targetId: String(memberId),
+      nickname: newNick
+    };
+
+    const sysMsg = await Message.create({
+      conversationId,
+      seq,
+      senderId: SYSTEM_USER_ID,
+      type: "notification",
+      body: sysBody,
+      createdAt: now
+    });
+
+    // Cập nhật lastMessage để list hội thoại nhảy lên
+    await Conversation.updateOne(
+      { _id: conversationId },
+      {
+        $set: {
+          lastMessage: {
+            seq,
+            messageId: sysMsg._id,
+            type: "notification",
+            textPreview: actionText,
+            senderId: SYSTEM_USER_ID,
+            createdAt: now
+          }
+        }
+      }
+    );
+
+    // === Socket emit ===
+    // 1) Thay đổi nickname cho FE patch UI ngay
+    console.log('🔊 Emitting nickname-changed event:', {
+      room: `conversation:${conversationId}`,
+      memberId: String(memberId),
+      nickname: newNick
+    })
+
+    req.io?.to(`conversation:${conversationId}`)?.emit("member:nickname-changed", {
+      conversationId: String(conversationId),
+      memberId: String(memberId),
+      nickname: newNick,
+      updatedBy: String(actorId)
+    })
+
+    console.log('🔊 Emitting message:new event')
+    req.io?.to(`conversation:${conversationId}`)?.emit("message:new", {
+      conversationId,
+      message: {
+        _id: sysMsg._id,
+        conversationId,
+        seq,
+        type: "notification",
+        body: sysBody,
+        senderId: SYSTEM_USER_ID,
+        sender: SYSTEM_SENDER,
+        createdAt: now
+      }
+    })
+
+    return res.json({
+      ok: true,
+      memberId: String(memberId),
+      nickname: newNick,
+      systemMessageId: String(sysMsg._id),
+      text: actionText
+    })
+  } catch (e) {
+    next(e)
+  }
+};
+const joinGroupViaLink = async (req, res, next) => {
+  try {
+    const userId = req.userId;
+    const conversationId = req.params.conversationId;
+
+    const conversation = await conversationService.joinGroupViaLink({
+      userId,
+      conversationId,
+      io: req.io
+    });
+
+    // Trả về thông tin nhóm đã tham gia
+    res.status(StatusCodes.OK).json(conversation);
+  } catch (e) {
+    next(e);
+  }
+};
+const getGroupPreview = async (req, res, next) => {
+  try {
+    const userId = req.userId;
+    const conversationId = req.params.conversationId;
+
+    const groupInfo = await conversationService.getGroupPreview({
+      conversationId,
+      userId
+    });
+
+    res.status(StatusCodes.OK).json(groupInfo);
+  } catch (e) {
+    next(e);
+  }
+};
 export const conversationController = {
   createConversation,
   getConversation,
@@ -267,5 +661,11 @@ export const conversationController = {
   getUnreadSummary,
   listConversationMedia,
   handleConversationActions,
-  updateNotifications
+  updateNotifications,
+  updateGroupMeta,
+  removeMembers,
+  updateMemberRole,
+  updateMemberNickname,
+  joinGroupViaLink,
+  getGroupPreview
 }

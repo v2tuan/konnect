@@ -18,6 +18,29 @@ route.route('/chats/:conversationId')
 route.get("/unreads/summary", authMiddleware, conversationController.getUnreadSummary)
 route.get('/:id/media', authMiddleware, conversationController.listConversationMedia);   // <-- mới
 route.patch("/:id/notifications", authMiddleware, conversationController.updateNotifications);
+route.patch(
+  '/chats/:conversationId/meta',
+  authMiddleware,
+  multerUploadMiddleware.upload.single('avatar'),       // field 'avatar'
+  conversationController.updateGroupMeta
+);
 
+route.delete(
+  '/chats/:conversationId/members',
+  authMiddleware,
+  conversationController.removeMembers
+);
 
+route.patch(
+  '/chats/:conversationId/members',
+  authMiddleware,
+  conversationController.updateMemberRole
+);
+route.patch(
+  '/chats/:conversationId/members/nickname',
+  authMiddleware,
+  conversationController.updateMemberNickname
+);
+route.post('/join/:conversationId', authMiddleware, conversationController.joinGroupViaLink);
+route.get('/group-preview/:conversationId', authMiddleware, conversationController.getGroupPreview);
 export const conversationRoutes = route

@@ -19,6 +19,7 @@ import NotificationsPage from "@/components/common/Notification/NotificationsPag
 import StoryCreator from "./pages/StoryCreate/StoryCreator";
 import StoryViewer from "./pages/StoryCreate/StoryViewer";
 import AIAssistantPage from "./pages/AIAssistantPage";
+import JoinGroupPage from "@/pages/JoinGroupPage.jsx";
 
 const ProtectedRoute = () => {
   const currentUser = useSelector(selectCurrentUser);
@@ -32,7 +33,7 @@ export default function App() {
       <GlobalCallModal />
       <Routes>
         <Route path="/" element={<Navigate to="/chats" replace />} />
-
+        <Route path="/join/:conversationId" element={<JoinGroupPage />} />
         {/* Public auth routes */}
         <Route path="login" element={<Auth />} />
         <Route path="signup" element={<Auth />} />

@@ -157,26 +157,50 @@ export const useCloudChat = (options = {}) => {
     // -------------------------------
     const handleNewMessage = (payload) => {
       if (extractId(payload?.conversationId) !== cid) return
-      const nm = normalizeIncoming(payload?.message || payload)
+
+      // Lấy message object bên trong payload
+      const message = payload.message;
+      if (!message) {
+        console.error('[useCloudChat] 🛑 Payload không có "message" object!');
+        return;
+      }
+
+      // === BỔ SUNG LOGIC NICKNAME ===
+      const t = message.type;
+      const body = message.body;
+
+      if (t === "notification" && body?.subtype === "nickname_changed") {
+        const { targetId, nickname } = body;
+
+        console.log('[useCloudChat] ✅ ĐÃ NHẬN nickname changed:', { targetId, nickname });
+
+        // Phát tín hiệu toàn cục để ChatArea và GroupInfoDialog bắt được
+        window.dispatchEvent(new CustomEvent('conversation:member-nickname-updated', {
+          detail: {
+            conversationId: String(cid),
+            memberId: String(targetId),
+            nickname: (nickname ?? "").trim()
+          }
+        }));
+      }
+      // === KẾT THÚC BỔ SUNG ===
+
+      // Chuẩn hoá tin nhắn (đã có)
+      const nm = normalizeIncoming(message); // <-- Chuyển dòng này xuống đây
       console.log('New message received via socket:', nm)
 
       setMessages((prev) => {
+        // ... (code cũ của bạn giữ nguyên)
         const exists = prev.find(msg => msg.id === nm.id)
-
         let next
         if (exists) {
-          // Cập nhật tin nhắn cũ
           next = prev.map(msg => (msg.id === nm.id ? { ...msg, ...nm } : msg))
         } else {
-          // Thêm tin nhắn mới
           next = [...prev, nm]
         }
-
-        // Sắp xếp theo seq
         next.sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))
         return next
       })
-
     }
 
     const handleTypingStart = (payload) => {

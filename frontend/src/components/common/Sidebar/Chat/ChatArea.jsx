@@ -114,6 +114,8 @@ export function ChatArea({
   const imageRef = useRef(null)
   const navigate = useNavigate()
 
+  const [localDisplayName, setLocalDisplayName] = useState(conversation?.displayName)
+  const [localAvatarUrl, setLocalAvatarUrl] = useState(conversation?.conversationAvatarUrl)
   const { theme, systemTheme } = useTheme()
   const currentTheme = theme === "system" ? systemTheme : theme
 
@@ -173,7 +175,26 @@ export function ChatArea({
   useEffect(() => {
     setReplyingTo(null)
   }, [conversation?._id])
-
+  useEffect(() => {
+    setLocalDisplayName(conversation?.displayName)
+    setLocalAvatarUrl(conversation?.conversationAvatarUrl)
+  }, [conversation?._id, conversation?.displayName, conversation?.conversationAvatarUrl])
+  useEffect(() => {
+    const onNameUpdated = (e) => {
+      const { id, name } = e.detail || {}
+      if (String(id) === String(conversation?._id) && name) setLocalDisplayName(name)
+    }
+    const onAvatarUpdated = (e) => {
+      const { id, url } = e.detail || {}
+      if (String(id) === String(conversation?._id) && url) setLocalAvatarUrl(url)
+    }
+    window.addEventListener('conversation:name-updated', onNameUpdated)
+    window.addEventListener('conversation:avatar-updated', onAvatarUpdated)
+    return () => {
+      window.removeEventListener('conversation:name-updated', onNameUpdated)
+      window.removeEventListener('conversation:avatar-updated', onAvatarUpdated)
+    }
+  }, [conversation?._id])
   // loại hội thoại
   const type = conversation?.type || mode
   const isCloud = type === 'cloud'
@@ -183,7 +204,16 @@ export function ChatArea({
   // modal profile user
   const [profileOpen, setProfileOpen] = useState(false)
   const [profileUser, setProfileUser] = useState(null)
-
+  const [nickById, setNickById] = useState(() => {
+    const members = conversation?.group?.members || []
+    const init = new Map()
+    members.forEach(m => {
+      const uid = String(m._id || m.id)
+      if (!uid) return
+      if (m.nickname) init.set(uid, m.nickname)
+    })
+    return init
+  })
   // friendship logic
   const otherUser = isDirect ? conversation?.direct?.otherUser : null
   const otherUserId = otherUser?._id || otherUser?.id || null
@@ -285,8 +315,8 @@ export function ChatArea({
   }
 
   const currentUser = useSelector(selectCurrentUser)
-  const safeName = conversation?.displayName ?? (isCloud ? 'Cloud Chat' : 'Conversation')
-  const initialChar = safeName?.charAt(0)?.toUpperCase?.() || 'C'
+  const safeName = localDisplayName ?? (isCloud ? "Cloud Chat" : "Conversation")
+  const initialChar = safeName?.charAt(0)?.toUpperCase?.() || "C"
 
   // presence
   const usersById = useSelector(state => state.user.usersById || {})
@@ -657,29 +687,39 @@ export function ChatArea({
     mediaRecorderRef.current?.stream.getTracks().forEach(track => track.stop())
     setIsRecording(false)
   }
-
+  function normId(x) {
+    if (!x) return ""
+    if (typeof x === "string" || typeof x === "number") return String(x)
+    return String(x._id || x.id || x)
+  }
   // socket to refresh media sidebar
-  const socketRef = useRef(null)
   useEffect(() => {
-    socketRef.current = io(import.meta.env.VITE_WS_URL, { withCredentials: true })
-    const s = socketRef.current
-    if (conversation?._id) {
-      s.emit('conversation:join', conversation._id)
-    }
-    const onMessageNew = (payload) => {
-      if (!payload || payload.conversationId !== conversation?._id) return
-      const t = payload.message?.type
-      if (['image', 'video', 'audio', 'file'].includes(t)) {
-        window.dispatchEvent(new CustomEvent('conversation-media:refresh', { detail: { conversationId: conversation._id, type: t } }))
-      }
-    }
-    s.on('message:new', onMessageNew)
+    const handleNicknameUpdate = (e) => {
+      const { conversationId, memberId, nickname } = e.detail || {};
+
+      // Chỉ cập nhật nếu đúng là conversation này
+      if (String(conversationId) !== String(conversation?._id)) return;
+
+      console.log('[ChatArea] 🏃‍♂️ Bắt được tín hiệu window, đang cập nhật nickById...');
+
+      setNickById(prev => {
+        const next = new Map(prev) // Tạo Map mới để React nhận diện
+        const key = normId(memberId)
+
+        if ((nickname ?? "").trim()) {
+          next.set(key, nickname.trim())
+        } else {
+          next.delete(key)
+        }
+        return next // Trả về Map mới
+      })
+    };
+
+    window.addEventListener('conversation:member-nickname-updated', handleNicknameUpdate);
     return () => {
-      s.off('message:new', onMessageNew)
-      if (conversation?._id) s.emit('conversation:leave', conversation._id)
-      s.disconnect()
-    }
-  }, [conversation?._id])
+      window.removeEventListener('conversation:member-nickname-updated', handleNicknameUpdate);
+    };
+  }, [conversation?._id]); // Phụ thuộc vào conversation?._id
 
   // ----- mention highlighter / typing indicators -----
   const [mentions, setMentions] = useState([])
@@ -779,7 +819,7 @@ export function ChatArea({
                 }}
               >
                 <Avatar className="w-10 h-10">
-                  <AvatarImage src={conversation?.conversationAvatarUrl} />
+                  <AvatarImage src={localAvatarUrl} />
                   <AvatarFallback>{initialChar}</AvatarFallback>
                 </Avatar>
 
@@ -955,6 +995,7 @@ export function ChatArea({
                           conversation={conversation}
                           setReplyingTo={setReplyingTo}
                           onOpenViewer={handleOpenViewer}
+                          nickById={nickById}   // THÊM DÒNG NÀY
                         />
                       ) : (
                         <div
@@ -1297,9 +1338,16 @@ export function ChatArea({
           </div>
         </div>
 
-        {/* Right Sidebar */}
         <ChatSidebarRight
-          conversation={conversation}
+          conversation={{
+            ...conversation,
+            displayName: localDisplayName ?? conversation?.displayName,
+            conversationAvatarUrl: localAvatarUrl ?? conversation?.conversationAvatarUrl,
+            group: {
+              ...(conversation?.group || {}),
+              name: localDisplayName ?? conversation?.group?.name
+            }
+          }}
           isOpen={isOpen}
           onClose={() => setIsOpen(false)}
           onOpenProfile={handleOpenProfile}
