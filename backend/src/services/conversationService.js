@@ -799,37 +799,41 @@ const leaveGroup = async (userId, conversationId, io, nextAdminId) => {
     conversation: conversationId,
     userId: { $ne: userId }
   })
-    .sort({ joinedAt: 1 }) // để biết ai vào sớm
+    .sort({ joinedAt: 1 })
     .lean()
 
+  // NEW: kiểm tra có admin khác hay không
+  const hasAnotherAdmin = otherMembers.some(m => m.role === 'admin')
+
   // 4) Nếu người rời là admin:
-  //    - Nếu còn thành viên khác trong nhóm => bắt buộc phải chỉ định admin mới (từ FE).
-  //    - Nếu không còn ai khác thì cho phép out, nhóm sẽ không còn ai.
   if (leavingMember.role === 'admin') {
     if (otherMembers.length > 0) {
-      // còn người khác -> cần nextAdminId hợp lệ
-      if (!nextAdminId || !mongoose.isValidObjectId(nextAdminId)) {
-        const err = new Error('Admin must assign next admin before leaving')
-        err.status = 400
-        throw err
-      }
+      // CHANGED: chỉ yêu cầu nextAdminId nếu KHÔNG có admin nào khác
+      if (!hasAnotherAdmin) {
+        if (!nextAdminId || !mongoose.isValidObjectId(nextAdminId)) {
+          const err = new Error('Admin must assign next admin before leaving')
+          err.status = 400
+          throw err
+        }
 
-      // nextAdminId có nằm trong nhóm (otherMembers) không
-      const picked = otherMembers.find(m => String(m.userId) === String(nextAdminId))
-      if (!picked) {
-        const err = new Error('Selected nextAdminId is not a member of this group')
-        err.status = 400
-        throw err
-      }
+        // nextAdminId có nằm trong nhóm (otherMembers) không
+        const picked = otherMembers.find(m => String(m.userId) === String(nextAdminId))
+        if (!picked) {
+          const err = new Error('Selected nextAdminId is not a member of this group')
+          err.status = 400
+          throw err
+        }
 
-      // Promote người đó thành admin
-      await ConversationMember.updateOne(
-        {
-          conversation: conversationId,
-          userId: nextAdminId
-        },
-        { $set: { role: 'admin' } }
-      )
+        // Promote người đó thành admin
+        await ConversationMember.updateOne(
+          {
+            conversation: conversationId,
+            userId: nextAdminId
+          },
+          { $set: { role: 'admin' } }
+        )
+      }
+      // Nếu đã có admin khác, cho phép out không cần nextAdminId
     }
     // nếu otherMembers.length === 0 thì người này là last member -> không cần promote ai
   }

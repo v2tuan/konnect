@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, useMemo } from "react"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Switch } from "@/components/ui/switch"
@@ -96,6 +96,39 @@ export default function ChatSidebarRight({ conversation, isOpen, onClose }) {
     return () => document.removeEventListener("mousedown", handleDown)
   }, [isOpen, onClose, showGallery])
 
+  // NEW: modal chọn admin kế nhiệm
+  const [assignOpen, setAssignOpen] = useState(false)
+  const [assigning, setAssigning] = useState(false)
+  const [pickId, setPickId] = useState(null)
+
+  // NEW: danh sách ứng viên (member, không phải mình và không phải admin)
+  const candidates = useMemo(() => {
+    if (conversation?.type !== "group" || !Array.isArray(conversation?.group?.members)) return []
+    return conversation.group.members.filter(m => {
+      const uid = String(m?._id || m?.id)
+      return uid !== String(currentUserId) && m?.role !== "admin"
+    })
+  }, [conversation, currentUserId])
+
+  // helper: check current user's role in this conversation
+  const myMembership = (() => {
+    if (conversation?.type !== "group") return null
+    if (!Array.isArray(conversation?.group?.members)) return null
+    return conversation.group.members.find(
+      (m) => String(m?._id || m?.id) === String(currentUserId)
+    )
+  })()
+  const myRole = myMembership?.role || "member"
+  const amIAdmin = myRole === "admin"
+
+  // NEW: có admin khác hay không
+  const hasAnotherAdmin = useMemo(() => {
+    if (conversation?.type !== "group" || !Array.isArray(conversation?.group?.members)) return false
+    return conversation.group.members.some(m =>
+      m?.role === "admin" && String(m?._id || m?.id) !== String(currentUserId)
+    )
+  }, [conversation, currentUserId])
+
   const handleDeleteConversation = async (conversationId) => {
     try {
       const confirmed = window.confirm("Are you sure you want to delete this conversation history? This action cannot be undone.")
@@ -131,14 +164,61 @@ export default function ChatSidebarRight({ conversation, isOpen, onClose }) {
     }
   }
 
+  // NEW: xác nhận rời nhóm (sau khi set pickId)
+  const confirmLeaveWithAssign = async () => {
+    if (!pickId) return
+    try {
+      setAssigning(true)
+      // Gửi nextAdminId để BE promote + cho out trong một request
+      await leaveGroupAPI(conversation?._id, pickId)
+      window.dispatchEvent(new CustomEvent("conversation:deleted", { detail: { conversationId: conversation?._id } }))
+      toast.success("Left group successfully")
+      setAssignOpen(false)
+      setPickId(null)
+      if (activeIdFromURL === conversation?._id) navigate("/")
+    } catch (error) {
+      console.error("leave group with assign error:", error)
+      toast.error(error?.response?.data?.message || error.message || "Failed to leave group")
+    } finally {
+      setAssigning(false)
+    }
+  }
+
   const handleLeaveGroup = async (conversationId) => {
     try {
       const confirmed = window.confirm("Are you sure you want to leave this group?")
       if (!confirmed) return
-      await leaveGroupAPI(conversationId, { action: "leave" })
-      window.dispatchEvent(new CustomEvent("conversation:deleted", { detail: { conversationId } }))
-      toast.success("Left group successfully")
-      if (activeIdFromURL === conversationId) navigate("/")
+
+      // Nếu không phải admin -> rời ngay
+      if (!amIAdmin) {
+        await leaveGroupAPI(conversationId)
+        window.dispatchEvent(new CustomEvent("conversation:deleted", { detail: { conversationId } }))
+        toast.success("Left group successfully")
+        if (activeIdFromURL === conversationId) navigate("/")
+        return
+      }
+
+      // Admin: nếu ĐÃ có admin khác -> rời ngay
+      if (hasAnotherAdmin) {
+        await leaveGroupAPI(conversationId) // không cần nextAdminId
+        window.dispatchEvent(new CustomEvent("conversation:deleted", { detail: { conversationId } }))
+        toast.success("Left group successfully")
+        if (activeIdFromURL === conversationId) navigate("/")
+        return
+      }
+
+      // Admin duy nhất: mở modal chọn người lên admin
+      if (candidates.length === 0) {
+        // Không có ai để gán -> BE vẫn cho out nếu không còn ai khác
+        await leaveGroupAPI(conversationId)
+        window.dispatchEvent(new CustomEvent("conversation:deleted", { detail: { conversationId } }))
+        toast.success("Left group successfully")
+        if (activeIdFromURL === conversationId) navigate("/")
+        return
+      }
+
+      setPickId(null)
+      setAssignOpen(true)
     } catch (error) {
       console.error("Error leaving group:", error)
       toast.error(error.message || "An error occurred while leaving the group")
@@ -160,121 +240,74 @@ export default function ChatSidebarRight({ conversation, isOpen, onClose }) {
     }
   }
 
-  // helper: check current user's role in this conversation
-  const myMembership = (() => {
-    if (conversation?.type !== "group") return null
-    if (!Array.isArray(conversation?.group?.members)) return null
-    return conversation.group.members.find(
-      (m) => String(m?._id || m?.id) === String(currentUserId)
-    )
-  })()
-  const myRole = myMembership?.role || "member"
-  const amIAdmin = myRole === "admin"
-  const peer =
-    conversation?.type === "direct"
-      ? {
-        id: conversation?.direct?.otherUser?.id,
-        fullName: conversation?.direct?.otherUser?.fullName,
-        username: conversation?.direct?.otherUser?.userName,
-        avatarUrl: conversation?.direct?.otherUser?.avatarUrl,
-        coverUrl: conversation?.direct?.otherUser?.coverUrl || "",
-        bio: conversation?.direct?.otherUser?.bio,
-        dateOfBirth: conversation?.direct?.otherUser?.dateOfBirth,
-        phone: conversation?.direct?.otherUser?.phone,
-        gender: conversation?.direct?.otherUser?.gender,
-        photos: conversation?.direct?.otherUser?.photos || [],
-        mutualGroups: conversation?.direct?.otherUser?.mutualGroups || 0,
-        isFriend: !!conversation?.direct?.otherUser?.isFriend
-      }
-      : null;
-
-  // --- helper to render ONE row ---------------------------------
+  // NEW: render từng dòng thành viên
   const renderMemberRow = (m) => {
-    const uid = m?._id || m?.id
-    const name = m?.fullName || m?.username || "User"
-    const initial = (name?.[0] || "U").toUpperCase()
-
-    const roleLabel =
-    m?.role === "admin"
-      ? "Admin"
-      : m?.role === "owner"
-        ? "Owner"
-        : "Member"
-
-    const canManage = amIAdmin && String(uid) !== String(currentUserId)
+    const uid = String(m?._id || m?.id || m?.userId)
+    const isMe = uid === String(currentUserId)
+    const isAdmin = m?.role === "admin"
+    const name = m?.fullName || m?.username || m?.name || "User"
+    const avatar = m?.avatarUrl || m?.avatar || ""
 
     return (
       <div
         key={uid}
-        className="group flex items-start gap-3 p-2 rounded-lg hover:bg-muted/60 relative"
+        className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted"
       >
-        {/* Avatar click mở profile */}
-        <Avatar
-          className="w-8 h-8 shrink-0 cursor-pointer"
+        <button
+          type="button"
+          className="flex items-center gap-3 min-w-0 flex-1 text-left"
           onClick={() => onOpenProfile?.(m)}
+          title={name}
         >
-          <AvatarImage src={m?.avatarUrl || ""} />
-          <AvatarFallback>{initial}</AvatarFallback>
-        </Avatar>
-
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between">
-            {/* Khối tên click mở profile */}
-            <div
-              className="min-w-0 cursor-pointer"
-              onClick={() => onOpenProfile?.(m)}
-            >
-              <div className="text-sm font-medium truncate flex items-center gap-2">
-                <span className="truncate">{name}</span>
-                <span className="text-[11px] text-muted-foreground font-normal">
-                  {roleLabel}
-                </span>
-              </div>
-
-              {m?.status?.isOnline !== undefined && (
-                <div className="text-xs text-muted-foreground">
-                  {m.status.isOnline ? "Online" : "Offline"}
-                </div>
-              )}
+          <Avatar className="w-8 h-8 shrink-0">
+            <AvatarImage src={avatar} />
+            <AvatarFallback>{(name?.[0] || "U").toUpperCase()}</AvatarFallback>
+          </Avatar>
+          <div className="min-w-0">
+            <div className="text-sm font-medium truncate">
+              {name} {isMe ? "(You)" : ""}
             </div>
-
-            {/* Dropdown menu (Remove / Promote...) giữ nguyên */}
-            {canManage && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-muted text-muted-foreground"
-                    aria-label="Manage member"
-                  >
-                    <MoreHorizontal className="h-4 w-4" />
-                  </button>
-                </DropdownMenuTrigger>
-
-                <DropdownMenuContent align="end" className="w-40 text-sm">
-                  <DropdownMenuItem
-                    onClick={() => handleRemoveUser(uid)}
-                    className="text-red-600 cursor-pointer"
-                  >
-                  Remove user
-                  </DropdownMenuItem>
-
-                  {m.role !== "admin" && (
-                    <DropdownMenuItem
-                      onClick={() => handlePromoteToAdmin(uid)}
-                      className="cursor-pointer"
-                    >
-                    Promote to admin
-                    </DropdownMenuItem>
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
+            {m?.status && (
+              <div className="text-xs text-muted-foreground truncate">
+                {m.status?.isOnline ? "Online" : "Offline"}
+              </div>
             )}
           </div>
+        </button>
+
+        <div className="flex items-center gap-2 shrink-0">
+          {isAdmin && (
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200">
+              Admin
+            </span>
+          )}
+
+          {amIAdmin && !isMe && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="h-8 w-8 grid place-items-center rounded-md hover:bg-muted">
+                  <MoreHorizontal size={18} />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
+                {!isAdmin && (
+                  <DropdownMenuItem onClick={() => handlePromoteToAdmin(uid)}>
+                    Promote to admin
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onClick={() => handleRemoveUser(uid)}
+                >
+                  Remove from group
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       </div>
     )
   }
-
 
   // styles
   const buttonStyle =
@@ -553,6 +586,76 @@ export default function ChatSidebarRight({ conversation, isOpen, onClose }) {
           </div>
         )}
       </div>
+
+      {/* NEW: Modal chọn admin kế nhiệm */}
+      {assignOpen && (
+        <div className="fixed inset-0 z-[60]">
+          <div className="absolute inset-0 bg-black/40" onClick={() => !assigning && setAssignOpen(false)} />
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[420px] max-w-[92vw] bg-card border rounded-xl shadow-2xl">
+            <div className="p-4 border-b">
+              <h3 className="text-base font-semibold">Assign next admin</h3>
+              <p className="text-xs text-muted-foreground mt-1">
+                You are the only admin. Please choose a member to promote before leaving.
+              </p>
+            </div>
+
+            <div className="max-h-72 overflow-y-auto p-3 space-y-2">
+              {candidates.map(m => {
+                const uid = String(m?._id || m?.id)
+                const name = m?.fullName || m?.username || "User"
+                return (
+                  <label key={uid} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted cursor-pointer">
+                    <input
+                      type="radio"
+                      name="next-admin"
+                      className="shrink-0"
+                      value={uid}
+                      checked={pickId === uid}
+                      onChange={() => setPickId(uid)}
+                      disabled={assigning}
+                    />
+                    <Avatar className="w-7 h-7">
+                      <AvatarImage src={m?.avatarUrl || ""} />
+                      <AvatarFallback>{(name?.[0] || "U").toUpperCase()}</AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium truncate">{name}</div>
+                      {m?.status && (
+                        <div className="text-xs text-muted-foreground truncate">
+                          {m.status?.isOnline ? "Online" : "Offline"}
+                        </div>
+                      )}
+                    </div>
+                  </label>
+                )
+              })}
+              {candidates.length === 0 && (
+                <div className="text-sm text-muted-foreground px-1">
+                  No eligible members to promote.
+                </div>
+              )}
+            </div>
+
+            <div className="p-3 border-t flex justify-end gap-2">
+              <button
+                type="button"
+                className="h-9 px-3 rounded-md bg-muted hover:bg-muted/80"
+                onClick={() => !assigning && setAssignOpen(false)}
+                disabled={assigning}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="h-9 px-3 rounded-md bg-primary text-primary-foreground disabled:opacity-60"
+                onClick={confirmLeaveWithAssign}
+                disabled={assigning || !pickId}
+              >
+                {assigning ? "Processing..." : "Confirm & Leave"}
+              </button>
+            </div>
+          </div>
+        </div>
       {/* Group Info Dialog */}
       {conversation?.type === "group" ? (
         <GroupInfoDialog

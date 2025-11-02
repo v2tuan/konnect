@@ -3,6 +3,8 @@ import sendMail from "../lib/sendMailUtil";
 import bcrypt from "bcryptjs";
 import HttpError from '../error/HttpError';
 import {CloudinaryProvider} from "~/providers/CloudinaryProvider";
+import ApiError from "~/utils/ApiError.js";
+import mongoose from "mongoose";
 
 const ALLOWED_FIELDS = ["fullName", "bio", "dateOfBirth", "phone", "avatarUrl"];
 
@@ -19,42 +21,51 @@ const generateOtp = (length = 6) => {
 };
 
 const createUser = async (data = {}) => {
-  //const session = await mongoose.startSession(); // Tạo session cho transaction
+  const session = await mongoose.startSession(); // Bật session
+  session.startTransaction();
   try {
-    //session.startTransaction() // Bắt đầu transaction
-    const {email, password, fullName, dateOfBirth, gender, username} = data //1
-    if (!email || !password || !fullName || !dateOfBirth || !gender || !username) { //2
-      throw new Error("Missing required fields")//3
+    const { email, password, fullName, dateOfBirth, gender, username } = data;
+    if (!email || !password || !fullName || !dateOfBirth || !gender || !username) {
+      const error = new Error("Missing required fields");
+      error.statusCode = 400; // Bad Request
+      throw error;
     }
-    const existUser = await User.findOne({ // 4
-      $or: [{email}, {username}]
-    })
-    if (existUser) //5
-      throw new Error("Email or Username already registered") // 6
 
-    const salt = bcrypt.genSaltSync(10) //7
-    const hashedPassword = bcrypt.hashSync(password, salt) //8
-    const newUser = new User({ // 9
+    const existUser = await User.findOne({ $or: [{ email }, { username }] });
+    if (existUser) {
+      const error = new Error("Email or Username already registered");
+      error.statusCode = 409; // Conflict
+      throw error;
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    const newUser = new User({
       email,
       password: hashedPassword,
       fullName,
       username,
       gender,
-      dateOfBirth: new Date(dateOfBirth)
-    })
+      dateOfBirth: new Date(dateOfBirth),
+    });
 
-    if (newUser) {//10
-      await newUser.save() // Lưu user trong transaction //11
-      const otp = generateOtp()//2
-      const text = `Your OTP is ${otp}. Please use this to complete your registration.`//3
-      const htmlContent = `Your OTP is <strong>${otp}</strong>. Please use this to complete your registration.` //14
-      await sendMail(email, "OTP for Registration", text, htmlContent)/15
-      await session.commitTransaction() // Commit transaction/16
-    }
-    return newUser //17
-  } catch (error) { //18
-    //await session.abortTransaction()
-    throw new Error(error.message || "Registration failed") //19
+    await newUser.save({ session });
+
+    const otp = generateOtp();
+    const text = `Your OTP is ${otp}. Please use this to complete your registration.`;
+    const htmlContent = `Your OTP is <strong>${otp}</strong>. Please use this to complete your registration.`;
+
+    await sendMail(email, "OTP for Registration", text, htmlContent);
+
+    await session.commitTransaction();
+    session.endSession();
+
+    return newUser;
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    throw error; // Error có kèm statusCode
   }
 }
 

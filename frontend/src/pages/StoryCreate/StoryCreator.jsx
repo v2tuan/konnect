@@ -2,36 +2,14 @@
 
 import React, { useState, useRef, useEffect, useMemo } from "react"
 import Stories from "react-insta-stories"
-import { Music, ImagePlus, Play, Pause, X, Check } from "lucide-react"
+import { Music, ImagePlus, Play, Pause, X, Check, Heart, Search } from "lucide-react"
 import { createStoryAPI } from "@/apis"
 import { toast } from "react-toastify"
-
-const SAMPLE_SONGS = [
-  {
-    id: 1,
-    title: "Halloween Waltz",
-    artist: "Moon blues",
-    duration: 30,
-    cover: "🎃",
-    audio: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"
-  },
-  {
-    id: 2,
-    title: "Nắng Ấm Trong Tim",
-    artist: "DuongG, Budcon",
-    duration: 30,
-    cover: "🌅",
-    audio: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3"
-  },
-  {
-    id: 3,
-    title: "Enjoying My Life",
-    artist: "NEZZARA",
-    duration: 30,
-    cover: "🎵",
-    audio: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3"
-  }
-]
+import { Card } from "@/components/ui/card"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { useNavigate } from "react-router-dom"
 
 function extractDominantColor(img) {
   const canvas = document.createElement("canvas")
@@ -58,6 +36,87 @@ export default function StoryCreator() {
   const [musicStyle, setMusicStyle] = useState("card")
   const [showPreview, setShowPreview] = useState(false)
   const audioRef = useRef(null)
+  const navigate = useNavigate()
+
+  // =================== nhạc =========================
+  const [tracks, setTracks] = useState([])
+  const [currentTrack, setCurrentTrack] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
+  const [searchQuery, setSearchQuery] = useState("")
+  const [progress, setProgress] = useState(0)
+  const CLIENT_ID = '8fbb2968'
+
+  useEffect(() => {
+    const fetchTrending = async () => {
+      setLoading(true)
+      setError("")
+      try {
+        const res = await fetch(
+          `https://api.jamendo.com/v3.0/tracks/?client_id=${CLIENT_ID}&format=json&limit=20&order=popularity_total`
+        )
+        const data = await res.json()
+        setTracks(data.results)
+        if (data.results.length > 0) setCurrentTrack(data.results[0])
+      } catch (err) {
+        setError("Không tải được dữ liệu thịnh hành")
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchTrending()
+  }, [])
+
+  const searchTracks = async (query) => {
+    setLoading(true)
+    setError("")
+    try {
+      const res = await fetch(
+        `https://api.jamendo.com/v3.0/tracks/?client_id=${CLIENT_ID}&format=json&limit=30&search=${encodeURIComponent(query)}&order=popularity_total`
+      )
+      const data = await res.json()
+      setTracks(data.results)
+      if (data.results.length === 0) {
+        setError("Không tìm thấy bài hát nào.")
+      }
+    } catch (err) {
+      setError("Lỗi khi tìm kiếm. Vui lòng thử lại.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    const delaySearch = setTimeout(() => {
+      searchTracks(searchQuery)
+    }, 500)
+    return () => clearTimeout(delaySearch)
+  }, [searchQuery])
+
+  const handlePlay = (track) => {
+    if (track.id === currentTrack?.id) {
+      setIsPlaying(!isPlaying)
+    } else {
+      setCurrentTrack(track)
+      setIsPlaying(true)
+      setProgress(0)
+    }
+  }
+
+  useEffect(() => {
+    if (audioRef.current && currentTrack) {
+      if (isPlaying) {
+        audioRef.current.play().catch((err) => {
+          console.error("Playback error:", err)
+          setIsPlaying(false)
+        })
+      } else {
+        audioRef.current.pause()
+      }
+    }
+  }, [isPlaying, currentTrack])
+
 
   const handleImageUpload = (e) => {
     const f = e.target.files?.[0]
@@ -81,7 +140,7 @@ export default function StoryCreator() {
     }
     const a = new Audio(s.audio)
     a.loop = true
-    a.play().catch(() => {})
+    a.play().catch(() => { })
     audioRef.current = a
     setSelectedSong(s)
     setIsPlaying(true)
@@ -90,7 +149,7 @@ export default function StoryCreator() {
   const togglePlay = () => {
     if (!audioRef.current) return
     if (isPlaying) audioRef.current.pause()
-    else audioRef.current.play().catch(() => {})
+    else audioRef.current.play().catch(() => { })
     setIsPlaying(!isPlaying)
   }
 
@@ -161,6 +220,17 @@ export default function StoryCreator() {
     }
 
     try {
+      if (audioRef.current && currentTrack) {
+        if (isPlaying) {
+          audioRef.current.play().catch((err) => {
+            console.error("Playback error:", err)
+            setIsPlaying(false)
+          })
+        } else {
+          audioRef.current.pause()
+        }
+      }
+
       const formData = new FormData()
 
       // Thêm ảnh (convert từ base64 -> file blob)
@@ -169,10 +239,10 @@ export default function StoryCreator() {
       formData.append("file", blob, "background.jpg")
 
       // Thêm thông tin nhạc
-      if (selectedSong) {
-        formData.append("music[name]", selectedSong.title)
-        formData.append("music[url]", selectedSong.audio)
-        formData.append("music[artist]", selectedSong.artist)
+      if (currentTrack) {
+        formData.append("music[name]", currentTrack.name)
+        formData.append("music[url]", currentTrack.audio)
+        formData.append("music[artist]", currentTrack.artist_name)
       }
 
       // Thêm màu nền và style
@@ -185,6 +255,7 @@ export default function StoryCreator() {
 
       alert("✅ Story đã được tạo thành công!")
       setShowPreview(false)
+      navigate('/')
     } catch (error) {
       console.error("Error creating story:", error)
       alert("❌ Tạo story thất bại, vui lòng thử lại.")
@@ -194,7 +265,7 @@ export default function StoryCreator() {
   return (
     <div className="flex h-screen bg-gray-100 text-gray-900 overflow-hidden">
       {/* Sidebar trái */}
-      <aside className="w-72 bg-white border-r flex flex-col p-5 gap-5">
+      <aside className="w-100 bg-white border-r flex flex-col p-5 gap-5">
         <div>
           <label className="flex items-center gap-2 p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
             <ImagePlus /> <span>Chọn ảnh nền</span>
@@ -219,26 +290,61 @@ export default function StoryCreator() {
         </div>
 
         <div className="text-sm text-gray-500">Nhạc mẫu</div>
-        <div className="space-y-2 overflow-y-auto h-56">
-          {SAMPLE_SONGS.map((s) => (
+        <div className='w-full space-y-2'>
+          <div className='relative'>
+            <div className='text-muted-foreground pointer-events-none absolute inset-y-0 left-0 flex items-center justify-center pl-3 peer-disabled:opacity-50'>
+              <Search className='size-4' />
+              <span className='sr-only'>User</span>
+            </div>
+            <Input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              type='text' placeholder='Search' className='peer pl-9 bg-muted' />
+          </div>
+        </div>
+
+        {/* Loading & Error States */}
+        {!tracks && loading && (
+          <div className={`text-center py-12`}>
+            <div className="animate-pulse">Đang tải nhạc...</div>
+          </div>
+        )}
+
+        <div className="flex-1 space-y-2 overflow-y-auto h-56">
+          {tracks.map((track) => (
             <button
-              key={s.id}
-              onClick={() => handleSongSelect(s)}
-              className={`p-2 rounded flex justify-between items-center w-full text-left ${
-                selectedSong?.id === s.id ? "bg-blue-50" : "bg-gray-50 hover:bg-gray-100"
+              key={track.id}
+              // onClick={() => handleSongSelect(track)}
+              onClick={() => handlePlay(track)}
+              className={`p-2 rounded flex justify-between items-center w-full text-left ${selectedSong?.id === track.id ? "bg-blue-50" : "bg-gray-50 hover:bg-gray-100"
               }`}
             >
               <div className="flex items-center gap-3">
-                <span className="text-2xl">{s.cover}</span>
+                <Avatar className="w-10 h-10 mr-4">
+                  <AvatarImage src={track.album_image} alt={track.name} />
+                  <AvatarFallback>{track.name[0]}</AvatarFallback>
+                </Avatar>
                 <div>
-                  <div className="font-medium">{s.title}</div>
-                  <div className="text-xs text-gray-500">{s.artist}</div>
+                  <div className="font-medium text-sm">{track.name}</div>
+                  <div className="text-xs text-gray-500">{track.artist_name}</div>
                 </div>
               </div>
-              <span className="text-xs text-gray-500">{s.duration}s</span>
+              <Button variant="ghost" size="icon">
+                {currentTrack?.id === track.id && isPlaying ? (
+                  <Pause className="h-5 w-5" />
+                ) : (
+                  <Play className="h-5 w-5" />
+                )}
+              </Button>
             </button>
           ))}
         </div>
+
+        {tracks.length === 0 && !loading && (
+          <div className={`text-center py-12`}>
+            Không tìm thấy bài hát nào.
+          </div>
+        )}
 
         <div className="mt-auto flex gap-2">
           <button
@@ -315,8 +421,7 @@ export default function StoryCreator() {
             <button
               key={s}
               onClick={() => setMusicStyle(s)}
-              className={`py-2 rounded text-sm ${
-                musicStyle === s ? "bg-blue-600 text-white" : "bg-gray-100 hover:bg-gray-200"
+              className={`py-2 rounded text-sm ${musicStyle === s ? "bg-blue-600 text-white" : "bg-gray-100 hover:bg-gray-200"
               }`}
             >
               {s === "card"
@@ -355,6 +460,19 @@ export default function StoryCreator() {
           </div>
         </div>
       )}
+
+      {/* Audio Element */}
+      <audio
+        ref={audioRef}
+        src={currentTrack?.audio || ""}
+      // onTimeUpdate={handleTimeUpdate}
+      // onEnded={handleEnded}
+      // onLoadedMetadata={() => {
+      //   if (audioRef.current) {
+      //     setDuration(audioRef.current.duration);
+      //   }
+      // }}
+      />
     </div>
   )
 }

@@ -50,7 +50,6 @@ function formatFileSize(bytes) {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`
 }
 
-/* === Mentions helpers === */
 function renderMessageWithMentions(text = "", mentions = []) {
   if (!mentions?.length) return [text]
   const parts = []
@@ -113,7 +112,7 @@ export function MessageBubble({
   // Lightbox (optional modal preview)
   const [preview, setPreview] = useState({ open: false, url: "", type: "image" })
 
-  // System
+  // System-detect
   const SYSTEM_ID_FALLBACK = "000000000000000000000000"
   const sysSid = (message?.sender?._id || message?.senderId || "").toString()
   const sysName = (message?.sender?.fullName || message?.sender?.username || "").trim().toLowerCase()
@@ -143,6 +142,7 @@ export function MessageBubble({
 
   const resolveSender = () => {
     const type = conversation?.type
+
     if (type === "group") {
       if (message?.sender) {
         const s = message.sender
@@ -166,14 +166,25 @@ export function MessageBubble({
           status: m.status || null
         }
       }
-      return { _id: sid, fullName: "User", username: null, avatarUrl: null, status: null }
+      return {
+        _id: sid,
+        fullName: "User",
+        username: null,
+        avatarUrl: null,
+        status: null
+      }
     }
+
     if (type === "direct") {
       const meId = String(currentUser?._id || "")
       const senderIsMe = String(message?.senderId || "") === meId
       return senderIsMe ? currentUser : conversation?.direct?.otherUser || null
     }
-    if (type === "cloud") return currentUser || null
+
+    if (type === "cloud") {
+      return currentUser || null
+    }
+
     return null
   }
 
@@ -260,6 +271,7 @@ export function MessageBubble({
     return "User";
   }
 
+  const [menuPos, setMenuPos] = useState({ x: 0, y: 0 })
 
   const { images, videos, files, audios } = useMemo(() => {
     const list = Array.isArray(message?.media) ? message.media : []
@@ -271,12 +283,13 @@ export function MessageBubble({
     }
   }, [message?.media])
 
+  // mentions
   const text = message?.body?.text || message?.text || ""
   let mentions = message?.body?.mentions || message?.mentions || []
   if ((!mentions || mentions.length === 0) && isGroup) {
     mentions = findMentionsFromMembers(text, conversation)
   }
-  // trong MessageBubble component, trước `return (`
+
   const [showMenu, setShowMenu] = useState(false)
   const [showDetail, setShowDetail] = useState(false)
 
@@ -304,13 +317,11 @@ export function MessageBubble({
 
       if (action === "delete") {
         await deleteMessageForMeAPI({ messageId, conversationId })
-        // Ẩn tin nhắn đối với mình
         setLocallyDeleted(true)
       }
 
       if (action === "recall") {
         await recallMessageAPI({ messageId, conversationId })
-        // cập nhật UI local ngay
         optimisticSetRecalled({
           id: messageId,
           text: "Message was recalled"
@@ -323,13 +334,9 @@ export function MessageBubble({
     }
   }
 
-  // local state cho việc ẩn tin nhắn khi "Delete"
   const [locallyDeleted, setLocallyDeleted] = useState(false)
 
-  // local optimistic recall helper
   function optimisticSetRecalled({ id, text }) {
-  // nếu message hiện tại trùng id thì mutate tạm
-  // ta không mutate prop trực tiếp, nên tạo 1 state wrapper cho "recallView"
     if (String(id) === String(message._id || message.id)) {
       setRecallView({
         recalled: true,
@@ -345,6 +352,30 @@ export function MessageBubble({
   )
 
   if (locallyDeleted) return null
+
+  // ====== UI helper cho repliedMessage (chỉ thay UI, giữ logic) ======
+  const replySenderName = message?.repliedMessage?.senderId
+    ? (message.repliedMessage.senderId.fullName ||
+       message.repliedMessage.senderId.username ||
+       "User")
+    : "User"
+
+  const replyPreviewText =
+    (Array.isArray(message?.repliedMessage?.media) && message.repliedMessage.media.length > 0
+      ? (() => {
+          const imgs = message.repliedMessage.media.filter(m => m.type === "image")
+          const filesArr = message.repliedMessage.media.filter(m => m.type === "file")
+          const auds = message.repliedMessage.media.filter(m => m.type === "audio")
+          if (imgs.length > 0) return "[Image]"
+          if (filesArr.length > 0) return "[File]"
+          if (auds.length > 0) return "[Audio]"
+          return ""
+        })()
+      : ""
+    )
+    || message?.repliedMessage?.text
+    || message?.repliedMessage?.body?.text
+    || ""
 
   return (
     <div
@@ -368,10 +399,10 @@ export function MessageBubble({
         </button>
       )}
 
-      <div className={`relative ${isSystemMessage ? "max-w-[80%]" : "max-w-[78%]"} ${isOwn ? "order-first" : ""}`}>
+      <div className={`relative ${isSystemMessage ? "max-w-[80%]" : "max-w-[70%]"} ${isOwn ? "order-first" : ""}`}>
         {isGroup && !isOwn && !isSystemMessage && (
           <div className="mb-1 ml-1 text-[11px] font-medium text-gray-500">
-            {senderDisplay}
+            {sender?.fullName || sender?.username || "User"}
           </div>
         )}
 
@@ -383,26 +414,32 @@ export function MessageBubble({
               hovered ? "opacity-100" : "opacity-0"
             } flex items-center gap-1 z-[100]`}
           >
-
-            <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => {
-              const images = message.media.filter(m => m.type === 'image')
-              const files = message.media.filter(m => m.type === 'file')
-              const audios = message.media.filter(m => m.type === 'audio')
-              setReplyingTo({
-                sender: message?.isOwn ? 'You' : (sender?.fullName || sender?.username || 'User'),
-
-                content: (files.length > 0
-                  ? files[0]?.metadata?.filename
-                  : (images.length > 0 ? '[Image]' : (audios.length > 0 ? '[Audio]' : '')))
-                  || message.text
-                  || message.body?.text,
-                media: message.media.length > 0 ? message.media : null,
-                messageId: message.id
-              })
-            }}>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 w-6 p-0"
+              onClick={() => {
+                const images = message.media.filter(m => m.type === 'image')
+                const files = message.media.filter(m => m.type === 'file')
+                const audios = message.media.filter(m => m.type === 'audio')
+                setReplyingTo({
+                  sender: message?.isOwn ? 'You' : (sender?.fullName || sender?.username || 'User'),
+                  content:
+                    (files.length > 0
+                      ? files[0]?.metadata?.filename
+                      : (images.length > 0 ? '[Image]' : (audios.length > 0 ? '[Audio]' : '')))
+                    || message.text
+                    || message.body?.text,
+                  media: message.media.length > 0 ? message.media : null,
+                  messageId: message.id
+                })
+              }}
+            >
               <Reply className="w-3 h-3" />
             </Button>
+
             <ReactionButton messageId={message.id || message._id} />
+
             <div className="relative">
               <Button
                 size="sm"
@@ -411,7 +448,6 @@ export function MessageBubble({
                 onClick={(e) => {
                   e.stopPropagation()
                   const rect = e.currentTarget.getBoundingClientRect()
-                  // đặt menu ngay dưới nút
                   setMenuPos({
                     x: rect.right,
                     y: rect.bottom + 4
@@ -421,9 +457,7 @@ export function MessageBubble({
               >
                 <MoreHorizontal className="w-3 h-3" />
               </Button>
-
             </div>
-
           </div>
         )}
 
@@ -437,30 +471,93 @@ export function MessageBubble({
               {/* MEDIA (images/videos) */}
               {gridMedias.length > 0 && (
                 <div className="space-y-2">
-                  <div className={gridClass}>
-                    {gridMedias.map((media, index) => (
-                      <button
-                        type="button"
-                        key={media._id || media.url || `media-${index}`}
-                        className="relative aspect-square overflow-hidden rounded-lg cursor-pointer group"
-                        onClick={() => onOpenViewer?.(media)}
-                      >
-                        {message.isPinned && (
-                          <Pin className="absolute top-1 right-1 w-3 h-3 text-yellow-500 z-10" />
+                  {(() => {
+                    const list = Array.isArray(message.media) ? message.media : []
+
+                    const images = list.filter(m => (m?.type || '').toLowerCase() === 'image')
+                    const videos = list.filter(m => (m?.type || '').toLowerCase() === 'video')
+                    const audios = list.filter(m => (m?.type || '').toLowerCase() === 'audio')
+                    const files = list.filter(m => (m?.type || '').toLowerCase() === 'file')
+
+                    const grid = [...images, ...videos]
+                    const gridClass =
+                      grid.length === 1
+                        ? 'flex justify-center'
+                        : grid.length === 2
+                          ? 'grid grid-cols-2 gap-2'
+                          : grid.length <= 4
+                            ? 'grid grid-cols-2 gap-2 max-w-md'
+                            : 'grid grid-cols-3 gap-2 max-w-lg'
+
+                    return (
+                      <>
+                        {/* Grid ảnh & video */}
+                        {grid.length > 0 && (
+                          <div className={gridClass}>
+                            {grid.map((media, index) => (
+                              <button
+                                type="button"
+                                key={media._id || media.url || `media-${index}`}
+                                className="relative aspect-square overflow-hidden rounded-lg cursor-pointer group"
+                                onClick={() => onOpenViewer?.(media)}
+                              >
+                                {message.isPinned && (
+                                  <Pin className="absolute top-1 right-1 w-3 h-3 text-yellow-500 z-10" />
+                                )}
+
+                                {((media.type || '').toLowerCase() === 'image') ? (
+                                  <img
+                                    src={media.url ?? message.body?.media?.url}
+                                    alt={media.metadata?.filename || 'message attachment'}
+                                    className="w-full h-full object-cover group-hover:brightness-75 transition-all"
+                                  />
+                                ) : (
+                                  <video
+                                    src={media.url}
+                                    className="w-full h-full object-cover group-hover:brightness-75 transition-all"
+                                    muted
+                                  />
+                                )}
+                              </button>
+                            ))}
+                          </div>
                         )}
 
-                        {(media.type || "").toLowerCase() === "image" ? (
-                          <img
-                            src={media.url || mediaUrl(media, message)}
-                            alt={media.metadata?.filename || "message attachment"}
-                            className="w-full h-full object-cover group-hover:brightness-75 transition-all"
-                          />
-                        ) : (
-                          <video
-                            src={media.url || mediaUrl(media, message)}
-                            className="w-full h-full object-cover group-hover:brightness-75 transition-all"
-                            muted
-                          />
+                        {/* Files */}
+                        {files.length > 0 && (
+                          <div className="space-y-1">
+                            {files.map((m, i) => {
+                              const mimetype = m?.metadata?.mimetype || ''
+                              const filename = m?.metadata?.filename || 'Unknown file'
+                              const sizeText = formatFileSize(m?.metadata?.size)
+                              const url = mediaUrl(m, message)
+                              const Icon =
+                                mimetype.includes('pdf') ? FileText
+                                  : (mimetype.includes('word') || mimetype.includes('document')) ? FileText
+                                    : (mimetype.includes('sheet') || mimetype.includes('excel')) ? FileSpreadsheet
+                                      : (mimetype.includes('zip') || mimetype.includes('rar') || mimetype.includes('archive')) ? Archive
+                                        : mimetype.includes('video') ? VideoIcon
+                                          : mimetype.includes('audio') ? Music
+                                            : File
+
+                              return (
+                                <div
+                                  key={`file-${i}`}
+                                  className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg border border-gray-200 transition-colors duration-200"
+                                >
+                                  <Icon className="w-8 h-8 text-gray-600" />
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-sm font-medium text-gray-900 truncate">{filename}</div>
+                                    <div className="text-xs text-gray-500">{sizeText}</div>
+                                  </div>
+                                  <button onClick={() => handleDownload(url, filename)}>
+                                    <Download className="w-4 h-4 text-gray-400 cursor-pointer" />
+                                  </button>
+                                  {message.isPinned && <Pin className="w-3 h-3 text-yellow-500" />}
+                                </div>
+                              )
+                            })}
+                          </div>
                         )}
                       </button>
                     ))}
@@ -485,18 +582,25 @@ export function MessageBubble({
                                 : mimetype.includes("audio") ? Music
                                   : File
 
-                    return (
-                      <div
-                        key={m._id || m.url || `file-${i}`}
-                        className={`flex items-center justify-between gap-3 rounded-lg border p-2 ${
-                          isOwn ? "ml-auto bg-primary/5" : "mr-auto bg-card"
-                        }`}
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <Icon className="w-5 h-5 opacity-70" />
-                          <div className="min-w-0">
-                            <div className="truncate text-sm font-medium">{filename}</div>
-                            <div className="text-xs text-muted-foreground">{mimetype || "file"} · {sizeText}</div>
+                        {/* Audio */}
+                        {audios.length > 0 && (
+                          <div className="space-y-2">
+                            {audios.map((media, index) => (
+                              <div
+                                key={`audio-${index}`}
+                                className={`flex items-center gap-2 p-2 max-w-xs rounded-sm
+                                  ${message.isOwn
+                                    ? 'ml-auto bg-primary/10 border border-primary rounded-l-lg rounded-tr-lg'
+                                    : 'mr-auto bg-gray-100 text-black rounded-r-lg rounded-tl-lg'}
+                                  shadow-sm`}
+                              >
+                                <audio controls className="flex-1 min-w-0">
+                                  <source src={media.url} type={media.metadata?.mimetype || 'audio/webm'} />
+                                  Your browser does not support the audio element.
+                                </audio>
+                                {message.isPinned && <Pin className="w-4 h-4 text-yellow-500 shrink-0" />}
+                              </div>
+                            ))}
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
@@ -515,85 +619,53 @@ export function MessageBubble({
                     )
                   })}
                 </div>
-              )}
-
-              {/* AUDIO */}
-              {audios.length > 0 && (
-                <div className="space-y-2 mt-2">
-                  {audios.map((m, index) => (
-                    <div
-                      key={m._id || m.url || `audio-${index}`}
-                      className={`flex items-center gap-2 p-2 max-w-xs rounded-sm ${
-                        isOwn
-                          ? "ml-auto bg-primary/10 border border-primary rounded-l-lg rounded-tr-lg"
-                          : "mr-auto bg-gray-100 text-black rounded-r-lg rounded-tl-lg"
-                      } shadow-sm`}
-                    >
-                      <audio controls className="flex-1 min-w-0">
-                        <source src={m.url || mediaUrl(m, message)} type={m.metadata?.mimetype || "audio/webm"} />
-                        Your browser does not support the audio element.
-                      </audio>
-                      {message.isPinned && <Pin className="w-4 h-4 text-yellow-500 shrink-0" />}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* TEXT */}
-              {gridMedias.length === 0 && files.length === 0 && audios.length === 0 && (
+              ) : (
+                /* ===== Bubble text thường ===== */
                 <div
-                  className={`relative p-3 rounded-sm ${
-                    isOwn
-                      ? "bg-primary/10 border border-primary rounded-br-sm"
-                      : "bg-secondary text-secondary-foreground rounded-bl-sm"
-                  }`}
+                  className={`
+                    relative p-3 rounded-sm
+                    ${isOwn
+                      ? 'bg-primary/10 border border-primary rounded-br-sm'
+                      : 'bg-secondary text-secondary-foreground rounded-bl-sm'}
+                  `}
                 >
-                  {message.isPinned && <Pin className="absolute top-1 right-1 w-3 h-3 text-yellow-500" />}
+                  {message.isPinned && (
+                    <Pin className="absolute top-1 right-1 w-3 h-3 text-yellow-500" />
+                  )}
 
+                  {/* ====== PHẦN REPLY (UI mới giống Zalo) ====== */}
                   {message.repliedMessage && (
                     <div
-                      className={`flex-col items-center gap-2 p-2 mb-2 border-l-4 ${
-                        isOwn ? "border-primary bg-primary/10" : "border-secondary bg-secondary/10"
-                      } rounded-sm cursor-pointer`}
+                      className="mb-2 cursor-pointer rounded-md border border-border bg-muted/40 overflow-hidden"
                     >
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="flex text-sm font-semibold items-center gap-1">
-                            {(() => {
-                                  const rid =
-                                      message.repliedMessage?.senderId?._id ||
-                                      message.repliedMessage?.senderId?.id ||
-                                      message.repliedMessage?.senderId
-                                    if (rid && nickById?.get?.(String(rid))) return nickById.get(String(rid))
-                                    const ru = message.repliedMessage?.senderId
-                                    return (ru?.fullName || ru?.username || "User")
-                                  })()}
-                          </span>
+                      <div className="flex">
+                        {/* thanh màu bên trái */}
+                        <div className="w-1.5 bg-primary flex-shrink-0" />
+                        <div className="flex-1 px-2 py-2 min-w-0">
+                          <div className="text-[12px] font-semibold text-foreground leading-tight line-clamp-1 break-words">
+                            {replySenderName}
+                          </div>
+                          <div className="text-[12px] text-muted-foreground leading-snug line-clamp-2 break-words">
+                            {replyPreviewText || " "}
+                          </div>
                         </div>
-                      </div>
-                      <div className="text-sm text-gray-600 truncate">
-                        {message.repliedMessage.type === "text" && (message.repliedMessage.body?.text || message.repliedMessage.text)}
-                        {message.repliedMessage.type === "image" && "[Image]"}
-                        {message.repliedMessage.type === "file" && "[File]"}
-                        {message.repliedMessage.type === "audio" && "[Audio]"}
                       </div>
                     </div>
                   )}
 
+                  {/* nội dung chính */}
                   <p className="text-sm whitespace-pre-wrap break-words">
                     {recallView.recalled
                       ? <span className="italic text-gray-500">Message was recalled</span>
                       : renderMessageWithMentions(text, mentions)
                     }
                   </p>
-
                 </div>
               )}
 
-              {/* Reactions badge */}
               {Array.isArray(message?.reactions) && message.reactions.length > 0 && (
                 <div
-                  className="absolute -bottom-2 right-2 cursor-pointer shadow-sm rounded-full border bg-background"
+                  className="absolute -bottom-2 right-2 cursor-pointer shadow-sm rounded-full border"
                   onClick={() => setOpen(true)}
                 >
                   <Badge variant="secondary" className="text-xs flex gap-1">
@@ -605,7 +677,7 @@ export function MessageBubble({
           )}
         </div>
 
-        {/* Lightbox */}
+        {/* Lightbox cho ảnh/video */}
         <Dialog open={preview.open} onOpenChange={(o) => setPreview((p) => ({ ...p, open: o }))}>
           <DialogContent className="p-0 sm:max-w-[80vw]">
             <div className="w-full h-full max-h-[80vh] flex items-center justify-center bg-black">
@@ -618,7 +690,7 @@ export function MessageBubble({
           </DialogContent>
         </Dialog>
 
-        {/* Reactions Dialog */}
+        {/* Reaction dialog */}
         {!isSystemMessage && (
           <ReactionsDialog
             open={open}
@@ -632,7 +704,7 @@ export function MessageBubble({
 
         {showMenu && (
           <>
-            {/* backdrop trong suốt để click ra ngoài đóng menu */}
+            {/* backdrop click-outside */}
             <div
               className="fixed inset-0 z-[9998]"
               onClick={() => setShowMenu(false)}
@@ -643,7 +715,7 @@ export function MessageBubble({
               className="fixed z-[9999] min-w-[180px] bg-white border border-gray-200 rounded-md shadow-xl text-sm py-1"
               style={{
                 top: `${menuPos.y}px`,
-                left: `${menuPos.x - 180}px` // pop sang trái của nút để khỏi tràn màn hình
+                left: `${menuPos.x - 180}px`
               }}
               onClick={(e) => e.stopPropagation()}
             >
@@ -652,35 +724,36 @@ export function MessageBubble({
                 className="w-full text-left px-3 py-2 hover:bg-gray-100"
                 onClick={() => handleAction("delete")}
               >
-        Delete
-                <span className="block text-[11px] text-gray-500">Chỉ xoá tin nhắn với bạn</span>
+                Delete
+                <span className="block text-[11px] text-gray-500">
+                  Chỉ xoá tin nhắn với bạn
+                </span>
               </button>
 
-              {/* Thu hồi: chỉ nếu là tin của mình */}
+              {/* Recall (thu hồi) - chỉ tin của mình */}
               {isOwn && (
                 <button
                   className="w-full text-left px-3 py-2 hover:bg-gray-100 text-red-600"
                   onClick={() => handleAction("recall")}
                 >
-          Recall
+                  Recall
                   <span className="block text-[11px] text-gray-500 text-red-500">
-            Thu hồi tin nhắn với tất cả mọi người
+                    Thu hồi tin nhắn với tất cả mọi người
                   </span>
                 </button>
               )}
 
-              {/* View Detail */}
+              {/* View detail */}
               <button
                 className="w-full text-left px-3 py-2 hover:bg-gray-100"
                 onClick={() => {
                   setShowDetail(true)
-                  // đóng menu sau khi mở detail
                   setShowMenu(false)
                 }}
               >
-        View detail
+                View detail
                 <span className="block text-[11px] text-gray-500">
-          Xem chi tiết
+                  Xem chi tiết
                 </span>
               </button>
             </div>
@@ -705,7 +778,6 @@ export function MessageBubble({
                   {(() => {
                     const d = message?.createdAt ? new Date(message.createdAt) : null
                     if (!d) return "—"
-                    // ví dụ: 31/10/2025 20:15:44
                     const day = String(d.getDate()).padStart(2, "0")
                     const mon = String(d.getMonth() + 1).padStart(2, "0")
                     const yr = d.getFullYear()
@@ -727,9 +799,12 @@ export function MessageBubble({
           </DialogContent>
         </Dialog>
 
-
         {showMeta && !isSystemMessage && (
-          <div className={`flex items-center gap-1 mt-2 text-xs text-gray-500 ${isOwn ? "justify-end" : "justify-start"}`}>
+          <div
+            className={`flex items-center gap-1 mt-2 text-xs text-gray-500 ${
+              isOwn ? "justify-end" : "justify-start"
+            }`}
+          >
             <span>{formatTime(message?.createdAt || message?.timestamp)}</span>
             <StatusIcon />
           </div>
