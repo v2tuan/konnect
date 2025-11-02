@@ -164,6 +164,7 @@ export default function AddFriendModal({ open = false, onClose = () => {} }) {
         toast.error("Thiếu user id")
         return
       }
+      const isSelfPick = currentUser?._id && String(id) === String(currentUser._id)  // [FIX] self
 
       // [+] Ưu tiên findUserById giống ListFriend
       let rawDetail = null
@@ -186,19 +187,21 @@ export default function AddFriendModal({ open = false, onClose = () => {} }) {
       }
       const d = rawDetail || (Array.isArray(detailList) ? detailList[0] : detailList)
 
-      // 2. mutual groups
-      const mutualCount = await calcMutualGroups(id)
+      // 2. mutual groups (self => 0 để tránh đếm sai)
+      const mutualCount = isSelfPick ? 0 : await calcMutualGroups(id)
 
-      // 3. kiểm tra conversation để đoán trạng thái kết bạn thực tế
+      // 3. chỉ gọi direct convo nếu KHÔNG phải self
       let friendshipFromConvo = null
-      try {
-        const convoRes = await getConversationByUserId(id)
-        friendshipFromConvo =
-          convoRes?.data?.direct?.otherUser?.friendship ||
-          convoRes?.direct?.otherUser?.friendship ||
-          convoRes?.friendship ||
-          null
-      } catch {}
+      if (!isSelfPick) {
+        try {
+          const convoRes = await getConversationByUserId(id)
+          friendshipFromConvo =
+            convoRes?.data?.direct?.otherUser?.friendship ||
+            convoRes?.direct?.otherUser?.friendship ||
+            convoRes?.friendship ||
+            null
+        } catch {}
+      }
 
       // 4. quyết định finalFriendship
       const finalFriendship =
@@ -207,7 +210,7 @@ export default function AddFriendModal({ open = false, onClose = () => {} }) {
         u?.friendship ||
         { status: "none" }
 
-      // normalize + [+] nếu có trong friend set thì coi là accepted
+      // normalize + nếu có trong friend set thì coi là accepted
       let normalizedFriendship = finalFriendship
       if (typeof normalizedFriendship === "string") normalizedFriendship = { status: normalizedFriendship }
       if (!normalizedFriendship?.status && normalizedFriendship?.state) {
@@ -217,7 +220,6 @@ export default function AddFriendModal({ open = false, onClose = () => {} }) {
         normalizedFriendship = { ...(normalizedFriendship || {}), status: "accepted" }
       }
 
-      // 5. build object cho panel
       const panelUser = mapToUserProfile({
         id,
         fullName:
@@ -264,11 +266,10 @@ export default function AddFriendModal({ open = false, onClose = () => {} }) {
     try {
       const uid = profileUser?.id || profileUser?._id
       if (!uid) return
+      if (currentUser?._id && String(uid) === String(currentUser._id)) return // [SAFE] self
 
       const res = await getConversationByUserId(uid)
-      const convoId =
-        res?.data?._id || res?.data?.id || res?.id || res?._id
-
+      const convoId = res?.data?._id || res?.data?.id || res?.id || res?._id
       if (convoId) {
         navigate(`/chats/${convoId}`)
         setShowProfile(false)
@@ -286,21 +287,19 @@ export default function AddFriendModal({ open = false, onClose = () => {} }) {
     try {
       const uid = profileUser?.id || profileUser?._id
       if (!uid) return
+      if (String(uid) === String(currentUser._id)) return // [SAFE] self
 
       const res = await getConversationByUserId(uid)
-      const conversationId =
-        res?.data?._id || res?.data?.id || res?.id || res?._id
-
+      const conversationId = res?.data?._id || res?.data?.id || res?.id || res?._id
       if (!conversationId) {
         toast.info("Không thể gọi vì chưa có cuộc trò chuyện giữa 2 bạn.")
         return
       }
 
-      const toUserIds = [uid]                         // [+]
-      lastDialIdsRef.current = toUserIds              // [+]
-
+      const toUserIds = [uid]
+      lastDialIdsRef.current = toUserIds
       startCall({
-        callId: `${conversationId}:${Date.now()}`,    // [+] giống ChatArea
+        callId: `${conversationId}:${Date.now()}`,
         conversationId,
         mode: "audio",
         toUserIds,
@@ -314,9 +313,7 @@ export default function AddFriendModal({ open = false, onClose = () => {} }) {
           avatarUrl: profileUser?.avatarUrl,
         },
       })
-
-      setShowProfile(false)                           // đóng panel
-      // KHÔNG gọi onClose() để banner còn hiển thị trên màn hình modal
+      setShowProfile(false)
     } catch (e) {
       console.error(e)
     }
