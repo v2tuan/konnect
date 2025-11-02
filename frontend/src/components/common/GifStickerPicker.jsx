@@ -77,8 +77,8 @@ export default function GifStickerPicker({ onSelect, triggerButton }) {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         {triggerButton || (
-          <Button className="bg-pink-500 hover:bg-pink-600">
-            <Sticker className="w-4 h-4 mr-2" /> Sticker
+          <Button size="sm" className="bg-pink-500 hover:bg-pink-600">
+            <Sticker className="w-4 h-4 mr-1" /> Sticker
           </Button>
         )}
       </DialogTrigger>

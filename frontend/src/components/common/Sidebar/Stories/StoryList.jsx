@@ -330,7 +330,7 @@ export function StoryList() {
         {/* Left navigation button */}
         <button
           onClick={handlePrevStory}
-          className="w-12 h-12 bg-white bg-opacity-20 rounded-full flex items-center justify-center text-white flex-shrink-0 z-20 hover:bg-opacity-30 absolute left-8"
+          className="w-12 h-12 bg-white bg-opacity-20 rounded-full flex items-center justify-center text-black flex-shrink-0 z-20 hover:bg-opacity-30 absolute left-8"
           disabled={currentFriendIndex === 0 && currentStoryIndex === 0}
         >
           <ChevronLeft size={28} />
@@ -556,7 +556,7 @@ export function StoryList() {
         {/* Right navigation button */}
         <button
           onClick={handleNextStory}
-          className="w-12 h-12 bg-white bg-opacity-20 rounded-full flex items-center justify-center text-white flex-shrink-0 z-20 hover:bg-opacity-30 absolute right-8"
+          className="w-12 h-12 bg-white bg-opacity-20 rounded-full flex items-center justify-center text-black flex-shrink-0 z-20 hover:bg-opacity-30 absolute right-8"
           disabled={currentFriendIndex === storiesData.length - 1 && currentStoryIndex === totalStories - 1}
         >
           <ChevronRight size={28} />
