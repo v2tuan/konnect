@@ -411,7 +411,47 @@ export function ChatSidebar({ currentView, onViewChange }) {
       window.removeEventListener('conversation:deleted', handleConversationDeletedFromOtherComponent)
     }
   }, [activeIdFromURL, navigate, setUnread])
+  useEffect(() => {
+    const onNameUpdated = (e) => {
+      const { id, name } = e.detail || {};
+      if (!id || !name) return;
+      setConversationList(prev =>
+        prev.map(c =>
+          String(extractId(c)) === String(id)
+            ? {
+              ...c,
+              displayName: name,
+              // nếu BE/FE còn dùng group.name ở đâu đó:
+              group: { ...(c.group || {}), name }
+            }
+            : c
+        )
+      );
+    };
 
+    const onAvatarUpdated = (e) => {
+      const { id, url } = e.detail || {};
+      if (!id || !url) return;
+      setConversationList(prev =>
+        prev.map(c =>
+          String(extractId(c)) === String(id)
+            ? {
+              ...c,
+              conversationAvatarUrl: url,
+              group: { ...(c.group || {}), avatarUrl: url }
+            }
+            : c
+        )
+      );
+    };
+
+    window.addEventListener('conversation:name-updated', onNameUpdated);
+    window.addEventListener('conversation:avatar-updated', onAvatarUpdated);
+    return () => {
+      window.removeEventListener('conversation:name-updated', onNameUpdated);
+      window.removeEventListener('conversation:avatar-updated', onAvatarUpdated);
+    };
+  }, [setConversationList]);
   // Initial load
   useEffect(() => {
     setCurrentPage(1)
@@ -589,7 +629,29 @@ export function ChatSidebar({ currentView, onViewChange }) {
         setUnread(convId, curr + 1)
       }
     }
+    const onMetaUpdated = (payload) => {
+      try {
+        const { conversationId, displayName, conversationAvatarUrl } = payload || {};
+        if (!conversationId) return;
 
+        console.log(`[Socket] Received meta update for ${conversationId}`);
+
+        // Dùng CHÍNH HỆ THỐNG window.dispatchEvent mà bạn đã dùng
+        // để cập nhật các component khác (ChatArea, ChatSidebar...)
+        if (displayName) {
+          window.dispatchEvent(new CustomEvent("conversation:name-updated", {
+            detail: { id: conversationId, name: displayName }
+          }));
+        }
+        if (conversationAvatarUrl) {
+          window.dispatchEvent(new CustomEvent("conversation:avatar-updated", {
+            detail: { id: conversationId, url: conversationAvatarUrl }
+          }));
+        }
+      } catch (e) {
+        console.error("Error handling onMetaUpdated:", e);
+      }
+    };
     const onMemberLeft = (payload) => {
       if (!payload?.message) return
       onNewMessage({
@@ -651,15 +713,22 @@ export function ChatSidebar({ currentView, onViewChange }) {
     s.on('conversation:member:added', onAddedToConversation)
     s.on('member:left', onMemberLeft)
 
+    // THÊM DÒNG NÀY:
+    s.on('conversation:meta-updated', onMetaUpdated)
+
     return () => {
       s.off('connect', onConnect)
       s.off('message:new', onNewMessage)
       s.off('conversation:created', onConversationCreated)
       s.off('conversation:member:added', onAddedToConversation)
       s.off('member:left', onMemberLeft)
+
+      // VÀ THÊM DÒNG NÀY:
+      s.off('conversation:meta-updated', onMetaUpdated)
+
       listenersAttachedRef.current = false
     }
-  }, [currentUser?._id, activeIdFromURL, setUnread])
+  }, [currentUser?._id, activeIdFromURL, setUnread, conversationList]);
 
   // 3) Khi danh sách hội thoại đổi → đảm bảo đã join đủ (kể cả đang online)
   useEffect(() => {
