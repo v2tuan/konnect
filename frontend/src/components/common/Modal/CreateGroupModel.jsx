@@ -99,8 +99,7 @@ export default function CreateGroupDialog({ asChild = false, children }) {
   useEffect(() => {
     let cancelled = false
     const fetchFriends = async () => {
-      setLoading(true)
-      setError(null)
+      setLoading(true); setError(null)
       try {
         const res = await getFriendsAPI({ page, limit: 30, q: debouncedQ })
         if (cancelled) return
@@ -112,7 +111,7 @@ export default function CreateGroupDialog({ asChild = false, children }) {
           status: r.friend.status?.isOnline ? "online" : "offline",
           lastActiveAt: r.friend.status?.lastActiveAt || null,
         }))
-        setFriends((prev) => (page === 1 ? mapped : [...prev, ...mapped]))
+        setFriends(prev => page === 1 ? mapped : [...prev, ...mapped])
         setHasNext(!!res?.hasNext)
       } catch (e) {
         if (!cancelled) setError(e?.message || "Không tải được danh sách bạn bè.")
@@ -121,9 +120,7 @@ export default function CreateGroupDialog({ asChild = false, children }) {
       }
     }
     fetchFriends()
-    return () => {
-      cancelled = true
-    }
+    return () => { cancelled = true }
   }, [page, debouncedQ])
 
   // reset page khi đổi search
@@ -364,7 +361,6 @@ export default function CreateGroupDialog({ asChild = false, children }) {
     try {
       if (sending) return
       setSending(true)
-
       const response = await createConversation(payload)
       const newConversation =
         response?.conversation || response?.data || response
@@ -375,10 +371,7 @@ export default function CreateGroupDialog({ asChild = false, children }) {
       setOpen(false)
       toast.success("Nhóm đã được tạo thành công!")
       setSending(false)
-
-      if (newConversation?._id) {
-        navigate(`/chats/${newConversation._id}`)
-      }
+      if (newConversation?._id) navigate(`/chats/${newConversation._id}`)
     } catch (err) {
       console.error("Error creating group:", err)
       setSending(false)
@@ -412,7 +405,6 @@ export default function CreateGroupDialog({ asChild = false, children }) {
           {contact.name?.[0]?.toUpperCase() || "U"}
         </AvatarFallback>
       </Avatar>
-
       <span className="font-medium text-sm">{contact.name}</span>
     </div>
   )
@@ -523,7 +515,6 @@ export default function CreateGroupDialog({ asChild = false, children }) {
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
               </div>
-            </div>
 
             {/* Main Content */}
             <div className="flex flex-1 overflow-hidden">
@@ -577,7 +568,25 @@ export default function CreateGroupDialog({ asChild = false, children }) {
                     <div className="text-center text-gray-400 mt-8">
                       <p className="text-sm">Chưa có thành viên nào được chọn</p>
                     </div>
-                  )}
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-4">
+                    {selectedMembers.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {selectedMembers.map(member => (
+                          <div key={member.id} className="inline-flex items-center bg-blue-100 rounded-full px-3 py-1">
+                            <span className="text-sm text-blue-700">{member.name}</span>
+                            <button onClick={() => removeMember(member)} className="text-blue-500 hover:text-blue-700 ml-1">
+                              <X size={12} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center text-gray-400 mt-8">
+                        <p className="text-sm">Chưa có thành viên nào được chọn</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

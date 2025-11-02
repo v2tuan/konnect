@@ -28,23 +28,21 @@ import {
 import { toast } from "react-toastify"
 import { useNavigate, useParams } from "react-router-dom"
 import AddMemberDialog from "../../Modal/AddMemberDialog"
-
+import GroupInfoDialog from "./GroupInfoDialog.jsx"
+import UserProfilePanel from "@/components/common/Modal/UserProfilePanel.jsx";
 import { useSelector } from "react-redux"
-import { selectCurrentUser } from "@/redux/user/userSlice"
-
-// shadcn dropdown menu
+import { selectCurrentUser } from "@/redux/user/userSlice";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
-
-export default function ChatSidebarRight({ conversation, isOpen, onClose, onOpenProfile }) {
-  const navigate = useNavigate()
-  const { conversationId: activeIdFromURL } = useParams()
-  const panelRef = useRef(null)
-
+export default function ChatSidebarRight({ conversation, isOpen, onClose }) {
+  const navigate = useNavigate();
+  const { conversationId: activeIdFromURL } = useParams();
+  const panelRef = useRef(null);
+  const [infoOpen, setInfoOpen] = useState(false)
   const currentUser = useSelector(selectCurrentUser)
   const currentUserId = currentUser?._id || currentUser?.id
 
@@ -78,15 +76,18 @@ export default function ChatSidebarRight({ conversation, isOpen, onClose, onOpen
       if (panelRef.current?.contains(t)) return
       // 2) inside media viewer portal => ignore
       if (t.closest("#media-window-portal")) return
-      // 3) inside popper/command => ignore
+
+      // 3) inside popper/command/dialog => ignore   <-- SỬA Ở ĐÂY
       if (
         t.closest("[data-radix-popper-content-wrapper]") ||
+        t.closest("[role='dialog']") || // ✅ THÊM DÒNG NÀY
         t.closest("[cmdk-root]") ||
         t.closest("[cmdk-list]") ||
         t.closest('[role="listbox"]')
       ) {
-        return
+        return;
       }
+
       // 4) outside => close
       if (showGallery) setShowGallery(false)
       else onClose?.()
@@ -229,7 +230,6 @@ export default function ChatSidebarRight({ conversation, isOpen, onClose, onOpen
     try {
       const confirmed = window.confirm("Remove this member from the group?")
       if (!confirmed) return
-
       await removeMemberFromGroupAPI(conversation?._id, memberId)
 
       toast.success("Member removed")
@@ -343,18 +343,31 @@ export default function ChatSidebarRight({ conversation, isOpen, onClose, onOpen
 
             {/* Conversation avatar + actions */}
             <div className="p-6 text-center border-b">
-              <div className="w-20 h-20 bg-blue-500 rounded-full flex items-center justify-center mx-auto mb-4 shrink-0">
-                {conversation?.conversationAvatarUrl ? (
-                  <Avatar className="w-20 h-20">
-                    <AvatarImage src={conversation?.conversationAvatarUrl} />
-                    <AvatarFallback>{conversation?.displayName?.[0] || "U"}</AvatarFallback>
-                  </Avatar>
-                ) : (
-                  <span className="text-2xl font-bold text-white">
-                    {conversation?.displayName?.[0] || "U"}
-                  </span>
-                )}
-              </div>
+              <button
+                type="button"
+                onClick={() => setInfoOpen(true)}
+                className="group w-fit mx-auto block"
+                title="Xem/Chỉnh sửa thông tin nhóm"
+              >
+                <div className="relative w-20 h-20 rounded-full mx-auto mb-4 ring-0 group-hover:ring-2 group-hover:ring-primary/40 transition">
+                  {conversation?.conversationAvatarUrl ? (
+                    <Avatar className="w-20 h-20">
+                      <AvatarImage src={conversation?.conversationAvatarUrl} />
+                      <AvatarFallback>{conversation?.displayName?.[0] || "U"}</AvatarFallback>
+                    </Avatar>
+                  ) : (
+                    <div className="w-20 h-20 bg-blue-500 rounded-full grid place-items-center">
+          <span className="text-2xl font-bold text-white">
+            {conversation?.displayName?.[0] || "U"}
+          </span>
+                    </div>
+                  )}
+                  <div className="absolute inset-0 rounded-full bg-background/30 opacity-0 group-hover:opacity-100 transition grid place-items-center">
+                    <span className="text-xs font-medium">Xem chi tiết</span>
+                  </div>
+                </div>
+              </button>
+
 
               <div className="flex items-center justify-center mb-4">
                 <h3 className="text-xl font-semibold truncate max-w-full px-2">
@@ -643,6 +656,63 @@ export default function ChatSidebarRight({ conversation, isOpen, onClose, onOpen
             </div>
           </div>
         </div>
+      {/* Group Info Dialog */}
+      {conversation?.type === "group" ? (
+        <GroupInfoDialog
+          open={infoOpen}
+          onOpenChange={setInfoOpen}
+          conversation={conversation}
+          onAvatarUpdated={(url) => {
+            window.dispatchEvent(new CustomEvent("conversation:avatar-updated", {
+              detail: { id: conversation?._id, url }
+            }));
+          }}
+          onNameUpdated={(name) => {
+            window.dispatchEvent(new CustomEvent("conversation:name-updated", {
+              detail: { id: conversation?._id, name }
+            }));
+          }}
+          onOpenAddMember={() => {}}
+          onOpenManageMembers={() => {}}
+        />
+      ) : (
+        <UserProfilePanel
+          open={infoOpen}
+          onClose={() => setInfoOpen(false)}
+          user={{
+            fullName: peer?.fullName || "Người dùng",
+            avatarUrl: peer?.avatarUrl || "",
+            coverUrl: peer?.coverUrl || "",
+            bio: peer?.bio || "",
+            dateOfBirth: peer?.dateOfBirth || "",
+            phone: peer?.phone || "",
+            photos: Array.isArray(peer?.photos) ? peer.photos : [],
+            mutualGroups: peer?.mutualGroups || 0
+          }}
+          isFriend={!!peer?.isFriend}
+          onCall={() => {
+            toast.info(`Bắt đầu gọi: ${peer?.fullName || "người dùng"}`);
+          }}
+          onChat={() => {
+            setInfoOpen(false);
+          }}
+          onAddFriend={async () => {
+            try {
+              // await addFriendAPI(peer?.id)
+              toast.success("Đã gửi lời mời kết bạn");
+            } catch (e) {
+              toast.error(e?.message || "Không thể gửi lời mời");
+            }
+          }}
+          onUnfriend={async () => {
+            try {
+              // await unfriendAPI(peer?.id)
+              toast.success("Đã huỷ kết bạn");
+            } catch (e) {
+              toast.error(e?.message || "Không thể huỷ kết bạn");
+            }
+          }}
+        />
       )}
     </>
   )

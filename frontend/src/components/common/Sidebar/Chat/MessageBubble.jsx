@@ -1,7 +1,18 @@
 import { useEffect, useMemo, useState } from "react"
 import {
-  Pin, Reply, MoreHorizontal, Clock, Check, CheckCheck,
-  FileText, FileSpreadsheet, Archive, Video as VideoIcon, Music, File, Download
+  Pin,
+  Reply,
+  MoreHorizontal,
+  Clock,
+  Check,
+  CheckCheck,
+  FileText,
+  FileSpreadsheet,
+  Archive,
+  Video as VideoIcon,
+  Music,
+  File,
+  Download
 } from "lucide-react"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
@@ -11,8 +22,8 @@ import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { deleteMessageForMeAPI, getDisplayUsers, recallMessageAPI } from "@/apis"
 
+/** Helpers */
 const mediaUrl = (m, message) => m?.secure_url || m?.url || message?.body?.media?.url || ""
-import { set } from 'date-fns'
 
 function processReactions(reactions = []) {
   const emojiCountMap = {}
@@ -24,48 +35,11 @@ function processReactions(reactions = []) {
     if (!userEmojiMap[userId].emoji.includes(emoji)) userEmojiMap[userId].emoji.push(emoji)
     userEmojiMap[userId].count += 1
   })
-  const topEmojis = Object.entries(emojiCountMap).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([emoji, count]) => ({ emoji, count }))
+  const topEmojis = Object.entries(emojiCountMap)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([emoji, count]) => ({ emoji, count }))
   return { topEmojis, userEmojiMap, emojiCountMap }
-}
-
-function pickSender(conversation, message, contact) {
-  if (message?.sender) {
-    const s = message.sender
-    return {
-      id: s.id || s._id || message.senderId || null,
-      fullName: s.fullName || s.username || contact?.name || "User",
-      username: s.username || null,
-      avatarUrl: s.avatarUrl || null
-    }
-  }
-  const sid = message?.senderId
-  const mems = conversation?.group?.members
-  if (sid && Array.isArray(mems) && mems.length) {
-    const m = mems.find((u) => String(u.id || u._id) === String(sid))
-    if (m) {
-      return {
-        id: m.id || m._id,
-        fullName: m.fullName || m.username || contact?.name || "User",
-        username: m.username || null,
-        avatarUrl: m.avatarUrl || null
-      }
-    }
-  }
-  const other = conversation?.direct?.otherUser
-  if (other && String(other.id || other._id) === String(sid)) {
-    return {
-      id: other.id || other._id,
-      fullName: other.fullName || other.username || contact?.name || "User",
-      username: other.username || null,
-      avatarUrl: other.avatarUrl || null
-    }
-  }
-  return {
-    id: sid || null,
-    fullName: contact?.name || "User",
-    username: contact?.username || null,
-    avatarUrl: contact?.avatarUrl || null
-  }
 }
 
 function formatFileSize(bytes) {
@@ -78,10 +52,8 @@ function formatFileSize(bytes) {
 
 function renderMessageWithMentions(text = "", mentions = []) {
   if (!mentions?.length) return [text]
-
   const parts = []
   let i = 0
-
   for (const mt of mentions) {
     const before = text.slice(i, mt.start)
     if (before) parts.push(before)
@@ -96,11 +68,7 @@ function renderMessageWithMentions(text = "", mentions = []) {
   if (tail.trim().length) parts.push(tail)
   return parts
 }
-
-function escapeRe(s) {
-  return s.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")
-}
-
+function escapeRe(s) { return s.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&") }
 function findMentionsFromMembers(text = "", conversation) {
   if (conversation?.type !== "group") return []
   const names = (conversation?.group?.members || [])
@@ -108,32 +76,40 @@ function findMentionsFromMembers(text = "", conversation) {
     .filter(Boolean)
     .sort((a, b) => b.length - a.length)
     .map(escapeRe)
-
   if (!names.length) return []
   const re = new RegExp(`@(?:${names.join("|")})(?=\\b)`, "g")
   const out = []
   let m
   while ((m = re.exec(text)) !== null) {
     const raw = m[0]
-    out.push({
-      raw,
-      name: raw.slice(1),
-      start: m.index,
-      end: m.index + raw.length
-    })
+    out.push({ raw, name: raw.slice(1), start: m.index, end: m.index + raw.length })
   }
   return out
 }
 /* === End mentions helpers === */
 
-export function MessageBubble({ message, onOpenViewer, showAvatar, contact, showMeta = true, conversation, setReplyingTo, currentUser, onAvatarClick }) {
+export function MessageBubble({
+  message,
+  onOpenViewer,
+  showAvatar,
+  contact,
+  showMeta = true,
+  conversation,
+  setReplyingTo,
+  currentUser,
+  onAvatarClick,
+  nickById
+}) {
   const [hovered, setHovered] = useState(false)
   const [open, setOpen] = useState(false)
   const isOwn = !!message?.isOwn
   const isGroup = conversation?.type === "group"
-  const { topEmojis, userEmojiMap, emojiCountMap } = useMemo(() => processReactions(message?.reactions || []), [message?.reactions])
+  const { topEmojis, userEmojiMap, emojiCountMap } = useMemo(
+    () => processReactions(message?.reactions || []),
+    [message?.reactions]
+  )
 
-  // Lightbox
+  // Lightbox (optional modal preview)
   const [preview, setPreview] = useState({ open: false, url: "", type: "image" })
 
   // System-detect
@@ -142,6 +118,7 @@ export function MessageBubble({ message, onOpenViewer, showAvatar, contact, show
   const sysName = (message?.sender?.fullName || message?.sender?.username || "").trim().toLowerCase()
   const isSystemMessage = sysName === "system" || sysSid === SYSTEM_ID_FALLBACK
 
+  // Fetch display users for reactions
   const [usersData, setUsersData] = useState({})
   useEffect(() => {
     const ids = Object.keys(userEmojiMap || {})
@@ -149,8 +126,8 @@ export function MessageBubble({ message, onOpenViewer, showAvatar, contact, show
     (async () => {
       try {
         const users = await getDisplayUsers(ids)
-        const m = {}
-        ;(users || []).forEach((u) => (m[u.id || u._id] = u))
+        const m = {};
+        (users || []).forEach((u) => (m[u.id || u._id] = u))
         setUsersData(m)
       } catch (e) {
         console.error("Failed to fetch users for reactions", e)
@@ -219,9 +196,7 @@ export function MessageBubble({ message, onOpenViewer, showAvatar, contact, show
     try {
       const d = typeof ts === "string" || typeof ts === "number" ? new Date(ts) : ts
       return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-    } catch {
-      return ""
-    }
+    } catch { return "" }
   }
 
   const StatusIcon = () => {
@@ -239,7 +214,7 @@ export function MessageBubble({ message, onOpenViewer, showAvatar, contact, show
       const blobUrl = URL.createObjectURL(blob)
       const a = document.createElement("a")
       a.href = blobUrl
-      a.download = filename
+      a.download = filename || "download"
       document.body.appendChild(a)
       a.click()
       a.remove()
@@ -248,16 +223,63 @@ export function MessageBubble({ message, onOpenViewer, showAvatar, contact, show
       console.error("Download failed", err)
     }
   }
+  const [menuPos, setMenuPos] = useState({ x: 0, y: 0 })
+  const senderDisplay = useMemo(
+    () => getDisplayName({ message, conversation, currentUser, nickById }),
+    [message, conversation, currentUser, nickById]
+  )
+  function getDisplayName({ message, conversation, currentUser, nickById }) {
+    const s = message?.sender;
+    let sid_raw = s?._id || s?.id || message?.senderId;
+
+    // === SỬA LỖI: Chuẩn hoá ID ===
+    // Nếu sid_raw là object (do populate), lấy ._id bên trong nó
+    if (sid_raw && typeof sid_raw === 'object' && sid_raw._id) {
+      sid_raw = sid_raw._id;
+    }
+    // Giờ sid là một chuỗi ID chuẩn hoặc null
+    const sid = String(sid_raw || "");
+    // ============================
+    // 1) Ưu tiên nickname trong group
+    if (conversation?.type === "group") {
+      // Dùng `sid` trực tiếp (vì nó đã là string)
+      if (sid && nickById?.get?.(sid)) return nickById.get(sid);
+
+      // So sánh String(m.id || m._id) với `sid` (đã là string)
+      const mem = (conversation?.group?.members || []).find(m => String(m.id || m._id) === sid);
+      if (mem?.nickname) return mem.nickname;
+    }
+
+    // 2) Sau đó tới displayName / fullName / username
+    if (s?.displayName) return s.displayName;
+    if (s?.fullName || s?.username) return s.fullName || s.username;
+
+    // 3) DIRECT / cloud
+    if (conversation?.type === "direct") {
+      const meId = String(currentUser?._id || "");
+      const isMe = sid === meId;
+      if (isMe) return currentUser?.fullName || currentUser?.username || "You";
+      const other = conversation?.direct?.otherUser;
+      if (other) return other.nickname || other.fullName || other.username || "User";
+    }
+
+    // 4) Cuối cùng: lấy từ members nếu còn trống
+    if (sid) {
+      const mem = (conversation?.group?.members || []).find(m => String(m.id || m._id) === sid);
+      if (mem) return mem.fullName || mem.username || "User";
+    }
+    return "User";
+  }
 
   const [menuPos, setMenuPos] = useState({ x: 0, y: 0 })
 
   const { images, videos, files, audios } = useMemo(() => {
     const list = Array.isArray(message?.media) ? message.media : []
     return {
-      images: list.filter((m) => (m?.type || "").toLowerCase() === "image"),
-      videos: list.filter((m) => (m?.type || "").toLowerCase() === "video"),
-      audios: list.filter((m) => (m?.type || "").toLowerCase() === "audio"),
-      files : list.filter((m) => (m?.type || "").toLowerCase() === "file")
+      images: list.filter(m => (m?.type || "").toLowerCase() === "image"),
+      videos: list.filter(m => (m?.type || "").toLowerCase() === "video"),
+      audios: list.filter(m => (m?.type || "").toLowerCase() === "audio"),
+      files : list.filter(m => (m?.type || "").toLowerCase() === "file")
     }
   }, [message?.media])
 
@@ -271,6 +293,18 @@ export function MessageBubble({ message, onOpenViewer, showAvatar, contact, show
   const [showMenu, setShowMenu] = useState(false)
   const [showDetail, setShowDetail] = useState(false)
 
+  // Grid class for image+video
+  const gridMedias = [...images, ...videos]
+  const gridClass =
+    gridMedias.length === 1
+      ? "flex justify-center"
+      : gridMedias.length === 2
+        ? "grid grid-cols-2 gap-2"
+        : gridMedias.length <= 4
+          ? "grid grid-cols-2 gap-2 max-w-md"
+          : "grid grid-cols-3 gap-2 max-w-lg"
+
+  // gửi request delete/recall
   async function handleAction(action) {
     try {
       const messageId = message._id || message.id
@@ -345,26 +379,22 @@ export function MessageBubble({ message, onOpenViewer, showAvatar, contact, show
 
   return (
     <div
-      className={`flex gap-2 ${(Array.isArray(message?.reactions) && message.reactions.length > 0) ? 'mb-4' : 'mb-2'} ${
-        isSystemMessage ? 'justify-center' : (isOwn ? 'justify-end' : 'justify-start')
+      className={`flex gap-2 ${Array.isArray(message?.reactions) && message.reactions.length > 0 ? "mb-4" : "mb-2"} ${
+        isSystemMessage ? "justify-center" : isOwn ? "justify-end" : "justify-start"
       }`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => { setHovered(false) }}
     >
-
       {!isSystemMessage && !isOwn && showAvatar && (
         <button
           type="button"
-          onClick={() => {
-            console.log("Clicked avatar of", sender)
-            sender && onAvatarClick?.(sender)
-          }}
+          onClick={() => sender && onAvatarClick?.(sender)}
           className="rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
           aria-label={`Open profile of ${senderName}`}
         >
           <Avatar className="w-8 h-8">
             <AvatarImage src={sender?.avatarUrl} />
-            <AvatarFallback>{senderName.charAt(0).toUpperCase()}</AvatarFallback>
+            <AvatarFallback>{(senderDisplay || "U").charAt(0).toUpperCase()}</AvatarFallback>
           </Avatar>
         </button>
       )}
@@ -438,8 +468,8 @@ export function MessageBubble({ message, onOpenViewer, showAvatar, contact, show
             </div>
           ) : (
             <>
-              {/* Bubble thường (media hoặc text) */}
-              {(message.media?.length ?? 0) > 0 ? (
+              {/* MEDIA (images/videos) */}
+              {gridMedias.length > 0 && (
                 <div className="space-y-2">
                   {(() => {
                     const list = Array.isArray(message.media) ? message.media : []
@@ -529,6 +559,28 @@ export function MessageBubble({ message, onOpenViewer, showAvatar, contact, show
                             })}
                           </div>
                         )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* FILES */}
+              {files.length > 0 && (
+                <div className="space-y-1 mt-2">
+                  {files.map((m, i) => {
+                    const mimetype = m?.metadata?.mimetype || ""
+                    const filename = m?.metadata?.filename || "Unknown file"
+                    const sizeText = formatFileSize(m?.metadata?.size)
+                    const url = mediaUrl(m, message)
+                    const Icon =
+                      mimetype.includes("pdf") ? FileText
+                        : (mimetype.includes("word") || mimetype.includes("document")) ? FileText
+                          : (mimetype.includes("sheet") || mimetype.includes("excel")) ? FileSpreadsheet
+                            : (mimetype.includes("zip") || mimetype.includes("rar") || mimetype.includes("archive")) ? Archive
+                              : mimetype.includes("video") ? VideoIcon
+                                : mimetype.includes("audio") ? Music
+                                  : File
 
                         {/* Audio */}
                         {audios.length > 0 && (
@@ -550,10 +602,22 @@ export function MessageBubble({ message, onOpenViewer, showAvatar, contact, show
                               </div>
                             ))}
                           </div>
-                        )}
-                      </>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {message.isPinned && <Pin className="w-3 h-3 text-yellow-500" />}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleDownload(url, filename)}
+                            className="h-8 w-8 p-0"
+                            aria-label="Download file"
+                          >
+                            <Download className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
                     )
-                  })()}
+                  })}
                 </div>
               ) : (
                 /* ===== Bubble text thường ===== */
@@ -620,7 +684,7 @@ export function MessageBubble({ message, onOpenViewer, showAvatar, contact, show
               {preview.type === "video" ? (
                 <video src={preview.url} controls className="max-w-full max-h-[80vh]" autoPlay />
               ) : (
-                <img src={preview.url} alt="" className="max-w-full max-h-[80vh]" />
+                <img src={preview.url} alt="preview" className="max-w-full max-h-[80vh]" />
               )}
             </div>
           </DialogContent>
@@ -751,6 +815,18 @@ export function MessageBubble({ message, onOpenViewer, showAvatar, contact, show
 }
 
 function ReactionsDialog({ open, setOpen, emojiCountMap, userEmojiMap, usersData, total }) {
+  // convert userEmojiMap -> per-emoji map
+  const perEmoji = useMemo(() => {
+    const acc = {}
+    Object.entries(userEmojiMap || {}).forEach(([uid, { emoji }]) => {
+      emoji.forEach((e) => {
+        if (!acc[e]) acc[e] = {}
+        acc[e][uid] = (acc[e][uid] || 0) + 1
+      })
+    })
+    return acc
+  }, [userEmojiMap])
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="sm:max-w-[400px] max-h-[60vh] overflow-y-auto">
@@ -763,7 +839,7 @@ function ReactionsDialog({ open, setOpen, emojiCountMap, userEmojiMap, usersData
               >
                 All {total || 0}
               </TabsTrigger>
-              {Object.entries(emojiCountMap).map(([key, value]) => (
+              {Object.entries(emojiCountMap || {}).map(([key, value]) => (
                 <TabsTrigger
                   key={key}
                   value={key}
@@ -776,7 +852,7 @@ function ReactionsDialog({ open, setOpen, emojiCountMap, userEmojiMap, usersData
 
             <TabsContent value="all">
               <div className="space-y-4 mt-2">
-                {Object.entries(userEmojiMap).map(([userId, value]) => (
+                {Object.entries(userEmojiMap || {}).map(([userId, value]) => (
                   <div key={userId} className="flex items-center gap-2">
                     <Avatar className="w-8 h-8">
                       <AvatarImage src={usersData[userId]?.avatarUrl} />
@@ -794,15 +870,7 @@ function ReactionsDialog({ open, setOpen, emojiCountMap, userEmojiMap, usersData
               </div>
             </TabsContent>
 
-            {Object.entries(
-              Object.entries(userEmojiMap).reduce((acc, [uid, { emoji }]) => {
-                emoji.forEach((e) => {
-                  if (!acc[e]) acc[e] = {}
-                  acc[e][uid] = (acc[e][uid] || 0) + 1
-                })
-                return acc
-              }, {})
-            ).map(([emoji, users]) => (
+            {Object.entries(perEmoji).map(([emoji, users]) => (
               <TabsContent key={emoji} value={emoji}>
                 <div className="space-y-4 mt-2">
                   {Object.entries(users).map(([userId, count]) => (
@@ -829,3 +897,5 @@ function ReactionsDialog({ open, setOpen, emojiCountMap, userEmojiMap, usersData
     </Dialog>
   )
 }
+
+export default MessageBubble
