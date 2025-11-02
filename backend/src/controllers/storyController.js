@@ -3,7 +3,7 @@ import { storyService } from "~/services/storyService";
 
 const createStory = async (req, res, next) => {
     try {
-        const storyData = req.body;
+        const storyData = JSON.parse(req.body.storyData || "{}")
         const newStory = await storyService.createStory({ ...storyData, userId: req.userId, file: req.file });
         res.status(StatusCodes.CREATED).json(newStory);
     }

@@ -11,6 +11,8 @@
     "lint:fix": "eslint . --ext .js,.jsx --fix"
   },
   "dependencies": {
+    "@giphy/js-fetch-api": "^5.7.0",
+    "@giphy/react-components": "^10.1.0",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-alert-dialog": "^1.1.15",
     "@radix-ui/react-avatar": "^1.1.10",
@@ -39,6 +41,7 @@
     "date-fns": "^4.1.0",
     "emoji-picker-react": "^4.13.3",
     "framer-motion": "^12.23.24",
+    "gifler": "^0.1.0",
     "input-otp": "^1.4.2",
     "konva": "^10.0.8",
     "lucide-react": "^0.540.0",

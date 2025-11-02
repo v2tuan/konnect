@@ -7,6 +7,110 @@ import { useEffect, useRef, useState, useMemo } from "react"
 import { useSelector } from "react-redux"
 import { Plus, Pause, X, ChevronLeft, ChevronRight, MoreHorizontal, Send, Heart, Volume2, VolumeX } from "lucide-react"
 import { useNavigate } from "react-router-dom"
+import { Stage, Layer, Image as KonvaImage, Text as KonvaText } from "react-konva"
+
+// Hook để load image cho Konva
+function useKonvaImage(url) {
+  const [image, setImage] = useState(null)
+
+  useEffect(() => {
+    if (!url) return
+    const img = new window.Image()
+    img.crossOrigin = "anonymous"
+    img.onload = () => setImage(img)
+    img.src = url
+  }, [url])
+
+  return image
+}
+
+// Component render story với Konva
+function StoryContent({ story }) {
+  const CANVAS_WIDTH = 405
+  const CANVAS_HEIGHT = 720
+  const bgImage = useKonvaImage(story.background?.image)
+  const scaled = story.background?.scaledSize
+  const [stickerImages, setStickerImages] = useState({})
+
+  useEffect(() => {
+    const loadStickers = async () => {
+      const images = {}
+      for (const layer of story.layers || []) {
+        if (layer.type === "sticker" && layer.url) {
+          const img = new window.Image()
+          img.crossOrigin = "anonymous"
+          img.onload = () => {
+            images[layer.id] = img
+            setStickerImages({ ...images })
+          }
+          img.src = layer.url
+        }
+      }
+    }
+    loadStickers()
+  }, [story.layers])
+
+  return (
+    <Stage
+      width={CANVAS_WIDTH}
+      height={CANVAS_HEIGHT}
+      style={{
+        backgroundColor: story.background?.color || '#000',
+        borderRadius: '12px',
+        overflow: 'hidden'
+      }}
+    >
+      <Layer>
+        {bgImage && scaled && (
+          <KonvaImage
+            image={bgImage}
+            x={story.background.position?.x || 0}
+            y={story.background.position?.y || 0}
+            offsetX={scaled.w / 2}
+            offsetY={scaled.h / 2}
+            width={scaled.w}
+            height={scaled.h}
+            scaleX={(story.background.flipped ? -1 : 1) * (story.background.scale || 1)}
+            scaleY={story.background.scale || 1}
+            rotation={story.background.rotation || 0}
+          />
+        )}
+
+        {(story.layers || []).map((layer) => {
+          if (layer.type === "text") {
+            return (
+              <KonvaText
+                key={layer.id}
+                text={layer.content}
+                x={layer.x || 0}
+                y={layer.y || 0}
+                fill={layer.color || "#ffffff"}
+                fontSize={28}
+                fontStyle="bold"
+                shadowColor="rgba(0,0,0,0.7)"
+                shadowBlur={10}
+                shadowOffset={{ x: 2, y: 2 }}
+              />
+            )
+          }
+          if (layer.type === "sticker" && stickerImages[layer.id]) {
+            return (
+              <KonvaImage
+                key={layer.id}
+                image={stickerImages[layer.id]}
+                x={layer.x || 0}
+                y={layer.y || 0}
+                width={80}
+                height={80}
+              />
+            )
+          }
+          return null
+        })}
+      </Layer>
+    </Stage>
+  )
+}
 
 export function StoryList() {
   const [storiesData, setStoriesData] = useState([])
@@ -25,6 +129,14 @@ export function StoryList() {
   const onCreateStory = () => {
     navigate('/stories/create')
   }
+
+  // Simulate fetch stories
+//   useEffect(() => {
+//     setTimeout(() => {
+//       setStoriesData(MOCK_STORIES_DATA.data)
+//       setLoading(false)
+//     }, 500)
+//   }, [])
 
   // Fetch stories
   useEffect(() => {
@@ -349,17 +461,23 @@ export function StoryList() {
                 <div
                   className="rounded-xl overflow-hidden relative"
                   style={{
-                    width: isCurrent ? '420px' : '280px',
-                    height: isCurrent ? 'calc(100vh - 120px)' : '500px',
+                    width: isCurrent ? '405px' : '280px',
+                    height: isCurrent ? '720px' : '500px',
                     maxHeight: isCurrent ? '900px' : '500px',
                     backgroundColor: storyToShow?.bgColor || '#000'
                   }}
                 >
-                  {storyToShow?.media?.url && (
-                    <img
-                      src={storyToShow.media.url}
-                      alt={friend.user?.username}
-                      className="w-full h-full object-cover"
+                  {isCurrent ? (
+                    <StoryContent story={storyToShow} />
+                  ) : (
+                    <div 
+                      className="w-full h-full"
+                      style={{ 
+                        backgroundColor: storyToShow?.background?.color || '#000',
+                        backgroundImage: storyToShow?.background?.image ? `url(${storyToShow.background.image})` : 'none',
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center'
+                      }}
                     />
                   )}
 
