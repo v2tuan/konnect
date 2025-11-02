@@ -233,10 +233,13 @@ export const deleteConversationAPI = async (conversationId) => {
   return response.data
 }
 
-export const leaveGroupAPI = async (conversationId) => {
-  const response = await authorizeAxiosInstance.delete(`${API_ROOT}/api/conversation/chats/${conversationId}`, {
-    data: { action: 'leave' }
-  })
+export const leaveGroupAPI = async (conversationId, nextAdminId = null) => {
+  const payload = { action: 'leave' }
+  if (nextAdminId) payload.nextAdminId = nextAdminId
+  const response = await authorizeAxiosInstance.delete(
+    `${API_ROOT}/api/conversation/chats/${conversationId}`,
+    { data: payload }
+  )
   return response.data
 }
 
