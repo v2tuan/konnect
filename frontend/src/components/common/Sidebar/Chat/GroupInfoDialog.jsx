@@ -68,7 +68,28 @@ function MembersDialog({ open, onOpenChange, conversation }) {
       saving: false,
     })));
   }, [open, conversation?._id]);
+  useEffect(() => {
+    const handleNicknameUpdate = (e) => {
+      const { conversationId, memberId, nickname } = e.detail || {};
 
+      // Chỉ cập nhật nếu đúng là conversation này
+      if (String(conversationId) !== String(conversation?._id)) return;
+
+      setItems(prev =>
+        prev.map(it =>
+          it.id === String(memberId)
+            // Cập nhật nickname và reset 'saving' (nếu có)
+            ? { ...it, nickname: nickname || "", saving: false }
+            : it
+        )
+      );
+    };
+
+    window.addEventListener('conversation:member-nickname-updated', handleNicknameUpdate);
+    return () => {
+      window.removeEventListener('conversation:member-nickname-updated', handleNicknameUpdate);
+    };
+  }, [conversation?._id]);
   const onChangeNick = (id, v) => {
     setItems(prev =>
       prev.map(it => (it.id === String(id) ? { ...it, nickname: v } : it))
@@ -84,12 +105,25 @@ function MembersDialog({ open, onOpenChange, conversation }) {
     });
 
     try {
-      await updateMemberNicknameAPI(conversation._id, id, nickname);
+      // ✅ Sửa: Lấy kết quả trả về từ API
+      const data = await updateMemberNicknameAPI(conversation._id, id, nickname);
       toast.success("Đã cập nhật biệt danh");
+
+      // ✅ BỔ SUNG: Dispatch event toàn cục để các component khác cập nhật
+      // (Bao gồm cả component này và các component khác)
+      window.dispatchEvent(new CustomEvent('conversation:member-nickname-updated', {
+        detail: {
+          conversationId: String(conversation._id),
+          memberId: String(id),
+          nickname: data?.nickname || nickname, // Lấy nickname chính xác từ response
+          updatedBy: data?.updatedBy // (Nếu API có trả về)
+        }
+      }));
 
     } catch (e) {
       const msg = (e?.response?.data?.message) || e.message || "Lưu biệt danh thất bại";
       toast.error(msg);
+      // Cân nhắc: rollback state `nickname` ở đây nếu thất bại
     } finally {
       setItems((prev) =>
         prev.map((it) => (it.id === id ? { ...it, saving: false } : it))

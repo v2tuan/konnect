@@ -693,105 +693,33 @@ export function ChatArea({
     return String(x._id || x.id || x)
   }
   // socket to refresh media sidebar
-  const socketRef = useRef(null)
   useEffect(() => {
-    // 1. Khởi tạo socket
-    socketRef.current = io(import.meta.env.VITE_WS_URL, { withCredentials: true })
-    const s = socketRef.current
-    console.log(`[Socket Init] Khởi tạo socket cho convo: ${conversation?._id}`);
+    const handleNicknameUpdate = (e) => {
+      const { conversationId, memberId, nickname } = e.detail || {};
 
-    // 2. Lắng nghe 'connect' và 'join' room
-    s.on('connect', () => {
-      console.log(`[Socket] 🔌 Socket connected: ${s.id}`)
-      if (conversation?._id) {
-        console.log(`[Socket] 🏠 Joining room: conversation:${conversation._id}`)
-        s.emit('conversation:join', conversation._id)
-      }
-    })
+      // Chỉ cập nhật nếu đúng là conversation này
+      if (String(conversationId) !== String(conversation?._id)) return;
 
-    s.on('conversation:joined', (data) => {
-      console.log(`[Socket] ✅ Successfully joined room:`, data)
-    })
+      console.log('[ChatArea] 🏃‍♂️ Bắt được tín hiệu window, đang cập nhật nickById...');
 
-    s.on('disconnect', (reason) => {
-      console.warn(`[Socket] 🔌 Socket disconnected: ${reason}`)
-    })
+      setNickById(prev => {
+        const next = new Map(prev) // Tạo Map mới để React nhận diện
+        const key = normId(memberId)
 
-    // 3. Định nghĩa listener DUY NHẤT cho tin nhắn mới
-    const onMessageNew = (payload) => {
-      console.log('[Socket] 📨 New message received:', payload)
-
-      // Kiểm tra đúng conversation
-      if (!payload || String(payload.conversationId) !== String(conversation?._id)) {
-        console.log('[Socket] Bỏ qua message từ conversation khác.');
-        return;
-      }
-
-      const t = payload.message?.type
-      const body = payload.message?.body
-
-      // === ĐÂY LÀ NGUỒN CẬP NHẬT NICKNAME DUY NHẤT ===
-      if (t === "notification" && body?.subtype === "nickname_changed") {
-        const { targetId, nickname } = body
-        console.log('[Socket] 🏷️ Nickname notification received:', { targetId, nickname })
-
-        if (targetId !== undefined) {
-          setNickById(prev => {
-            const next = new Map(prev)
-            const key = normId(targetId) // Dùng hàm normId đã có
-
-            if ((nickname ?? "").trim()) {
-              next.set(key, nickname.trim())
-              console.log(`[Socket] ✅ nickById Map Updated: Đặt key ${key} = ${nickname.trim()}`)
-            } else {
-              next.delete(key)
-              console.log(`[Socket] ✅ nickById Map Updated: Xoá key ${key}`)
-            }
-            return next
-          })
+        if ((nickname ?? "").trim()) {
+          next.set(key, nickname.trim())
+        } else {
+          next.delete(key)
         }
-      }
-      // === KẾT THÚC CẬP NHẬT NICKNAME ===
+        return next // Trả về Map mới
+      })
+    };
 
-      // Logic refresh media sidebar
-      if (['image', 'video', 'audio', 'file'].includes(t)) {
-        console.log('[Socket] Media message received, dispatching refresh event.');
-        window.dispatchEvent(new CustomEvent('conversation-media:refresh', {
-          detail: { conversationId: conversation._id, type: t }
-        }))
-      }
-    }
-
-    // 4. Gắn listener
-    s.on('message:new', onMessageNew)
-    console.log(`[Socket Setup] Đã gắn listener 'message:new' cho convo: ${conversation?._id}`);
-
-    // Chúng ta sẽ *KHÔNG* lắng nghe 'member:nickname-changed' và 'window.event'
-    // để tránh cập nhật state 2-3 lần cho cùng 1 hành động.
-    // 'message:new' đã là nguồn tin cậy.
-
-    // 5. Join room (phòng trường hợp socket đã connect trước khi 'on(connect)' được gắn)
-    if (s.connected && conversation?._id) {
-      console.log(`[Socket] 🏠 Socket already connected, joining room: conversation:${conversation._id}`)
-      s.emit('conversation:join', conversation._id)
-    }
-
-    // 6. Hàm cleanup
+    window.addEventListener('conversation:member-nickname-updated', handleNicknameUpdate);
     return () => {
-      console.log(`[Socket Cleanup] Dọn dẹp socket cho convo: ${conversation?._id}`)
-      s.off('connect')
-      s.off('conversation:joined')
-      s.off('disconnect')
-      s.off('message:new', onMessageNew) // Chỉ gỡ listener 'message:new'
-
-      if (conversation?._id) {
-        console.log(`[Socket] 👋 Leaving room: ${conversation._id}`)
-        s.emit('conversation:leave', conversation._id)
-      }
-      s.disconnect()
-    }
-  }, [conversation?._id]) // Chỉ chạy lại khi conversation ID thay đổi
-
+      window.removeEventListener('conversation:member-nickname-updated', handleNicknameUpdate);
+    };
+  }, [conversation?._id]); // Phụ thuộc vào conversation?._id
 
   // ----- mention highlighter / typing indicators -----
   const [mentions, setMentions] = useState([])
