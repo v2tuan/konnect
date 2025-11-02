@@ -1,0 +1,204 @@
+{
+  "data": [
+    {
+      "user": {
+        "id": "68b808d8840cbb83a98a2200",
+        "fullName": "Duy 36",
+        "username": "duy36",
+        "avatarUrl": "https://res.cloudinary.com/dfcnz3uuh/image/upload/v1762007485/users/bicwzczrocmoegszknw3.jpg"
+      },
+      "stories": [
+        {
+          "id": 1730548800000,
+          "background": {
+            "image": "https://images.unsplash.com/photo-1517816743773-6e0fd518b4a6",
+            "color": "rgb(63, 90, 62)",
+            "scale": 1,
+            "rotation": 0,
+            "flipped": false,
+            "position": { "x": 202.5, "y": 360 },
+            "scaledSize": { "w": 405, "h": 720 }
+          },
+          "layers": [
+            {
+              "id": 1730548800100,
+              "type": "text",
+              "content": "Buổi chiều chill 😎",
+              "x": 80,
+              "y": 120,
+              "color": "#ffffff"
+            },
+            {
+              "id": 1730548800200,
+              "type": "sticker",
+              "url": "https://media.giphy.com/media/3oEjI6SIIHBdRxXI40/giphy.gif",
+              "x": 150,
+              "y": 250
+            },
+            {
+              "id": 1730548800300,
+              "type": "music",
+              "name": "Perfect - Ed Sheeran"
+            }
+          ],
+          "music": {
+            "name": "Perfect",
+            "url": "https://example.com/music/perfect.mp3",
+            "artist": "Ed Sheeran"
+          },
+          "musicStyle": "card",
+          "createdAt": "2025-11-02T08:00:00.000Z"
+        },
+        {
+          "id": 1730549800000,
+          "background": {
+            "image": "https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e",
+            "color": "rgb(129, 138, 132)",
+            "scale": 1,
+            "rotation": 0,
+            "flipped": false,
+            "position": { "x": 200, "y": 350 },
+            "scaledSize": { "w": 400, "h": 710 }
+          },
+          "layers": [
+            {
+              "id": 1730549800100,
+              "type": "text",
+              "content": "Cà phê sáng ☕",
+              "x": 100,
+              "y": 130,
+              "color": "#ffffff"
+            }
+          ],
+          "music": null,
+          "musicStyle": "none",
+          "createdAt": "2025-11-02T09:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "user": {
+        "id": "68b808d8840cbb83a98a2201",
+        "fullName": "Lan Anh",
+        "username": "lananh",
+        "avatarUrl": "https://res.cloudinary.com/demo/image/upload/w_100,h_100,c_thumb,g_face/sample.jpg"
+      },
+      "stories": [
+        {
+          "id": 1730550800000,
+          "background": {
+            "image": "https://images.unsplash.com/photo-1506744038136-46273834b3fb",
+            "color": "rgb(120, 150, 200)",
+            "scale": 1,
+            "rotation": 0,
+            "flipped": false,
+            "position": { "x": 210, "y": 365 },
+            "scaledSize": { "w": 420, "h": 730 }
+          },
+          "layers": [
+            {
+              "id": 1730550800100,
+              "type": "text",
+              "content": "Ngày mới thật đẹp 🌸",
+              "x": 90,
+              "y": 100,
+              "color": "#ffe0f0"
+            },
+            {
+              "id": 1730550800200,
+              "type": "sticker",
+              "url": "https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif",
+              "x": 160,
+              "y": 270
+            }
+          ],
+          "music": {
+            "name": "Lovely",
+            "url": "https://example.com/music/lovely.mp3",
+            "artist": "Billie Eilish"
+          },
+          "musicStyle": "mini",
+          "createdAt": "2025-11-02T10:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "user": {
+        "id": "68b808d8840cbb83a98a2202",
+        "fullName": "Hoàng Minh",
+        "username": "minhhoang",
+        "avatarUrl": "https://res.cloudinary.com/demo/image/upload/w_100,h_100,c_thumb,g_face/avatar2.jpg"
+      },
+      "stories": [
+        {
+          "id": 1730551800000,
+          "background": {
+            "image": "https://images.unsplash.com/photo-1507525428034-b723cf961d3e",
+            "color": "rgb(80, 110, 160)",
+            "scale": 1,
+            "rotation": 0,
+            "flipped": false,
+            "position": { "x": 205, "y": 355 },
+            "scaledSize": { "w": 410, "h": 720 }
+          },
+          "layers": [
+            {
+              "id": 1730551800100,
+              "type": "text",
+              "content": "Đại dương xanh 🌊",
+              "x": 100,
+              "y": 120,
+              "color": "#ffffff"
+            },
+            {
+              "id": 1730551800200,
+              "type": "sticker",
+              "url": "https://media.giphy.com/media/xT0xeJpnrWC4XWblEk/giphy.gif",
+              "x": 150,
+              "y": 280
+            }
+          ],
+          "music": {
+            "name": "Ocean Eyes",
+            "url": "https://example.com/music/oceaneyes.mp3",
+            "artist": "Billie Eilish"
+          },
+          "musicStyle": "card",
+          "createdAt": "2025-11-02T11:00:00.000Z"
+        },
+        {
+          "id": 1730552800000,
+          "background": {
+            "image": "https://images.unsplash.com/photo-1491553895911-0055eca6402d",
+            "color": "rgb(100, 140, 180)",
+            "scale": 1,
+            "rotation": 0,
+            "flipped": false,
+            "position": { "x": 195, "y": 360 },
+            "scaledSize": { "w": 390, "h": 710 }
+          },
+          "layers": [
+            {
+              "id": 1730552800100,
+              "type": "text",
+              "content": "Chạy trốn cuối tuần 🏃‍♂️",
+              "x": 110,
+              "y": 100,
+              "color": "#ffffcc"
+            }
+          ],
+          "music": {
+            "name": "Runaway",
+            "url": "https://example.com/music/runaway.mp3",
+            "artist": "Aurora"
+          },
+          "musicStyle": "bar",
+          "createdAt": "2025-11-02T12:00:00.000Z"
+        }
+      ]
+    }
+  ],
+  "page": 1,
+  "limit": 10,
+  "hasNext": false
+}
