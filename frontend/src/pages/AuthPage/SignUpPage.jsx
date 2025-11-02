@@ -22,17 +22,16 @@ export default function SignUpPage() {
   })
 
   const onSubmit = async (data) => {
-    console.log("Form submitted:", data)
-
     await toast.promise(
       registerUserAPI(data),
       { pending: "Creating account..." }
-    ).then((res) => {
-      console.log("Registration response:", res)
-      toast.success("Account created successfully!")
-      navigate("/login")
+    ).then(() => {
+      toast.success("Account created. Please verify OTP!")
+      // 👉 Chuyển sang OTP chung
+      navigate(`/auth/otp?email=${encodeURIComponent(data.email)}&purpose=signup`, {
+        state: { email: data.email, purpose: 'signup' }
+      })
     }).catch((err) => {
-      console.log(err.message || "Registration failed")
       toast.error(err.message || "Registration failed")
     })
   }

@@ -44,7 +44,18 @@ export default function ForgotPasswordPage() {
   } = useForm({
     defaultValues: { email: "", otp: "", newPassword: "", confirmPassword: "" }
   })
-
+  const params = new URLSearchParams(window.location.search)
+  useEffect(() => {
+    const qEmail = params.get("email")
+    const qOtp   = params.get("otp")
+    if (qEmail) {
+      setEmailForReset(qEmail)
+      setStep(2)
+      // nếu có otp trên query thì đổ sẵn vào field
+      resetFormValues({ email: qEmail, otp: qOtp || "", newPassword: "", confirmPassword: "" })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   useEffect(() => {
     if (step === 2) {
       // set defaults for step 2
@@ -61,8 +72,7 @@ export default function ForgotPasswordPage() {
 
   // --- Handlers ---
   const onSendOtp = async ({ email }) => {
-    await toast
-      .promise(dispatch(forgotPasswordAPI({ email })), { pending: "Sending OTP..." })
+    await toast.promise(forgotPasswordAPI({ email }), { pending: "Sending OTP..." })
       .then((res) => {
         if (!res.error) {
           setEmailForReset(email)
@@ -83,12 +93,19 @@ export default function ForgotPasswordPage() {
   }
 
   const onResetPassword = async ({ email, otp, newPassword }) => {
-    await toast
-      .promise(dispatch(resetPasswordAPI({ email, otp, newPassword })), { pending: "Resetting password..." })
-      .then((res) => {
-        if (!res.error) navigate("/login")
-      })
+    try {
+      await toast.promise(
+        resetPasswordAPI({ email, otp, newPassword }),
+        { pending: "Resetting password..." }
+      )
+      toast.success("Password reset! Please sign in.")
+      navigate("/login", { replace: true }) // ✅ chuyển ngay
+    } catch (err) {
+      const msg = err?.response?.data?.message || err?.message || "Reset failed"
+      toast.error(msg)
+    }
   }
+
 
   const newPwd = watch("newPassword")
 

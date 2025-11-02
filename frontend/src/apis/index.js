@@ -25,13 +25,20 @@ export const checkAuth = async () => {
     return false
   }
 }
-
+export const resendSignupOtpAPI = async (data) => {
+  const res = await axios.post(`${API_ROOT}/api/auth/register/resend-otp`, data)
+  return res.data
+}
 /**
  * Đăng ký tài khoản mới
  */
 export const registerUserAPI = async (data) => {
   const response = await axios.post(`${API_ROOT}/api/auth/register`, data)
   return response.data
+}
+export const verifyOtpAPI = async (data) => {
+  const res = await axios.post(`${API_ROOT}/api/auth/verify-otp`, data)
+  return res.data
 }
 
 /**

@@ -54,7 +54,9 @@ let userSchema = new mongoose.Schema({
     resetOtp: { type: String, default: null },
     resetOtpExpiresAt: { type: Date, default: null },
     resetOtpAttempts: { type: Number, default: 0,},
-    resetLastSentAt: { type: Date, default: null }
+    resetLastSentAt: { type: Date, default: null },
+    otpPurpose: { type: String, enum: ['signup', 'forgot', null], default: null }
+
 });
 
 userSchema.pre('save', function(next) {
