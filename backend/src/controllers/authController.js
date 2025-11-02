@@ -5,16 +5,17 @@ import User from '../models/user.js';
 import { authService } from '../services/authService.js';
 
 // POST /auth/register
-let signup = async (req, res) => {
+let signup = async (req, res, next) => {
     try {
         let newUser = await authService.createUser(req.body); ////////////////////////////////////////////
         if (newUser) {
-            return res.status(201).json({ message: 'User registered successfully' });
+            return res.status(StatusCodes.CREATED).json({ message: 'User registered successfully' });
         }
         return res.status(500).json({ message: 'Error registering user' });
     } catch (error) {
-        console.error('Error during registration:', error);
-        return res.status(500).json(error.message || { message: 'Internal server error' });
+        // console.error('Error during registration:', error);
+        // return res.status(500).json(error.message || { message: 'Internal server error' });
+        next(error)
     }
 }
 

@@ -6,8 +6,9 @@ import { selectCurrentUser } from "@/redux/user/userSlice"
 import { useEffect, useRef, useState, useMemo } from "react"
 import { useSelector } from "react-redux"
 import { Plus, Pause, X, ChevronLeft, ChevronRight, MoreHorizontal, Send, Heart, Volume2, VolumeX } from "lucide-react"
+import { useNavigate } from "react-router-dom"
 
-export function StoryList({ onCreateStory }) {
+export function StoryList() {
   const [storiesData, setStoriesData] = useState([])
   const [pagination] = useState({ page: 1, limit: 10 })
   const [loading, setLoading] = useState(false)
@@ -19,6 +20,11 @@ export function StoryList({ onCreateStory }) {
   const [progress, setProgress] = useState(0)
   const [isMuted, setIsMuted] = useState(false)
   const audioRef = useRef(null)
+  const navigate = useNavigate()
+
+  const onCreateStory = () => {
+    navigate('/stories/create')
+  }
 
   // Fetch stories
   useEffect(() => {
@@ -60,9 +66,9 @@ export function StoryList({ onCreateStory }) {
     const interval = setInterval(() => {
       const elapsed = Date.now() - startTime
       const newProgress = Math.min((elapsed / duration) * 100, 100)
-      
+
       setProgress(newProgress)
-      
+
       if (newProgress >= 100) {
         clearInterval(interval)
         handleNextStory()
@@ -96,7 +102,7 @@ export function StoryList({ onCreateStory }) {
       audioRef.current = new Audio(currentStory.music.url)
       audioRef.current.loop = true
       audioRef.current.volume = 0.5
-      
+
       if (!isPaused) {
         audioRef.current.play().catch(err => console.log('Audio play failed:', err))
       }
@@ -201,7 +207,7 @@ export function StoryList({ onCreateStory }) {
     <div className="fixed inset-0 bg-black flex items-center justify-center z-50">
       {/* Header with Instagram logo */}
       <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-6 py-4 z-30">
-        <div className="text-white text-2xl font-semibold" style={{ fontFamily: 'cursive' }}>Instagram</div>
+        <div className="text-white text-2xl font-semibold" style={{ fontFamily: 'cursive' }}>Konnect</div>
         <button onClick={() => setOpen(false)} className="text-white">
           <X size={32} />
         </button>
@@ -210,7 +216,7 @@ export function StoryList({ onCreateStory }) {
       {/* Stories carousel - horizontal center */}
       <div className="flex items-center justify-center w-full h-full">
         {/* Left navigation button */}
-        <button 
+        <button
           onClick={handlePrevStory}
           className="w-12 h-12 bg-white bg-opacity-20 rounded-full flex items-center justify-center text-white flex-shrink-0 z-20 hover:bg-opacity-30 absolute left-8"
           disabled={currentFriendIndex === 0 && currentStoryIndex === 0}
@@ -219,9 +225,9 @@ export function StoryList({ onCreateStory }) {
         </button>
 
         {/* Stories display - horizontal row with fixed center */}
-        <div 
+        <div
           className="flex items-center justify-center gap-4"
-          style={{ 
+          style={{
             position: 'absolute',
             left: '50%',
             transform: 'translateX(-50%)'
@@ -230,11 +236,11 @@ export function StoryList({ onCreateStory }) {
           {[0, 1, 2, 3, 4].map((slotIndex) => {
             const offset = slotIndex - 2
             const userIndex = currentFriendIndex + offset
-            
+
             if (userIndex < 0 || userIndex >= storiesData.length) {
               return <div key={slotIndex} className="w-60 flex-shrink-0" />
             }
-            
+
             const friend = storiesData[userIndex]
             const isCurrent = offset === 0
             const distance = Math.abs(offset)
@@ -251,17 +257,22 @@ export function StoryList({ onCreateStory }) {
                 }}
                 className="relative cursor-pointer flex-shrink-0"
                 style={{
-                  opacity: isCurrent ? 1 : Math.max(0.3, 1 - distance * 0.25),
+                  opacity: isCurrent ? 1 : Math.max(0.3, 1 - distance * 0.25)
                 }}
               >
+                {/* Top gradient overlay - only for current story */}
+                {isCurrent && (
+                  <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-black/70 via-black/40 to-transparent z-10 pointer-events-none" />
+                )}
+
                 {/* Progress bars - only for current story */}
                 {isCurrent && (
-                  <div className="absolute top-2 left-2 right-2 flex gap-1 z-10">
+                  <div className="absolute top-2 left-2 right-2 flex gap-1 z-20">
                     {friend.stories.map((_, idx) => (
                       <div key={idx} className="flex-1 h-0.5 bg-white bg-opacity-30 rounded-full overflow-hidden">
-                        <div 
+                        <div
                           className="h-full bg-white transition-all"
-                          style={{ 
+                          style={{
                             width: idx === currentStoryIndex ? `${progress}%` : idx < currentStoryIndex ? '100%' : '0%'
                           }}
                         />
@@ -272,43 +283,61 @@ export function StoryList({ onCreateStory }) {
 
                 {/* Header - only for current story */}
                 {isCurrent && (
-                  <div className="absolute top-6 left-2 right-2 flex items-center justify-between z-10">
+                  <div className="absolute top-6 left-2 right-2 flex items-center justify-between z-20">
                     <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full border-2 border-white p-0.5">
+                      <div className="w-10 h-10 rounded-full border-2 border-white p-0.5">
                         <Avatar className="w-full h-full">
                           <AvatarImage src={friend.user?.avatarUrl} alt={friend.user?.username} />
                           <AvatarFallback>{friend.user?.username?.[0]}</AvatarFallback>
                         </Avatar>
                       </div>
-                      <span className="text-white font-semibold text-sm">{friend.user?.username}</span>
-                      <span className="text-gray-300 text-xs">
-                        {new Date(currentStory?.createdAt).toLocaleDateString('vi-VN')}
-                      </span>
+                      <div className="flex flex-col gap-[1px]">
+                        {/* Username + Date trên cùng một hàng */}
+                        <div className="flex items-center gap-2">
+                          <span className="text-white font-semibold text-sm drop-shadow-lg">
+                            {friend.user?.username}
+                          </span>
+                          <span className="text-gray-200 text-xs drop-shadow-lg">
+                            {new Date(currentStory?.createdAt).toLocaleDateString("vi-VN")}
+                          </span>
+                        </div>
+
+                        {/* Nhạc ở dưới */}
+                        {storyToShow.music &&
+                            <div className="flex items-center gap-2">
+                              <img className="w-5 h-5" src="https://media0.giphy.com/media/v1.Y2lkPWVjZjA1ZTQ3ZDJxejl0ZDJ4bXhoeHY3NTd0NmxzMzlpaDJlYndzMDgwaTU3a2ZkeiZlcD12MV9zdGlja2Vyc19zZWFyY2gmY3Q9cw/yFKokXsr5Bc6xVqpTt/200.webp" />
+                              <span className="text-white text-xs drop-shadow-lg">
+                                {storyToShow.music.name} - {storyToShow.music.artist}
+                              </span>
+                            </div>
+                        }
+                      </div>
+
                     </div>
                     <div className="flex items-center gap-3">
                       {hasMusic && (
-                        <button 
+                        <button
                           onClick={(e) => {
                             e.stopPropagation()
                             setIsMuted(!isMuted)
                           }}
-                          className="text-white"
+                          className="text-white drop-shadow-lg"
                         >
                           {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
                         </button>
                       )}
-                      <button 
+                      <button
                         onClick={(e) => {
                           e.stopPropagation()
                           setIsPaused(!isPaused)
                         }}
-                        className="text-white"
+                        className="text-white drop-shadow-lg"
                       >
                         <Pause size={18} fill={isPaused ? 'white' : 'none'} />
                       </button>
-                      <button 
+                      <button
                         onClick={(e) => e.stopPropagation()}
-                        className="text-white"
+                        className="text-white drop-shadow-lg"
                       >
                         <MoreHorizontal size={20} />
                       </button>
@@ -317,16 +346,17 @@ export function StoryList({ onCreateStory }) {
                 )}
 
                 {/* Story content */}
-                <div 
+                <div
                   className="rounded-xl overflow-hidden relative"
                   style={{
-                    width: isCurrent ? '420px' : '240px',
-                    height: isCurrent ? '700px' : '400px',
+                    width: isCurrent ? '420px' : '280px',
+                    height: isCurrent ? 'calc(100vh - 120px)' : '500px',
+                    maxHeight: isCurrent ? '900px' : '500px',
                     backgroundColor: storyToShow?.bgColor || '#000'
                   }}
                 >
                   {storyToShow?.media?.url && (
-                    <img 
+                    <img
                       src={storyToShow.media.url}
                       alt={friend.user?.username}
                       className="w-full h-full object-cover"
@@ -336,14 +366,14 @@ export function StoryList({ onCreateStory }) {
                   {/* Navigation areas - only for current story */}
                   {isCurrent && (
                     <>
-                      <button 
+                      <button
                         onClick={(e) => {
                           e.stopPropagation()
                           handlePrevStory()
                         }}
                         className="absolute left-0 top-0 bottom-0 w-1/3"
                       />
-                      <button 
+                      <button
                         onClick={(e) => {
                           e.stopPropagation()
                           handleNextStory()
@@ -370,25 +400,30 @@ export function StoryList({ onCreateStory }) {
                   </div>
                 )}
 
+                {/* Bottom gradient overlay - only for current story */}
+                {isCurrent && (
+                  <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-black/70 via-black/40 to-transparent z-10 pointer-events-none" />
+                )}
+
                 {/* Bottom interaction bar - only for current story */}
                 {isCurrent && (
-                  <div className="absolute bottom-4 left-2 right-2">
+                  <div className="absolute bottom-4 left-2 right-2 z-20">
                     <div className="flex items-center gap-2">
-                      <input 
+                      <input
                         type="text"
                         placeholder={`Trả lời ${friend.user?.username}...`}
                         onClick={(e) => e.stopPropagation()}
-                        className="flex-1 bg-transparent border border-white border-opacity-50 rounded-full px-4 py-2 text-white text-sm placeholder-gray-400 focus:outline-none focus:border-opacity-100"
+                        className="flex-1 bg-transparent border border-white border-opacity-50 rounded-full px-4 py-2 text-white text-sm placeholder-gray-300 focus:outline-none focus:border-opacity-100 drop-shadow-lg"
                       />
-                      <button 
+                      <button
                         onClick={(e) => e.stopPropagation()}
-                        className="text-white"
+                        className="text-white drop-shadow-lg"
                       >
                         <Heart size={24} />
                       </button>
-                      <button 
+                      <button
                         onClick={(e) => e.stopPropagation()}
-                        className="text-white"
+                        className="text-white drop-shadow-lg"
                       >
                         <Send size={24} />
                       </button>
@@ -401,7 +436,7 @@ export function StoryList({ onCreateStory }) {
         </div>
 
         {/* Right navigation button */}
-        <button 
+        <button
           onClick={handleNextStory}
           className="w-12 h-12 bg-white bg-opacity-20 rounded-full flex items-center justify-center text-white flex-shrink-0 z-20 hover:bg-opacity-30 absolute right-8"
           disabled={currentFriendIndex === storiesData.length - 1 && currentStoryIndex === totalStories - 1}
