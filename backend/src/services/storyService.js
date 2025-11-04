@@ -83,6 +83,8 @@ const getStoriesByFriends = async ({ userId, page = 1, limit = 10 }) => {
       )
       .filter(id => String(id) !== String(uid));
 
+      const allIds = [...friendIds, uid]
+
     if (!friendIds.length) {
       return { data: [], page, limit, hasNext: false };
     }
@@ -93,7 +95,7 @@ const getStoriesByFriends = async ({ userId, page = 1, limit = 10 }) => {
     const storiesByFriends = await Story.aggregate([
       {
         $match: {
-          user: { $in: friendIds.map(toOid) },
+          user: { $in: allIds.map(toOid) },
           createdAt: { $gte: since },
         },
       },
